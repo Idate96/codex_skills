@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sim Startup"
+  short_description: "Start Isaac sim plus robot and perception in tmux"
+  default_prompt: "Start the Moleworks sim stack with tmux windows sim, robot, perception."
