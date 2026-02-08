@@ -1,0 +1,4 @@
+interface:
+  display_name: "Kleinkram Upload"
+  short_description: "Upload ROS bags (.mcap) to Kleinkram"
+  default_prompt: "Use $kleinkram-upload to upload these bags to Kleinkram using klein."
