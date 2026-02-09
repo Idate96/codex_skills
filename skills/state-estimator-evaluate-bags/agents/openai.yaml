@@ -1,0 +1,4 @@
+interface:
+  display_name: "State Estimator Evaluate Bags"
+  short_description: "Replay bags and generate metrics report"
+  default_prompt: "Use $state-estimator-evaluate-bags to replay *_sensors bags through mole_estimator, record eval bags, and update the metrics markdown + summary table."
