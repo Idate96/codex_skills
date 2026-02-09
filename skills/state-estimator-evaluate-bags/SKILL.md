@@ -116,6 +116,7 @@ ros2 bag play "$SENSORS_BAG" \
 
 Notes on the report:
 - The summary table highlights strict-threshold failures as `FAIL(xxx)`.
+- It reports `J_TURN lag abs-med [ms]` (effective turn-joint lag; keep small since `J_TURN` is actively controlled).
 - It reports pose/twist consistency in two frames:
   - `pose-twist map v_xy RMS`: includes map<->odom corrections (can be inflated by global corrections).
   - `pose-twist odom v_xy RMS`: preferred local consistency check (odom->base vs twist).
