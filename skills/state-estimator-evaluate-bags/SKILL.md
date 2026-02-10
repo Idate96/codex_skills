@@ -41,6 +41,7 @@ Notes:
 - The script hard-fails if required topics are missing (including the 4 leg IMUs).
 - The script hard-fails if `ROS_DOMAIN_ID` already has any nodes (domain isolation preflight).
 - For iteration speed it trims `legs_updown_20260208_152409` to 240 s by default (override with `--no-default-trims` or `--trim ...`).
+ - The reprocessed eval bags record `/mole/turn_joint_filtered` so the offline analyzer can use the same filtered turn-joint omega as the estimator.
 
 4) Analyze + generate the summary table (automation).
 
@@ -71,6 +72,8 @@ python3 src/moleworks_ros/mole_estimator/scripts/compare_mole_estimator_metrics_
   --label-b NEW \
   --md-out ~/mcap/mole_estimator_batch_2026-02-08/metrics_NEW/metrics_diff.md
 ```
+
+The diff report includes control-relevant checks like `wz_err` (BASE yaw-rate consistency), plus the core smoothness/jitter metrics.
 
 ## Manual reprocessing (fallback)
 
