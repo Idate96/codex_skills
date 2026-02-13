@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ralpha Loop"
+  short_description: "Implement-test-review iteration loop"
+  default_prompt: "Run iterative implementation-test-review cycles and reuse the same reviewer agent until no findings remain."
