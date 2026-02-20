@@ -1,0 +1,4 @@
+interface:
+  display_name: "OCS2 Tuning Fast Loop"
+  short_description: "Fast OCS2 MPC tuning loops for Mole M4"
+  default_prompt: "Use $ocs2-tuning-fastloop to start a clean tuning session, run segment loops, and report metrics with artifact paths."
