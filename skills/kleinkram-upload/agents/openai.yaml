@@ -1,4 +1,4 @@
 interface:
   display_name: "Kleinkram Upload"
-  short_description: "Upload ROS bags (.mcap) to Kleinkram"
-  default_prompt: "Use $kleinkram-upload to upload these bags to Kleinkram using klein."
+  short_description: "Stage, upload, and verify Kleinkram files"
+  default_prompt: "Use $kleinkram-upload to prepare a Kleinkram-safe payload, upload it to a mission, and verify hash+size."

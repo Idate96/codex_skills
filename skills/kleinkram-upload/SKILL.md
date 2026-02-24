@@ -1,73 +1,67 @@
 ---
 name: kleinkram-upload
-description: Upload ROS/ROS2 bag datasets (.mcap/.bag/.db3 plus metadata.yaml) to Kleinkram using the `klein` CLI. Use when asked to create/find a Kleinkram project/mission and upload one or more bag folders, especially when avoiding filename collisions (e.g., repeated metadata.yaml).
+description: Stage and upload files to Kleinkram with mission creation and verification. Use when asked to upload datasets, run bags, or sysid artifacts to Kleinkram, especially from mixed folders that need extension filtering, filename normalization, and source-to-upload mapping for traceability.
 ---
 
-# Kleinkram Upload (klein CLI)
+# Kleinkram Upload
+
+## Overview
+
+Prepare a Kleinkram-safe payload from one or more files/folders, then upload and verify it against a project/mission. Use project IDs when possible for stable targeting.
 
 ## Quick Start
 
 ```bash
-# 1) Pick endpoint and confirm auth
-klein endpoint prod   # or: dev / local
-klein list projects   # if "Not Authenticated": klein login
+# 1) Build payload from one or more sources (recurses into directories).
+/home/lorenzo/.codex/skills/kleinkram-upload/scripts/prepare_payload.py \
+  --input /path/to/source_a \
+  --input /path/to/source_b \
+  --output /path/to/payload_dir
 
-# 2) Prefer project UUIDs for upload (work around name lookup issues)
-klein project info -p mole_estimator
-PROJECT_ID="<uuid>"
-
-# 3) Upload a ROS2 bag folder (metadata.yaml + *.mcap / *.db3)
-klein upload -p "$PROJECT_ID" -m <mission_name> --create --experimental-datatypes \
-  /path/to/bag/metadata.yaml \
-  /path/to/bag/*.mcap
+# 2) Upload + verify to Kleinkram mission.
+/home/lorenzo/.codex/skills/kleinkram-upload/scripts/upload_verify.sh \
+  --project 9ad977dd-806f-4f84-800e-a5b31574ece5 \
+  --mission arm_sys_id \
+  --payload /path/to/payload_dir
 ```
 
-## Mission Naming (Avoid Filename Collisions)
+## Workflow
 
-Kleinkram stores files in a mission by filename. Many ROS2 bags include `metadata.yaml`,
-so uploading multiple bag folders into a single mission will collide unless you rename files first.
+1. Build payload with `prepare_payload.py`.
+2. Inspect mapping file at `<payload>/upload_name_map.yaml`.
+3. Upload and verify with `upload_verify.sh`.
+4. Confirm mission contents with `klein mission info` and `klein list files`.
 
-Recommended patterns:
-- One mission per bag folder.
-- If one "run" contains sub-bags (example: `camera/`, `lidar/`, `state/`, `sensors/`), use missions `<run>_camera`, `<run>_lidar`, `<run>_state`, `<run>_sensors`.
+## Constraints Enforced
 
-## Bulk Upload Helper Script
+- File extensions: `.bag`, `.mcap`, `.db3`, `.svo2`, `.tum`, `.yaml`, `.yml`.
+- Filename stem normalization: only `A-Za-z0-9_-`, max 50 chars, deterministic de-duplication (`__01`, `__02`, ...).
+- Upload includes a mapping YAML in the mission for provenance.
 
-`scripts/klein_upload_rosbags.py` uploads one or more bag directories and automatically:
-- resolves `--project` name to a project UUID
-- creates missions (`--create`)
-- splits subfolders into separate missions (to avoid `metadata.yaml` collisions)
+## Common Patterns
 
-Examples (run from this skill directory):
+YAML-only artifact upload:
 
 ```bash
-python3 scripts/klein_upload_rosbags.py \
-  --project mole_estimator \
-  /home/lorenzo/bags/estimator_eval/cabin_rotate_20260208_172438
+/home/lorenzo/.codex/skills/kleinkram-upload/scripts/prepare_payload.py \
+  --input /path/to/stage \
+  --include-ext .yaml \
+  --include-ext .yml \
+  --output /tmp/klein_payload_yaml
 ```
+
+Ground-truth bag/MCAP upload:
 
 ```bash
-python3 scripts/klein_upload_rosbags.py \
-  --project mole_estimator \
-  --mission-prefix estimator_eval \
-  /home/lorenzo/bags/estimator_eval/all_sensors_cabin_rotate_20260208_171946 \
-  /home/lorenzo/bags/lidar_raw/legs_updown_20260208_152409
+/home/lorenzo/.codex/skills/kleinkram-upload/scripts/prepare_payload.py \
+  --input /path/to/run_1 \
+  --input /path/to/run_2 \
+  --include-ext .mcap \
+  --include-ext .bag \
+  --output /tmp/klein_payload_gt
 ```
 
-Dry run:
+## Resources
 
-```bash
-python3 scripts/klein_upload_rosbags.py --dry-run --project mole_estimator <paths...>
-```
-
-## Verify Uploads
-
-```bash
-klein list files -p <project_id_or_name> -m <mission_name>
-```
-
-Optional verify (compares local files to remote by name, size, and hash):
-
-```bash
-klein verify -p <project_id_or_name> -m <mission_name> /path/to/file1 /path/to/file2
-```
+- `scripts/prepare_payload.py`: Build filtered, renamed payload + traceability map.
+- `scripts/upload_verify.sh`: Create mission (safe rerun), upload, verify hash+size, print mission summary.

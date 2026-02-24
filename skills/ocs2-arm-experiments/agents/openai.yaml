@@ -1,0 +1,4 @@
+interface:
+  display_name: "OCS2 Arm Experiments"
+  short_description: "Launch OCS2 arm experiments quickly"
+  default_prompt: "Start/restart the OCS2 arm experiment in tmux. Launch in dry-run by default, reset+activate, start rosbag, open the Foxglove OCS2 layout, and provide commands to send cylindrical goals and monitor diagnostics. Before hardware actuation: ensure no other publishers (e.g. dig_controller) are writing /mole/actuator_commands."
