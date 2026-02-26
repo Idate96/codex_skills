@@ -8,6 +8,7 @@ description: Bring up and test the Moleworks Terra ROS2 + IsaacLab stack in the 
 ## Non-negotiables
 - Always run IsaacLab scripts via `/workspace/isaaclab/isaaclab.sh -p`.
 - Always open a **new tmux window** for IsaacLab or ROS commands; capture the pane output after each command.
+- When launching long commands via `tmux send-keys`, run them as `bash -lc '...; exec bash -i'` so the pane stays open on early failures.
 - Always set the **same** `ROS_DOMAIN_ID` on both sides (example: `24`).
 - Only force the DDS implementation if needed:
   - `export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp` (optional; otherwise use the distro default)

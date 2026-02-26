@@ -1,0 +1,3 @@
+interface:
+  display_name: "Moleworks Ext Container Run"
+  short_description: "Launch/debug moleworks_ext commands in Docker + tmux"

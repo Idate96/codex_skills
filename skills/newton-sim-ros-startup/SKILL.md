@@ -1,0 +1,134 @@
+---
+name: newton-sim-ros-startup
+description: Start or restart the Moleworks ROS2 stack using the Newton simulator inside the moleworks_ros:newton Docker container. Use when you need a clean tmux layout for Newton bridge, robot/TF/RViz, perception (elevation + excavation mapping), and optional Foxglove bridge, all with use_sim_time:=true.
+---
+
+# Newton Sim ROS Startup
+
+## Overview
+
+Bring up a Newton-based sim run (publishes `/clock` + `/mole/state` + perception topics) plus the minimal Mole ROS stack for visualization and mapping.
+
+Everything runs inside the same `moleworks_ros:newton` container.
+
+## Workflow
+
+### 0) Preflight
+
+1. Find the running container:
+```bash
+docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
+```
+
+2. Pick a `ROS_DOMAIN_ID` (example `24`) and keep it consistent.
+
+3. If you want Newton GUI, ensure X11 is available:
+```bash
+docker exec <container> bash -lc 'echo DISPLAY=$DISPLAY'
+```
+
+### 1) Launch/Attach The Container
+
+Recommended workflow uses the Mole docker scripts (host side):
+```bash
+cd /home/lorenzo/moleworks/ros2_ws/src/moleworks_ros/docker
+./docker_launch.sh moleworks_ros:newton mole_newton.Dockerfile \
+  --name moleworks-ros-newton \
+  --detach
+./docker_attach.sh --name moleworks-ros-newton --user lorenzo
+tmux a -t newton_sim
+```
+
+If you need to restart from scratch:
+```bash
+docker rm -f moleworks-ros-newton || true
+```
+
+### 2) Create tmux Session (Inside The Container)
+
+Create a persistent tmux session with 4 windows: `newton`, `robot`, `perception`, `foxglove`.
+```bash
+docker exec -u lorenzo moleworks-ros-newton bash -lc '
+  tmux kill-session -t newton_sim 2>/dev/null || true
+  tmux new-session -d -s newton_sim -n newton
+  tmux new-window -t newton_sim -n robot
+  tmux new-window -t newton_sim -n perception
+  tmux new-window -t newton_sim -n foxglove
+  tmux list-windows -t newton_sim
+'
+```
+
+### 3) Start Newton Bridge (Window: newton)
+
+Run the Newton ROS bridge via launch (sim time must be true):
+```bash
+docker exec -u lorenzo moleworks-ros-newton bash -lc '
+  tmux send-keys -t newton_sim:newton "source /opt/ros/jazzy/setup.bash; source /workspace/moleworks/ros2_ws/install/setup.bash; ros2 launch mole_bringup newton_bridge.launch.py use_sim_time:=true gui:=true task:=m445_excavation_w_cabin_analytic publish_tf:=false" C-m
+'
+```
+
+Notes:
+- Keep `publish_tf:=false` when also running `robot.launch.py` (avoid TF conflicts).
+
+### 4) Start Robot + TF + RViz (Window: robot)
+
+Robot window is minimal: TF + robot_state_publisher + RViz (no perception).
+```bash
+docker exec -u lorenzo moleworks-ros-newton bash -lc '
+  tmux send-keys -t newton_sim:robot "source /opt/ros/jazzy/setup.bash; source /workspace/moleworks/ros2_ws/install/setup.bash; ros2 launch mole_bringup robot.launch.py use_sim_time:=true on_machine:=false launch_low_level:=false launch_perception:=false launch_rviz:=true launch_foxglove:=false elevation_map_frame_mode:=map" C-m
+'
+```
+
+### 5) Start Perception + Mapping (Window: perception)
+
+Start elevation mapping + excavation mapping (global/map mode):
+```bash
+docker exec -u lorenzo moleworks-ros-newton bash -lc '
+  tmux send-keys -t newton_sim:perception "source /opt/ros/jazzy/setup.bash; source /workspace/moleworks/ros2_ws/install/setup.bash; ros2 launch mole_perception_bringup bringup.launch.py use_sim_time:=true enable_camera:=false enable_lidar:=false enable_elevation_mapping:=true enable_robot_self_filter:=true enable_excavation_mapping:=true map_name:=excavation_site use_local_mapping:=false elevation_map_frame_mode:=map" C-m
+'
+```
+
+### 6) Start Foxglove Bridge (Window: foxglove)
+
+```bash
+docker exec -u lorenzo moleworks-ros-newton bash -lc '
+  tmux send-keys -t newton_sim:foxglove "source /opt/ros/jazzy/setup.bash; source /workspace/moleworks/ros2_ws/install/setup.bash; ros2 launch foxglove_bridge foxglove_bridge_launch.xml port:=8765 use_sim_time:=true" C-m
+'
+```
+
+### 7) Sanity Checks
+
+Run with long timeouts (TF buffer needs time to warm up):
+```bash
+docker exec -u lorenzo moleworks-ros-newton bash -lc '
+  timeout 15 bash -lc "source /opt/ros/jazzy/setup.bash; source /workspace/moleworks/ros2_ws/install/setup.bash; ros2 topic echo /clock --once 2>&1" | head -20
+  timeout 15 bash -lc "source /opt/ros/jazzy/setup.bash; source /workspace/moleworks/ros2_ws/install/setup.bash; ros2 topic echo /mole/state --once 2>&1" | head -20
+  timeout 15 bash -lc "source /opt/ros/jazzy/setup.bash; source /workspace/moleworks/ros2_ws/install/setup.bash; ros2 run tf2_ros tf2_echo map BASE 2>&1" | head -20
+  timeout 15 bash -lc "source /opt/ros/jazzy/setup.bash; source /workspace/moleworks/ros2_ws/install/setup.bash; ros2 run tf2_ros tf2_echo odom BASE 2>&1" | head -20
+'
+```
+
+### 8) If Something Is Missing
+
+If `colcon build` complains about duplicate packages, always add `--base-paths src`.
+
+If `newton_bridge.launch.py` is not found:
+```bash
+docker exec -u lorenzo moleworks-ros-newton bash -lc '
+  source /opt/ros/jazzy/setup.bash
+  cd /workspace/moleworks/ros2_ws
+  colcon build --base-paths src --packages-select mole_bringup --symlink-install
+'
+```
+
+If `mole_bringup` build fails due to missing `mole_sam3_segmentation` in the install (due to perception exec_dep chain), build it first:
+```bash
+docker exec -u lorenzo moleworks-ros-newton bash -lc '
+  source /opt/ros/jazzy/setup.bash
+  cd /workspace/moleworks/ros2_ws
+  colcon build --base-paths src --packages-select mole_sam3_segmentation --symlink-install
+'
+```
+
+If elevation mapping logs a shape/broadcast error when loading the `excavation_site` map, ensure you are running the updated `mole_perception_bringup` from `ros2_ws` (it selects a large-map core param file for that map name).
+```

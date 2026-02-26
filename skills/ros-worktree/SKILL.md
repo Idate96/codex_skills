@@ -1,21 +1,21 @@
 ---
 name: ros-worktree
-description: Create a new isolated ROS 2 workspace ("ROS worktree") for safe builds/testing without touching the main ~/moleworks/ros2_ws. Use when you need to (1) copy an existing ROS2 workspace into ~/moleworks/ros2_ws_<suffix>, (2) clean all git repos to a pristine state, (3) add COLCON_IGNORE for heavy/non-ROS packages, and optionally (4) replace selected repos (e.g. moleworks_ros) with git worktrees from ~/git so changes are PR-able and don't interfere with ongoing work.
+description: Create a new isolated ROS 2 workspace ("ROS worktree") for safe builds/testing without touching the main ~/moleworks/ros2_ws. Use when you need a throwaway-but-PR-able workspace under ~/moleworks/ros2_ws_SUFFIX, typically by copying src/ and then replacing one or more repos (e.g. moleworks_ros) with git worktrees from ~/git/.worktrees and symlinks.
 ---
 
 # ROS Worktree (Isolated Workspace) Workflow
 
 ## Goal
 
-Create a new ROS2 workspace directory (example: `~/moleworks/ros2_ws_menzi_base_clean`) that is safe to mutate and build in, while keeping `~/moleworks/ros2_ws` untouched.
+Create a new ROS2 workspace directory (example: `~/moleworks/ros2_ws_menzi_base`) that is safe to mutate and build in, while keeping `~/moleworks/ros2_ws` untouched.
 
-## Create A New Workspace By Copying `src/` (Fast Path)
+## Create A New Workspace (Fast Path: Copy `src/`)
 
 Pick a suffix/name and copy only `src/`.
 
 ```bash
 SRC_WS=~/moleworks/ros2_ws
-DST_WS=~/moleworks/ros2_ws_<suffix>
+DST_WS=~/moleworks/ros2_ws_SUFFIX
 
 test -d "$SRC_WS/src"
 test ! -e "$DST_WS"  # fail fast if destination already exists
@@ -24,17 +24,48 @@ mkdir -p "$DST_WS/src"
 rsync -a "$SRC_WS/src/" "$DST_WS/src/"
 ```
 
-## Clean All Git Repos Inside The New Workspace
+## Replace Specific Repos With Git Worktrees (Recommended)
 
-This ensures the new workspace is pristine (no local diffs, no build artifacts).
+Rationale: keep a canonical clone in `~/git/REPO` and put a *worktree checkout* in `~/git/.worktrees/REPO_SUFFIX`. Then symlink that into the new workspace. This keeps PRs easy and avoids interfering with ongoing work elsewhere.
+
+### Example: `moleworks_ros` worktree + symlink into the new workspace
 
 ```bash
-cd "$DST_WS/src"
-for d in *; do
-  if test -d "$d/.git"; then
-    echo "CLEAN $d"
-    git -C "$d" reset --hard
-    git -C "$d" clean -fdx
+MOLEWORKS_ROS_GIT=~/git/moleworks_ros
+MOLEWORKS_ROS_WT=~/git/.worktrees/moleworks_ros_SUFFIX
+
+test -d "$MOLEWORKS_ROS_GIT/.git"
+test -d "$DST_WS/src"
+
+# Remove the copied repo in the new workspace (fail fast if you care about its state).
+test -d "$DST_WS/src/moleworks_ros"
+rm -rf "$DST_WS/src/moleworks_ros"
+
+# Create a dedicated branch and worktree checkout.
+cd "$MOLEWORKS_ROS_GIT"
+git fetch origin
+git worktree add -B MY_BRANCH "$MOLEWORKS_ROS_WT" origin/dev/integration_rebase3
+
+# Symlink the worktree into the workspace.
+ln -s "$MOLEWORKS_ROS_WT" "$DST_WS/src/moleworks_ros"
+```
+
+Notes:
+- Use the same pattern for other repos you plan to change (e.g. `holistic_fusion`, `menzi_docker`, etc.).
+- Prefer new branch names; avoid force-push.
+- If you need a clean build, clean `build/ install/ log` in the workspace, not the git repos (see below).
+
+## Clean Build Artifacts (Recommended Before Testing New Images)
+
+Keep the workspace git state intact; just reset build outputs.
+
+```bash
+cd "$DST_WS"
+ts="$(date +%Y%m%d_%H%M%S)"
+mkdir -p "_old_build_${ts}"
+for d in build install log; do
+  if test -e "$d"; then
+    mv "$d" "_old_build_${ts}/"
   fi
 done
 ```
@@ -51,46 +82,28 @@ touch "$DST_WS/src/segment-anything-2-real-time-ros-2/COLCON_IGNORE"
 # touch "$DST_WS/src/isaac_ros_nvblox/COLCON_IGNORE"
 ```
 
-## Optional: Use Git Worktrees For Repos You Will Modify
-
-Rationale: keep a canonical clone in `~/git/<repo>` and put a *worktree checkout* into the new ROS workspace. This avoids editing a throwaway copy and makes PRs straightforward.
-
-### Example: `moleworks_ros` Worktree Inside The New Workspace
-
-```bash
-# Canonical clone lives here.
-MOLEWORKS_ROS_GIT=~/git/moleworks_ros
-test -d "$MOLEWORKS_ROS_GIT/.git"
-
-# Remove the copied repo in the new workspace (fail fast if you care about its state).
-test -d "$DST_WS/src/moleworks_ros"
-rm -rf "$DST_WS/src/moleworks_ros"
-
-# Create a dedicated branch and worktree checkout inside the new workspace.
-cd "$MOLEWORKS_ROS_GIT"
-git fetch origin
-git worktree add -B <my-branch> "$DST_WS/src/moleworks_ros" origin/dev/integration_rebase3
-```
-
-Notes:
-- Use the same pattern for other repos you plan to change (e.g. `holistic_fusion`).
-- Prefer creating new branches (no force-push). If a branch already exists and must be updated, create a new branch name.
-
 ## Build/Test In Docker Against The New Workspace
 
-Mount the workspace into the container and keep build artifacts in workspace-local folders (so repeated builds are deterministic and don't touch other workspaces).
+### Generic `docker run` pattern
+
+Mount the workspace into the container (so builds are deterministic and don't touch other workspaces).
 
 ```bash
 docker run --rm -it \
   -v "$DST_WS:/workspaces/ros2_ws" \
   -w /workspaces/ros2_ws \
-  <image> \
-  bash -lc 'set -ex; source /opt/ros/jazzy/setup.bash; colcon build --packages-up-to <pkg>'
+  IMAGE \
+  bash -lc 'set -ex; source /opt/ros/jazzy/setup.bash; colcon build --packages-up-to PKG'
 ```
 
 If `colcon` tries to crawl everything under `src/`, restrict it:
 
 ```bash
-colcon build --base-paths src/moleworks_ros src/holistic_fusion/ros2 --packages-up-to <pkg>
+colcon build --base-paths src/moleworks_ros src/holistic_fusion/ros2 --packages-up-to PKG
 ```
 
+### Moleworks-specific: use `moleworks_ros/docker/docker_launch.sh`
+
+If you are testing `moleworks_ros` images, prefer the repo scripts. They mount your full `$HOME`, so the new workspace is visible automatically.
+
+Important: the container bashrc typically auto-sources only `~/ros2_ws` or `/workspaces/ros2_ws`. If your worktree is `~/moleworks/ros2_ws_SUFFIX`, you must `source ~/moleworks/ros2_ws_SUFFIX/install/setup.bash` in each shell before running `ros2 launch`/`ros2 run`.

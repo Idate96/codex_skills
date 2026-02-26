@@ -1,6 +1,6 @@
 ---
 name: rl-isaaclab
-description: "End-to-end IsaacLab RL workflow in moleworks_ext: run with isaaclab.sh -p, local smoke tests, cluster submit/monitor/debug on Euler, sync results, and play policies."
+description: "End-to-end IsaacLab RL workflow in moleworks_ext: run with isaaclab.sh -p, local smoke tests, cluster submit/monitor/debug on Euler, sync results, benchmark pulled policies, and generate temporal training plots."
 ---
 
 # RL + IsaacLab Workflow (moleworks_ext)
@@ -76,6 +76,10 @@ CLUSTER_EXECUTABLE=scripts/mole_environments/grading/train_grading.py \
   --task Moleworks-Isaac-m445-grading --num_envs 64000 --max_iterations 10000
 ```
 
+Important semantics:
+- In multi-GPU mode, `--num_envs` is interpreted as total envs and split across GPUs (e.g., `32000` with `NUM_GPUS=2` becomes `16000/GPU`).
+- With `--resume`, `--max_iterations` is treated as additional learning iterations beyond the loaded checkpoint iteration (not a strict total cap).
+
 ## 4) Monitor Jobs (Euler)
 
 ```bash
@@ -99,6 +103,20 @@ ssh euler 'grep -n "bind mount detected" /cluster/scratch/<user>/moleworks_ext_<
 
 **Note**: `.err` is where Python tracebacks are.
 
+### Detect Time-Limit Kills Quickly
+
+Use `sacct` to verify if jobs were cancelled by partition wall time:
+
+```bash
+ssh euler 'sacct -j <jobid> --format=JobID,State,Elapsed,Timelimit,Partition%12,ExitCode -P'
+```
+
+Typical symptom:
+- top-level job state is `TIMEOUT`
+- batch step state is `CANCELLED` with exit `0:15`
+
+If that happens, rerun on a longer partition/time (for example `PARTITION=gpuhe.24h JOB_TIME=24h`).
+
 ## 6) Sync Results
 
 ```bash
@@ -106,6 +124,148 @@ ssh euler 'grep -n "bind mount detected" /cluster/scratch/<user>/moleworks_ext_<
 # or to save space
 ./docker/cluster/sync_experiments.sh --remove
 ```
+
+### Preferred: Live Report + Targeted Sync
+
+Use the local helper to avoid full log sync when you only need active run diagnostics:
+
+```bash
+# Report active runs with run_name/task/wandb/timeout/full/close + resolved run_dir
+scripts/utils/cluster_run_report.sh
+
+# Restrict to specific jobs
+scripts/utils/cluster_run_report.sh --job-ids 58383883 58334585
+
+# Report + sync only params/ for those runs
+scripts/utils/cluster_run_report.sh --job-ids 58383883 58334585 --sync-params
+```
+
+Then compare configs directly from synced runs:
+
+```bash
+python3 scripts/utils/compare_run_configs.py \
+  --run-a <run_name_or_run_dir_A> \
+  --run-b <run_name_or_run_dir_B>
+```
+
+Filter to keys you care about:
+
+```bash
+python3 scripts/utils/compare_run_configs.py \
+  --run-a fresh24h_32k_ros_limit_margins_s43 \
+  --run-b 4gpu64k_24h_it10k_decim3_rtx3090 \
+  --contains decimation \
+  --contains action_noise \
+  --contains curriculum_end_height_above_soil
+```
+
+Use this tool first for "why run A vs B differs?" before manual YAML inspection.
+
+## 6.1) Policy Pull Protocol (Mandatory)
+
+When new policies are pulled from cluster logs, do all of the following in order:
+
+1. Identify active cluster runs and map them to experiment/run directories.
+2. Sync logs/checkpoints with `sync_experiments.sh`.
+3. Benchmark the pulled checkpoints with fixed benchmark settings.
+4. Plot temporal training progression for core metrics before recommending a checkpoint.
+
+Do not recommend a new checkpoint from sync alone; always include benchmark evidence.
+
+## 6.2) Experiment Tracking Docs (Mandatory)
+
+Maintain two repo docs in `moleworks_ext/docs`:
+- `EXPERIMENTS_ONGOING.md`: only live `RUNNING` / `PENDING` experiments
+- `EXPERIMENTS_RUN.md`: archive of completed/stopped/benchmarked experiments
+
+Hard rule:
+- Every time you launch a new training/benchmark run (local or cluster), update `EXPERIMENTS_ONGOING.md` in the same work session.
+- Do not launch additional runs until docs are updated (name, run_name, date UTC, status, intention, path/job id).
+- When a run finishes/stops/is benchmarked, move it to `EXPERIMENTS_RUN.md` before reporting final conclusions.
+- Reconcile `EXPERIMENTS_ONGOING.md` against live cluster state (`squeue`) before each monitoring report.
+- If a row exists in `EXPERIMENTS_ONGOING.md` but its job id is no longer in `squeue`, treat it as finished by default: benchmark it, archive it in `EXPERIMENTS_RUN.md`, and remove it from `EXPERIMENTS_ONGOING.md` in the same session.
+
+For every submit:
+1. Immediately add a row to `EXPERIMENTS_ONGOING.md` with:
+   - name
+   - training `run_name`
+   - W&B run reference (`wandb_run` and URL, or `NA` if unavailable)
+   - environment
+   - date (UTC)
+   - short note / intention
+   - job id + workdir/log path if available
+2. During monitoring, update status and notes in place.
+3. When the run is benchmarked or stopped/completed, move the row to `EXPERIMENTS_RUN.md`.
+4. In `EXPERIMENTS_RUN.md`, keep at least:
+   - name
+   - environment
+   - date (UTC)
+   - short note / intention
+   - concise result summary
+   - artifact path(s) (run dir / report / checkpoint)
+5. For cluster runs, include a benchmark summary before archiving:
+   - checkpoint used
+   - success/close/full or termination breakdown
+   - dominant failure mode (if any)
+
+Rules:
+- Keep timestamps absolute (UTC), not relative.
+- If job args are unknown while pending, mark `TBD` and resolve once stdout exists.
+- If duplicate submissions happen, track each job id separately and note duplication explicitly.
+
+## 6.3) Reporting Format: Run Name + W&B (Mandatory)
+
+When reporting active runs in chat or docs, always include:
+- `run_name`
+- `wandb_run` (preferred: W&B run id/name)
+- `wandb_url`
+
+If W&B is not initialized or not printed in logs, report explicit fallback:
+- `wandb_run=NA`
+- `wandb_url=NA`
+
+### Timeout-Dominance Snapshot Format (Mandatory)
+
+When reporting termination-health snapshots, always include these fields per run:
+- `job_id`
+- `run_name`
+- `task` (environment id)
+- `wandb_run`
+- `wandb_url`
+- `last_timeout`
+- `last_full`
+- `last_close`
+
+Preferred one-line format:
+
+```text
+<job_id> | <run_name> | <task> | wandb_run=<...> | wandb_url=<...> | timeout=<...> | full=<...> | close=<...>
+```
+
+Never report only raw job ids with metrics; include run name and task on every line.
+
+Quick extraction from SLURM logs:
+
+```bash
+# run_name
+grep -m1 -oE -- '--run_name [^ ]+' <slurm.out> | awk '{print $2}'
+
+# W&B run URL (if present in stdout or stderr)
+grep -Eo 'https://wandb.ai/[^ ]+/runs/[^ ]+' <slurm.out> <slurm.err> | tail -n1
+```
+
+## 6.4) What Is Logged Per Run (Current Ground Truth)
+
+From `scripts/rsl_rl/train.py`, every run directory stores:
+- `params/env.yaml`
+- `params/agent.yaml`
+- `params/env.pkl`
+- `params/agent.pkl`
+
+Notes:
+- Prefer `env.yaml` / `agent.yaml` for fast diffs (`compare_run_configs.py`).
+- `env.pkl` / `agent.pkl` are best when exact Python object reconstruction is needed.
+- Git snapshot logging is currently disabled in train script (`runner.add_git_repo_to_log` is commented).
 
 ## 7) Play Policy Locally
 
@@ -115,6 +275,87 @@ ssh euler 'grep -n "bind mount detected" /cluster/scratch/<user>/moleworks_ext_<
   --checkpoint logs/rsl_rl/<exp>/<run_dir>/model_150.pt \
   --num_envs 1
 ```
+
+### Benchmark Latest Checkpoints (Excavation3D / w-cabin)
+
+Prefer the benchmark script for quantitative comparisons:
+
+```bash
+/workspace/isaaclab/isaaclab.sh -p scripts/mole_environments/excavation3D/benchmark_excavation.py \
+  --task Moleworks-Isaac-m445-digging-3D-w-cabin \
+  --checkpoint logs/rsl_rl/<exp>/<run_dir>/model_<N>.pt \
+  --num_envs 2048 \
+  --benchmark_steps 300
+```
+
+Notes:
+- Keep `--auto_task_from_checkpoint` and `--sync_eval_from_checkpoint` enabled (defaults) to avoid task/config mismatches.
+- Reports are written under `<run_dir>/play_model_<N>/<timestamp>_benchmarking/benchmark_report_*.txt`.
+- For fair cross-run comparison, keep `num_envs` and `benchmark_steps` fixed.
+
+### Benchmark Multiple Checkpoints (sweep)
+
+Use a fixed benchmark setup (same `num_envs`, `benchmark_steps`, `seed`) when comparing models:
+
+```bash
+RUN_DIR=logs/rsl_rl/<exp>/<run_dir>
+for m in 500 750 1000 1250 1500 1750 2000 2250 2500 2750 3000 3250 3500 3750 4000 4250 4500; do
+  /workspace/isaaclab/isaaclab.sh -p scripts/mole_environments/excavation3D/benchmark_excavation.py \
+    --task Moleworks-Isaac-m445-digging-3D-w-cabin \
+    --checkpoint "${RUN_DIR}/model_${m}.pt" \
+    --num_envs 1024 \
+    --benchmark_steps 400 \
+    --seed 0
+done
+```
+
+Use the generated `benchmark_report_*.txt` files under `play_model_<N>/...` for ranking.
+
+## 8) Temporal Plots (Mandatory after Pull)
+
+After benchmarking pulled policies, generate temporal plots from TensorBoard event files:
+
+- core termination progression: `full`, `close`, `partial`, `timeout`, `negative`
+- stability progression: `Train/mean_reward`, `Train/mean_episode_length`
+
+Use:
+
+```bash
+python3 scripts/plot_tb_scalars.py \
+  --run-dir logs/rsl_rl/<exp>/<run_dir> \
+  --plot-core \
+  --out-dir outputs/analysis/training_curves
+```
+
+This writes:
+- `core_progression.png` (fractions + counts + reward/episode length)
+- `core_progression.csv` (step-wise fractions/counts/reward)
+
+### On-Demand Plotting (Custom Terms)
+
+To inspect arbitrary temporal metrics (for example specific termination modes), first list tags:
+
+```bash
+python3 scripts/plot_tb_scalars.py --run-dir logs/rsl_rl/<exp>/<run_dir> --list-tags
+```
+
+Then plot exact tags:
+
+```bash
+python3 scripts/plot_tb_scalars.py \
+  --run-dir logs/rsl_rl/<exp>/<run_dir> \
+  --tags Episode_Termination/goal_reached_full Episode_Termination/goal_reached_close Episode_Termination/time_out
+```
+
+Or use regex selection:
+
+```bash
+python3 scripts/plot_tb_scalars.py \
+  --run-dir logs/rsl_rl/<exp>/<run_dir> \
+  --regex '^Episode_Termination/(goal_reached_full|goal_reached_close|time_out|bucket_velocity)$'
+```
+
+Temporal progression plots are the default diagnostic source when close/full benchmark numbers look inconsistent with W&B summaries.
 
 ## RL Debugging Tips
 

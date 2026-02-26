@@ -69,9 +69,10 @@ When running ROS scripts, open a new permanent tmux window:
 # If in tmux session, create new window (counting starts from 1)
 tmux new-window -n ros2
 
-# Run your ROS command
-ros2 launch your_package your_launch.py
+# Run your ROS command (keep the pane alive on failure so output is inspectable)
+tmux send-keys -t ros2 "bash -lc 'ros2 launch your_package your_launch.py; exec bash -i'" C-m
 
 # Always capture pane output to verify
-tmux capture-pane -p
+sleep 0.5
+tmux capture-pane -p -S -200
 ```

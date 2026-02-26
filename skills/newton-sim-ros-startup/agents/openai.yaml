@@ -1,0 +1,4 @@
+interface:
+  display_name: "Newton Sim ROS Startup"
+  short_description: "Start Newton sim + robot + perception in tmux"
+  default_prompt: "Start/restart the Newton simulator and Mole ROS2 stack in a tmux layout (newton, robot, perception, foxglove)."
