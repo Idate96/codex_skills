@@ -1,6 +1,6 @@
 ---
 name: ocs2-arm-experiments
-description: Start/restart Mole OCS2 arm controller experiments with real actuation commands in tmux, reset+activate the lifecycle controller, send cylindrical (r, theta, z, pitch) end-effector goals (Foxglove or CLI), record rosbag, and run staged validation phases while monitoring diagnostics and preventing competing /mole/actuator_commands publishers (e.g. dig_controller).
+description: Start/restart Mole OCS2 arm controller experiments with real actuation commands in tmux, use configure-time auto-bootstrap (hold+reset+first-policy), activate safely, send cylindrical (r, theta, z, pitch) end-effector goals (Foxglove or CLI), record rosbag, and run staged validation while preventing competing /mole/actuator_commands publishers (e.g. dig_controller).
 ---
 
 # Ocs2 Arm Experiments
@@ -58,6 +58,26 @@ Use the same ROS environment for launch + activate + goal publish (same tmux ses
 
 ### 2. Launch (Real Actuation)
 
+Fast-start path (preferred on machine; avoids duplicate-node/lifecycle drift):
+
+```bash
+cd ~/ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+
+WS_DIR=~/ros2_ws \
+TASK_FILE=~/ros2_ws/src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_controller/config/mole_m4/task.pose_cyl_flat_nocollision_machine_fast_1p5_dt05_iter2.info \
+COMMAND_LAG_COMP_SEC=0.0 \
+AUTO_HOLD_ON_CONFIGURE=true \
+AUTO_ACTIVATE=false \
+bash src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_controller/scripts/mole_m4_fast_start_machine.sh
+```
+
+This script performs: stale-process cleanup, `ocs2_arm.launch.py`, state-aware lifecycle handover (`configure` when needed), hold/reset bootstrap, and `activate`.
+It also enforces the safe startup pairing `delay_enable=true` with `command_lag_comp_sec=0.0`.
+
+Manual launch path (use only if you need custom handover/debug):
+
 Launch OCS2 arm with real actuator commands:
 
 ```bash
@@ -71,23 +91,21 @@ ros2 launch mole_ocs2_arm_controller ocs2_arm.launch.py \
   launch_policy_visualizer:=true \
   launch_target_bridge:=false \
   launch_dump_scheduler:=false \
-  use_augmented_lagrangian:=false
+  use_augmented_lagrangian:=false \
+  command_lag_comp_sec:=0.0 \
+  bootstrap_auto_hold_on_configure:=true \
+  bootstrap_auto_activate:=false
 ```
 
 Use `launch_target_bridge:=true` only when you explicitly want the action/GUI goal path.
 
-Kickstart policy generation and activate controller lifecycle:
+Lifecycle handover:
 
 ```bash
-python3 src/moleworks_ros/mole_utils/scripts/publish_debug_mpc_target_hold.py
-ros2 service call /mole/mole_arm_mpc_controller/change_state lifecycle_msgs/srv/ChangeState "{transition: {id: 3}}"
-```
-
-If activation fails with "no MPC policy received yet", prime transient-local policy once, then activate again:
-
-```bash
-ros2 topic echo --once /mole/ocs2/policy --qos-durability transient_local
-ros2 service call /mole/mole_arm_mpc_controller/change_state lifecycle_msgs/srv/ChangeState "{transition: {id: 3}}"
+ros2 lifecycle set /mole/mole_arm_mpc_controller configure
+# configure triggers bootstrap: hold target -> reset -> wait first fresh policy
+timeout 10 ros2 topic echo --once /mole/ocs2/policy >/dev/null
+ros2 lifecycle set /mole/mole_arm_mpc_controller activate
 ```
 
 Sanity checks:
@@ -100,9 +118,9 @@ ros2 topic echo --once /mole/ocs2/arm_controller/diagnostics | rg -n "lifecycle_
 
 ### 3. Goal Publish (Preferred: Bridge-Free Deterministic)
 
-Use direct target publication + reset (no bridge/action dependency) via policy step checker:
+Use direct target publication (no bridge/action dependency) via policy step checker:
 - publishes `/mole/ocs2/target`
-- calls `/mole/mobile_manipulator_mpc_reset`
+- can call reset service when requested (use `--no-reset` for normal closed-loop target updates)
 - validates predicted policy horizon in the same run
 
 1) Read current cylindrical pose:
@@ -119,6 +137,7 @@ python3 src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_controller/s
   --goal-theta-deg 30.0 \
   --goal-z-m 0.10 \
   --goal-pitch-deg 33.8 \
+  --no-reset \
   --target-mode ramp \
   --goal-duration-sec 1.0 \
   --json
@@ -147,7 +166,9 @@ CLI action goal:
 ```bash
 python3 src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_controller/scripts/mole_m4_send_cyl_goal.py \
   --dtheta-deg 30 \
-  --call-reset \
+  --timeout-sec 20 \
+  --result-timeout-sec 60 \
+  --no-call-reset \
   --quiet-feedback
 ```
 
@@ -180,8 +201,9 @@ ros2 param set /mole/mole_arm_mpc_controller command.accel_scale 1.0
 Then kickstart and activate:
 
 ```bash
-python3 src/moleworks_ros/mole_utils/scripts/publish_debug_mpc_target_hold.py
-ros2 service call /mole/mole_arm_mpc_controller/change_state lifecycle_msgs/srv/ChangeState "{transition: {id: 3}}"
+ros2 lifecycle set /mole/mole_arm_mpc_controller configure
+timeout 10 ros2 topic echo --once /mole/ocs2/policy >/dev/null
+ros2 lifecycle set /mole/mole_arm_mpc_controller activate
 ros2 topic info /mole/actuator_commands -v
 ```
 
@@ -211,6 +233,7 @@ Monitor during any motion:
 
 ```bash
 ros2 topic echo --once /mole/ocs2/arm_controller/diagnostics
+ros2 topic echo --once /ocs2/mobile_manipulator/diagnostics
 ```
 
 ### 7. Troubleshooting: Planned Trajectory Visible But Robot Does Not Move
@@ -221,8 +244,9 @@ If CLI goal send fails with action-server timeout, verify bridge is enabled:
 
 ```bash
 ros2 action list | rg -n "/mole/ocs2/send_cyl_goal"
-# If missing, restart launch with:
-#   launch_target_bridge:=true
+# If listed but discovery is slow, retry with:
+#   --timeout-sec 20 --result-timeout-sec 60
+# If missing, restart launch with launch_target_bridge:=true
 ```
 
 Inspect:
@@ -234,14 +258,14 @@ ros2 topic echo --once /mole/ocs2/arm_controller/diagnostics | rg -n "lifecycle_
 If `safe_stop_active=1` with a breakaway timeout reason:
 
 ```bash
-python3 src/moleworks_ros/mole_utils/scripts/publish_debug_mpc_target_hold.py
-ros2 service call /mole/mole_arm_mpc_controller/change_state lifecycle_msgs/srv/ChangeState "{transition: {id: 3}}"
+ros2 lifecycle set /mole/mole_arm_mpc_controller deactivate
+ros2 lifecycle set /mole/mole_arm_mpc_controller activate
 ```
 
 Then republish a small goal and confirm commands are non-zero:
 
 ```bash
-python3 src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_controller/scripts/mole_m4_send_cyl_goal.py --dtheta-deg 10 --call-reset
+python3 src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_controller/scripts/mole_m4_send_cyl_goal.py --dtheta-deg 10 --no-call-reset --timeout-sec 20 --result-timeout-sec 60
 ros2 topic echo --once /mole/ocs2/arm_controller/diagnostics | rg -n "safe_stop_active|cmd_vel.J_TURN"
 ros2 topic echo --once /mole/actuator_commands
 ```
