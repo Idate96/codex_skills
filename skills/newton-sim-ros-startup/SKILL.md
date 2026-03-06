@@ -1,6 +1,6 @@
 ---
 name: newton-sim-ros-startup
-description: Start or restart the Moleworks ROS2 stack using the Newton simulator inside the moleworks_ros:newton Docker container. Use when you need a clean tmux layout for Newton bridge, robot/TF/RViz, perception (elevation + excavation mapping), and optional Foxglove bridge, all with use_sim_time:=true.
+description: Start or restart the Moleworks ROS2 stack using the Newton simulator inside the default moleworks_ros:latest Docker container. Use when you need a clean tmux layout for Newton bridge, robot/TF/RViz, perception (elevation + excavation mapping), and optional Foxglove bridge, all with use_sim_time:=true.
 ---
 
 # Newton Sim ROS Startup
@@ -9,7 +9,7 @@ description: Start or restart the Moleworks ROS2 stack using the Newton simulato
 
 Bring up a Newton-based sim run (publishes `/clock` + `/mole/state` + perception topics) plus the minimal Mole ROS stack for visualization and mapping.
 
-Everything runs inside the same `moleworks_ros:newton` container.
+Everything runs inside the same `moleworks_ros:latest` container.
 
 ## Workflow
 
@@ -32,11 +32,16 @@ docker exec <container> bash -lc 'echo DISPLAY=$DISPLAY'
 Recommended workflow uses the Mole docker scripts (host side):
 ```bash
 cd /home/lorenzo/moleworks/ros2_ws/src/moleworks_ros/docker
-./docker_launch.sh moleworks_ros:newton mole_newton.Dockerfile \
+./docker_launch.sh moleworks_ros:latest mole.Dockerfile \
   --name moleworks-ros-newton \
   --detach
 ./docker_attach.sh --name moleworks-ros-newton --user lorenzo
 tmux a -t newton_sim
+```
+
+If your local `moleworks_ros:latest` image predates the Newton merge into `mole.Dockerfile`, rebuild once with:
+```bash
+./docker_launch.sh moleworks_ros:latest mole.Dockerfile --no-cache --name moleworks-ros-newton --detach
 ```
 
 If you need to restart from scratch:
