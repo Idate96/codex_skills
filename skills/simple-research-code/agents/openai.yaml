@@ -1,0 +1,4 @@
+interface:
+  display_name: "Simple Research Code"
+  short_description: "Write skimmable research code with narrow state and assert-heavy assumptions"
+  default_prompt: "Use $simple-research-code to rewrite this into simpler, skimmable research code with fewer states, fewer arguments, and asserts instead of defensive fallbacks."
