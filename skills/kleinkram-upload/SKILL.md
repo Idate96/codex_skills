@@ -1,6 +1,6 @@
 ---
 name: kleinkram-upload
-description: Stage and upload files to Kleinkram with mission creation and verification. Use when asked to upload datasets, run bags, or sysid artifacts to Kleinkram, especially from mixed folders that need extension filtering, filename normalization, and source-to-upload mapping for traceability.
+description: Stage and upload files to Kleinkram with mission creation and verification. Use when asked to upload datasets, run bags, or sysid artifacts to Kleinkram, especially from mixed folders that need extension filtering, filename normalization, source-to-upload mapping for traceability, and Moleworks canonical naming (`moleworks` project).
 ---
 
 # Kleinkram Upload
@@ -8,6 +8,13 @@ description: Stage and upload files to Kleinkram with mission creation and verif
 ## Overview
 
 Prepare a Kleinkram-safe payload from one or more files/folders, then upload and verify it against a project/mission. Use project IDs when possible for stable targeting.
+
+## Moleworks Standard (2026-03)
+
+- Canonical project for new Mole data: `moleworks`
+- Canonical mission format: `track__scenario__YYYYMMDD[__run_id]`
+- Suggested tracks: `est`, `dig`, `sysid`, `hwtest`
+- Historical Mole projects may remain as legacy/archive if server-side move is unavailable
 
 ## Quick Start
 
@@ -20,8 +27,8 @@ Prepare a Kleinkram-safe payload from one or more files/folders, then upload and
 
 # 2) Upload + verify to Kleinkram mission.
 /home/lorenzo/.codex/skills/kleinkram-upload/scripts/upload_verify.sh \
-  --project 9ad977dd-806f-4f84-800e-a5b31574ece5 \
-  --mission arm_sys_id \
+  --project moleworks \
+  --mission sysid__arm_ground_truth__20260224 \
   --payload /path/to/payload_dir
 ```
 
@@ -31,6 +38,12 @@ Prepare a Kleinkram-safe payload from one or more files/folders, then upload and
 2. Inspect mapping file at `<payload>/upload_name_map.yaml`.
 3. Upload and verify with `upload_verify.sh`.
 4. Confirm mission contents with `klein mission info` and `klein list files`.
+
+## On-Network Fallback
+
+If this machine cannot reach Kleinkram (network/endpoint issue), hand off to an agent in the same network as the server with this runbook:
+
+- `/home/lorenzo/ros2_ws/src/moleworks_ros/mole_utils/docs/KLEINKRAM_ON_NETWORK_AGENT_RUNBOOK.md`
 
 ## Constraints Enforced
 

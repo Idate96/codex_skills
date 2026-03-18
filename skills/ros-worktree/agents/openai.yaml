@@ -1,0 +1,5 @@
+interface:
+  display_name: "ROS Worktree"
+  short_description: "Create an isolated ROS2 workspace via git worktrees/symlinks"
+  default_prompt: "Create a new ROS2 worktree workspace under ~/moleworks and rebuild/test it in docker without touching ~/moleworks/ros2_ws."
+

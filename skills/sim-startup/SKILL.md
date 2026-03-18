@@ -26,9 +26,11 @@ Start IsaacLab sim and the ROS stack with three tmux windows: `sim`, `robot`, `p
   - Re-run `nvidia-smi` and confirm those Isaac Sim processes are gone before starting a new sim.
 
 ### 1) Clean tmux organization
-In your current tmux session, ensure only three windows exist: `sim`, `robot`, `perception`.
-- If any of those windows already exist, kill them and recreate in order.
+In your current tmux session, create three windows: `sim`, `robot`, `perception`.
+- **Never rename the user’s current window.** If you need new windows, create them instead.
+- If any of those windows already exist, **ask** before killing them; otherwise create new ones with the same names.
 - Always capture pane output after each launch command.
+- When launching via `tmux send-keys`, run commands as `bash -lc '...; exec bash -i'` so the window stays inspectable even if the command exits.
 
 ### 2) Start sim (window: `sim`)
 Run inside the ROS container:
@@ -97,15 +99,29 @@ ros2 launch mole_perception_bringup bringup.launch.py \
 ```
 Capture the pane output after the command starts.
 
-### 5) Quick sanity checks (optional)
-- `ros2 topic echo /mole/state --once --qos-reliability best_effort`
+### 5) (Optional) Start Foxglove bridge (separate window: `foxglove`)
+Keep Foxglove in its own tmux window (do **not** piggyback on `robot`).
+- If `foxglove` already exists, **ask** before killing it; otherwise create it.
+- Always capture the pane output after starting.
+
+```bash
+source /home/lorenzo/.bashrc
+ros2 launch foxglove_bridge foxglove_bridge_launch.xml port:=8765
+```
+
+### 6) Quick sanity checks (optional)
+Recommended: just inspect the three tmux windows (`sim`, `robot`, `perception`) and confirm nothing obviously failed (tracebacks, exceptions, nodes exiting, repeated `[ERROR]`).
+
+If something looks wrong, run one or two of these (keep long timeouts for TF buffer warmup):
 - `ros2 topic echo /clock --once`
-- `timeout 30 bash -c 'ros2 run tf2_ros tf2_echo map BASE 2>&1'`
-- `timeout 30 bash -c 'ros2 run tf2_ros tf2_echo map CABIN_ANCHOR 2>&1'`
-  - `tf2_echo` may print “frame does not exist” for a few seconds while buffers warm up. Keep the long timeout and avoid `head` so it can resolve.
+- `ros2 topic echo /mole/state --once --qos-reliability best_effort`
+- `timeout 15 bash -c 'ros2 run tf2_ros tf2_echo map BASE 2>&1'`
+- `timeout 15 bash -c 'ros2 run tf2_ros tf2_echo map CABIN_ANCHOR 2>&1'`
+  - `tf2_echo` may print “frame does not exist” for a few seconds while buffers warm up.
 
 ## Notes
 - Keep `sim`, `robot`, `perception` as the only three windows so output is easy to inspect.
 - For real hardware runs, set `on_machine:=true` and enable sensors in the perception launch.
 - TF is on `/tf` and `/tf_static` (not `/mole/tf`).
 - `CABIN_ANCHOR` is only required for the desired-elevation `profile` override; the dig controller uses `CABIN`/`BASE`.
+- Expected noise: the sim side runs ROS 2 Humble while the ROS container is Jazzy, so CycloneDDS commonly prints lots of warnings on both sides (for example: “Failed to parse type hash ... from USER_DATA (null)” and various `serdata.cpp`/`rcutils` error-state warnings). Treat these as normal unless topics/TF are actually missing.

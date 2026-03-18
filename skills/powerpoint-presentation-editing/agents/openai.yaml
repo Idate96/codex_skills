@@ -1,0 +1,4 @@
+interface:
+  display_name: "PowerPoint Presentation Editing"
+  short_description: "Iterative PPTX edit + render/inspect loop"
+  default_prompt: "Use $powerpoint-presentation-editing to edit a .pptx while preserving images/GIFs/videos, rendering to PDF/PNGs after each change for visual inspection."
