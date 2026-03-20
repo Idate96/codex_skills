@@ -1,11 +1,13 @@
 ---
 name: robot-startup
-description: Set up the standard Moleworks ROS 2 tmux session for on-machine work with 4 windows in order (low_level, perception, estimator, foxglove), then by default unlock hydraulics and set engine RPM to 1600 unless the user asks otherwise. Use when asked to create/recreate the tmux window layout and start the stack quickly (dig controllers are started separately).
+description: Set up the standard Moleworks ROS 2 tmux session for on-machine work with the base stack windows (low_level, perception, estimator, foxglove), and optionally launch a dig controller when the user asks for base stack plus dig. By default also unlock hydraulics and set engine RPM to 1600 unless the user asks otherwise.
 ---
 
 # Robot Startup
 
-Create a tmux session that matches the standard on-machine window layout (4 windows in order, pinned names) and starts the usual launch commands (no hardcoded window indexes).
+Create a tmux session that matches the standard on-machine window layout and starts the usual launch commands (no hardcoded window indexes).
+
+Base stack only remains the default. If the user explicitly asks for base stack plus a dig controller, pass `--dig-controller <dig3d|newton|dig|dig-ee>` to the startup script so the `dig` window is created too.
 
 Unless the user explicitly opts out or requests different post-start settings, this skill also performs the standard machine-ready steps after startup:
 - unlock hydraulics
@@ -28,6 +30,7 @@ Add flags only if the user asked for them:
 - attach: `--attach`
 - clean slate: `--restart`
 - legacy 3-window layout (skip estimator): `--no-estimator`
+- base stack plus dig controller: `--dig-controller dig3d` (or `newton`, `dig`, `dig-ee`)
 
 After the tmux startup script returns, remember that the bringup is still starting inside tmux. Source `~/ros2_ws`, wait until `/machine_status` and `/hydraulic_lock` are available, confirm the operator-side autonomy prerequisites via `/machine_status`, and only then issue the post-start commands:
 
@@ -73,6 +76,14 @@ Run the setup script:
 ~/.codex/skills/robot-startup/scripts/robot_startup_tmux.sh --attach
 ```
 
+Run the base stack and also launch `dig3d`:
+
+```bash
+~/.codex/skills/robot-startup/scripts/robot_startup_tmux.sh \
+  --dig-controller dig3d \
+  --attach
+```
+
 Disable the estimator window (legacy 3-window layout):
 
 ```bash
@@ -110,12 +121,16 @@ If you want a clean slate (kills the existing session):
 
 ## What It Creates
 
-tmux session (default: `ros`) with 4 windows in order by name:
+tmux session (default: `ros`) with base windows in order by name:
 
 - `low_level`: `ros2 launch mole_low_level_bringup bringup.launch.py use_sim_time:=false on_machine:=true activate_trajectory_controller:=false`
-- `perception`: `ros2 launch mole_perception_bringup bringup.launch.py use_sim_time:=false enable_lidar:=true enable_robot_self_filter:=true enable_elevation_mapping:=true map_name:=none`
+- `perception`: `ros2 launch mole_perception_bringup bringup.launch.py use_sim_time:=false enable_lidar:=true enable_robot_self_filter:=true enable_elevation_mapping:=true mapping_profile:=local`
 - `estimator`: `ros2 launch mole_estimator mole_estimator.launch.py ...`
 - `foxglove`: `ros2 launch foxglove_bridge foxglove_bridge_launch.xml` (default port `8765`)
+
+If `--dig-controller` is requested, it also adds:
+
+- `dig`: split tmux window started via the `dig-controllers` script for the selected controller, with launch-driven auto-activation enabled
 
 The script prompts for `endeffector_type` when run interactively (defaults to `shovel` if omitted) and passes it into low_level, perception, and estimator launches.
 
@@ -127,7 +142,7 @@ By default, the script does not touch windows that already have a non-shell proc
 
 To keep startup deterministic, the script force-disables tmux `@continuum-restore` by default for the current tmux server (to avoid old windows/history being auto-restored into `ros`). Use `--keep-continuum-restore` to opt out.
 
-To start dig controllers, use the separate `dig-controllers` skill.
+Use `robot-startup` when the user asks for base stack only or base stack plus dig. Use the separate `dig-controllers` skill when the base stack is already running and they only want to add or restart a dig controller.
 
 ## Default Post-Start Actions
 

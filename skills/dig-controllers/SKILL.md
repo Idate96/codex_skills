@@ -1,11 +1,13 @@
 ---
 name: dig-controllers
-description: "Start Moleworks dig controllers (dig_3d, dig_newton, dig_ee, etc.) in a split tmux window: one pane runs the controller launch, the other pane runs lifecycle helpers and shows the `ros2 action send_goal` command. Use when you want to start/activate a dig controller and manually trigger its action."
+description: "Start Moleworks dig controllers (dig_3d, dig_newton, dig_ee, etc.) in a split tmux window: one pane runs the controller launch, the other pane runs lifecycle helpers and shows the `ros2 action send_goal` command. Use when the base stack is already running and you want to add or restart only a dig controller."
 ---
 
 # Dig Controllers
 
 ## Quick Start
+
+If the user wants base stack plus dig in one step, prefer the `robot-startup` skill with `--dig-controller ...`. Use this skill when the base stack is already up and only the dig controller should be started or replaced.
 
 ```bash
 ~/.codex/skills/dig-controllers/scripts/dig_controllers_tmux.sh --controller dig3d --attach

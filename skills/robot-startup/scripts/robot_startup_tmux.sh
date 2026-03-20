@@ -11,10 +11,13 @@ Create (or update) a tmux session with standard Moleworks robot windows (in orde
   - estimator
   - foxglove
 
+Optionally add:
+  - dig
+
 Defaults assume you are already inside the Moleworks container with DDS configured.
 
 Usage:
-  robot_startup_tmux.sh [--session NAME] [--ws PATH] [--endeffector-type TYPE] [--no-estimator] [--estimator-config PATH] [--no-elevation-mapping] [--restart] [--attach] [--keep-continuum-restore]
+  robot_startup_tmux.sh [--session NAME] [--ws PATH] [--endeffector-type TYPE] [--no-estimator] [--estimator-config PATH] [--no-elevation-mapping] [--dig-controller NAME] [--restart] [--attach] [--keep-continuum-restore]
 
 Options:
   --session NAME   tmux session name (default: ros)
@@ -23,6 +26,7 @@ Options:
   --no-estimator   do not start mole_estimator (restores the legacy 3-window layout)
   --estimator-config PATH  optional config YAML to pass to mole_estimator (default: package default)
   --no-elevation-mapping  disable elevation mapping in the perception launch
+  --dig-controller NAME  optional dig controller to launch after base stack is up (dig3d|newton|dig|dig-ee)
   --restart        kill existing session and recreate
   --attach         attach to the session after setup
   --keep-continuum-restore  do not force-disable tmux @continuum-restore
@@ -38,6 +42,8 @@ LAUNCH_ESTIMATOR="true"
 ESTIMATOR_CONFIG=""
 KEEP_CONTINUUM_RESTORE="false"
 ENABLE_ELEVATION_MAPPING="true"
+DIG_CONTROLLER=""
+DIG_WINDOW="dig"
 WINDOW_ORDER=()
 PRE_FOXGLOVE_WINDOWS=()
 FOXGLOVE_START_DELAY_SEC=5
@@ -56,6 +62,8 @@ while [[ $# -gt 0 ]]; do
       ESTIMATOR_CONFIG="${2:-}"; shift 2 ;;
     --no-elevation-mapping)
       ENABLE_ELEVATION_MAPPING="false"; shift ;;
+    --dig-controller)
+      DIG_CONTROLLER="${2:-}"; shift 2 ;;
     --restart)
       RESTART="true"; shift ;;
     --attach)
@@ -87,6 +95,15 @@ if [[ -z "$ENDEFFECTOR_TYPE" ]]; then
   echo "--endeffector-type cannot be empty" >&2
   exit 2
 fi
+if [[ -n "$DIG_CONTROLLER" ]]; then
+  case "$DIG_CONTROLLER" in
+    dig3d|newton|dig|dig-ee|dig_ee) ;;
+    *)
+      echo "--dig-controller must be one of: dig3d, newton, dig, dig-ee" >&2
+      exit 2
+      ;;
+  esac
+fi
 
 WINDOW_ORDER=(low_level perception foxglove)
 if [[ "$LAUNCH_ESTIMATOR" == "true" ]]; then
@@ -96,6 +113,10 @@ fi
 PRE_FOXGLOVE_WINDOWS=(low_level perception)
 if [[ "$LAUNCH_ESTIMATOR" == "true" ]]; then
   PRE_FOXGLOVE_WINDOWS+=(estimator)
+fi
+if [[ -n "$DIG_CONTROLLER" ]]; then
+  WINDOW_ORDER=("${PRE_FOXGLOVE_WINDOWS[@]}" "$DIG_WINDOW" foxglove)
+  PRE_FOXGLOVE_WINDOWS+=("$DIG_WINDOW")
 fi
 
 WS="$(realpath -m "$WS")"
@@ -203,8 +224,18 @@ start_low_level() {
 
 start_perception() {
   local cmd
-  cmd="cd \"$WS\" && source install/setup.bash && ros2 launch mole_perception_bringup bringup.launch.py use_sim_time:=false enable_lidar:=true enable_robot_self_filter:=true enable_elevation_mapping:=$ENABLE_ELEVATION_MAPPING map_name:=none endeffector_type:=$ENDEFFECTOR_TYPE"
+  cmd="cd \"$WS\" && source install/setup.bash && ros2 launch mole_perception_bringup bringup.launch.py use_sim_time:=false enable_lidar:=true enable_robot_self_filter:=true enable_elevation_mapping:=$ENABLE_ELEVATION_MAPPING mapping_profile:=local endeffector_type:=$ENDEFFECTOR_TYPE"
   tmux_send_to_active_pane "perception" "$cmd"
+}
+
+start_dig() {
+  "$HOME/.codex/skills/dig-controllers/scripts/dig_controllers_tmux.sh" \
+    --controller "$DIG_CONTROLLER" \
+    --session "$SESSION" \
+    --window "$DIG_WINDOW" \
+    --ws "$WS" \
+    --restart-window \
+    -- activate_controller:=true
 }
 
 start_foxglove() {
@@ -233,6 +264,7 @@ start_window() {
     perception) start_perception ;;
     foxglove) start_foxglove ;;
     estimator) start_estimator ;;
+    dig) start_dig ;;
   esac
 }
 
@@ -330,6 +362,10 @@ detect_managed_role_in_window() {
     echo "estimator"
     return 0
   fi
+  if echo "$ps_out" | grep -Eq "mole_highlevel_controller_cpp (dig_3d_controller_cpp|dig_newton_controller|dig_controller_cpp|dig_ee_controller_cpp)\.launch\.py"; then
+    echo "dig"
+    return 0
+  fi
   if echo "$ps_out" | grep -Fq "foxglove_bridge foxglove_bridge_launch.xml"; then
     echo "foxglove"
     return 0
@@ -419,6 +455,8 @@ else
     fi
   fi
 fi
+
+tmux_reorder_windows
 
 if [[ "$ATTACH" == "true" ]]; then
   exec tmux attach -t "$SESSION"
