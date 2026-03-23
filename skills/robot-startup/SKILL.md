@@ -15,6 +15,12 @@ Unless the user explicitly opts out or requests different post-start settings, t
 
 The startup script launches `foxglove` last, after the other managed windows are confirmed to be running their intended managed launches and a short settle delay has passed. If that readiness gate times out, the script leaves `foxglove` stopped instead of starting it too early. On reruns, if one of the earlier managed windows is restarted, the script re-sequences `foxglove` behind that restart.
 
+Perception now defaults to the native `local` mapping contract again: no saved design artifact is loaded unless you opt in explicitly. This keeps excavation mapping base-local/empty-map friendly instead of silently loading a site-scale design bag into the local stack. To start a saved design artifact on purpose, use `--mapping-profile site --design-map-name <name>`.
+
+Runtime desired geometry is a post-start step in local mode. `robot-startup` should bring up the stack first, then apply the target surface once through `/excavation_mapping/apply_runtime_profile`. Current supported geometry families are `constant`, `slanted`, `trench`, and `polar_sector`.
+
+Dig controllers now consume both current terrain and target terrain from `/excavation_mapping/grid_map`. Do not route `desired_elevation` through elevation mapping, and do not treat elevation mapping as the source of the digging target.
+
 This assumes DDS/discovery is already configured in the container shell environment and that the robot bringup uses `~/ros2_ws`.
 
 ## Execute (Fast)
@@ -98,6 +104,41 @@ Optionally override the estimator config:
   --attach
 ```
 
+Start with the default local empty-map perception contract:
+
+```bash
+~/.codex/skills/robot-startup/scripts/robot_startup_tmux.sh --attach
+```
+
+After local bringup, apply a supported runtime profile once through excavation mapping:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/ros2_ws/install/setup.bash
+ros2 service call /excavation_mapping/apply_runtime_profile mole_excavation_mapping/srv/ApplyRuntimeProfile \
+  "{authoring_frame_id: BASE, profile_type: trench, start_x_m: 8.0, end_x_m: 4.0, center_y_m: 0.0, half_width_m: 1.0, depth_m: 0.0, angle_deg: 20.0, entry_angle_deg: 20.0, exit_angle_deg: 20.0, trench_length_m: 2.0, trench_depth_m: -1.5}"
+```
+
+This service is one-shot per excavation-mapping lifetime. If the profile footprint is not fully covered in `elevation` yet, wait and retry. If you need a different runtime target later, restart excavation mapping or restart the perception stack and apply again.
+
+Example for a 60 degree annular sector in front of the robot, from radius 4 m to 8 m:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/ros2_ws/install/setup.bash
+ros2 service call /excavation_mapping/apply_runtime_profile mole_excavation_mapping/srv/ApplyRuntimeProfile \
+  "{authoring_frame_id: BASE, profile_type: polar_sector, depth_m: -1.5, radius_min_m: 4.0, radius_max_m: 8.0, theta_min_deg: -30.0, theta_max_deg: 30.0}"
+```
+
+Opt into a saved design-backed site runtime explicitly:
+
+```bash
+~/.codex/skills/robot-startup/scripts/robot_startup_tmux.sh \
+  --mapping-profile site \
+  --design-map-name hong0304 \
+  --attach
+```
+
 Use a non-default session:
 
 ```bash
@@ -128,9 +169,20 @@ tmux session (default: `ros`) with base windows in order by name:
 - `estimator`: `ros2 launch mole_estimator mole_estimator.launch.py ...`
 - `foxglove`: `ros2 launch foxglove_bridge foxglove_bridge_launch.xml` (default port `8765`)
 
+Saved design artifacts are opt-in. When needed, use `--mapping-profile site --design-map-name <name>` so the perception stack follows the site/design-backed contract instead of mixing a site artifact into the local runtime.
+
+Important distinction:
+
+- if the user only wants a different dig area or dump area, update the workspace-planner masks
+- if the user wants a different target surface in `desired_elevation`, use `/excavation_mapping/apply_runtime_profile`
+- if the requested target geometry is not `constant|slanted|trench|polar_sector`, the current runtime service does not support it yet and the skill should say so plainly
+- `trench_workspace.launch.py` is still trench-task-specific; for non-trench targets such as `polar_sector`, use `/excavation_mapping/apply_runtime_profile` directly after local bringup
+
+`polar_sector` is the current way to express a base-centered wedge/circular section target surface in front of the robot. If the requested target is not centered at `BASE`, or it needs a curved depth law instead of constant depth over the sector, that still needs a new geometry family such as `arc_section`.
+
 If `--dig-controller` is requested, it also adds:
 
-- `dig`: split tmux window started via the `dig-controllers` script for the selected controller, with launch-driven auto-activation enabled
+- `dig`: split tmux window started via the `dig-controllers` script for the selected controller, with launch-driven auto-activation enabled. For `dig3d`, the default policy is now the non-AoA `fkfix_s203_3750` preset.
 
 The script prompts for `endeffector_type` when run interactively (defaults to `shovel` if omitted) and passes it into low_level, perception, and estimator launches.
 

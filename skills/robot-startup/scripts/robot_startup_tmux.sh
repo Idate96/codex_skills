@@ -17,12 +17,15 @@ Optionally add:
 Defaults assume you are already inside the Moleworks container with DDS configured.
 
 Usage:
-  robot_startup_tmux.sh [--session NAME] [--ws PATH] [--endeffector-type TYPE] [--no-estimator] [--estimator-config PATH] [--no-elevation-mapping] [--dig-controller NAME] [--restart] [--attach] [--keep-continuum-restore]
+  robot_startup_tmux.sh [--session NAME] [--ws PATH] [--endeffector-type TYPE] [--mapping-profile PROFILE] [--design-map-name NAME] [--excavation-mapping-upstream-layer LAYER] [--no-estimator] [--estimator-config PATH] [--no-elevation-mapping] [--dig-controller NAME] [--restart] [--attach] [--keep-continuum-restore]
 
 Options:
   --session NAME   tmux session name (default: ros)
   --ws PATH        workspace path (default: ~/ros2_ws)
   --endeffector-type TYPE  end-effector type for URDF (default: prompt or 'shovel')
+  --mapping-profile PROFILE  perception mapping contract to use (default: local; choices: local, site)
+  --design-map-name NAME  optional excavation design map artifact for perception (default: empty)
+  --excavation-mapping-upstream-layer LAYER  optional upstream elevation_map_filter layer override (default: profile default)
   --no-estimator   do not start mole_estimator (restores the legacy 3-window layout)
   --estimator-config PATH  optional config YAML to pass to mole_estimator (default: package default)
   --no-elevation-mapping  disable elevation mapping in the perception launch
@@ -38,6 +41,9 @@ WS="${HOME}/ros2_ws"
 RESTART="false"
 ATTACH="false"
 ENDEFFECTOR_TYPE=""
+MAPPING_PROFILE="local"
+DESIGN_MAP_NAME=""
+EXCAVATION_MAPPING_UPSTREAM_LAYER=""
 LAUNCH_ESTIMATOR="true"
 ESTIMATOR_CONFIG=""
 KEEP_CONTINUUM_RESTORE="false"
@@ -56,6 +62,12 @@ while [[ $# -gt 0 ]]; do
       WS="${2:-}"; shift 2 ;;
     --endeffector-type)
       ENDEFFECTOR_TYPE="${2:-}"; shift 2 ;;
+    --mapping-profile)
+      MAPPING_PROFILE="${2:-}"; shift 2 ;;
+    --design-map-name)
+      DESIGN_MAP_NAME="${2:-}"; shift 2 ;;
+    --excavation-mapping-upstream-layer)
+      EXCAVATION_MAPPING_UPSTREAM_LAYER="${2:-}"; shift 2 ;;
     --no-estimator)
       LAUNCH_ESTIMATOR="false"; shift ;;
     --estimator-config)
@@ -79,6 +91,23 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+trim_whitespace() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
+normalize_optional_map_name() {
+  local value
+  value="$(trim_whitespace "$1")"
+  if [[ -z "$value" || "${value,,}" == "none" ]]; then
+    printf '%s' ""
+    return 0
+  fi
+  printf '%s' "$value"
+}
+
 if [[ -z "$SESSION" ]]; then
   echo "--session cannot be empty" >&2
   exit 2
@@ -94,6 +123,24 @@ fi
 if [[ -z "$ENDEFFECTOR_TYPE" ]]; then
   echo "--endeffector-type cannot be empty" >&2
   exit 2
+fi
+DESIGN_MAP_NAME="$(normalize_optional_map_name "$DESIGN_MAP_NAME")"
+MAPPING_PROFILE="$(trim_whitespace "$MAPPING_PROFILE")"
+EXCAVATION_MAPPING_UPSTREAM_LAYER="$(trim_whitespace "$EXCAVATION_MAPPING_UPSTREAM_LAYER")"
+case "$MAPPING_PROFILE" in
+  local|site) ;;
+  *)
+    echo "--mapping-profile must be one of: local, site" >&2
+    exit 2
+    ;;
+esac
+if [[ "$MAPPING_PROFILE" == "site" && -z "$DESIGN_MAP_NAME" ]]; then
+  echo "--mapping-profile site requires --design-map-name <name>" >&2
+  exit 2
+fi
+if [[ "$MAPPING_PROFILE" == "local" && -n "$DESIGN_MAP_NAME" ]]; then
+  echo "Warning: --design-map-name with --mapping-profile local loads saved design geometry into the local stack." >&2
+  echo "Prefer --mapping-profile site for saved design artifacts, or omit --design-map-name for true local/base-centered bringup." >&2
 fi
 if [[ -n "$DIG_CONTROLLER" ]]; then
   case "$DIG_CONTROLLER" in
@@ -224,7 +271,13 @@ start_low_level() {
 
 start_perception() {
   local cmd
-  cmd="cd \"$WS\" && source install/setup.bash && ros2 launch mole_perception_bringup bringup.launch.py use_sim_time:=false enable_lidar:=true enable_robot_self_filter:=true enable_elevation_mapping:=$ENABLE_ELEVATION_MAPPING mapping_profile:=local endeffector_type:=$ENDEFFECTOR_TYPE"
+  cmd="cd \"$WS\" && source install/setup.bash && ros2 launch mole_perception_bringup bringup.launch.py use_sim_time:=false enable_lidar:=true enable_robot_self_filter:=true enable_elevation_mapping:=$ENABLE_ELEVATION_MAPPING mapping_profile:=$MAPPING_PROFILE endeffector_type:=$ENDEFFECTOR_TYPE"
+  if [[ -n "$DESIGN_MAP_NAME" ]]; then
+    cmd+=" design_map_name:=$(printf '%q' "$DESIGN_MAP_NAME")"
+  fi
+  if [[ -n "$EXCAVATION_MAPPING_UPSTREAM_LAYER" ]]; then
+    cmd+=" excavation_mapping_upstream_layer:=$(printf '%q' "$EXCAVATION_MAPPING_UPSTREAM_LAYER")"
+  fi
   tmux_send_to_active_pane "perception" "$cmd"
 }
 

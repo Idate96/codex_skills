@@ -26,6 +26,7 @@ Options:
   --window NAME         tmux window name (default: dig)
   --ws PATH             workspace path (default: ~/ros2_ws)
   --use-sim-time BOOL   true|false (default: false)
+  --robot-namespace NS  dig3d namespace (default: mole)
   --no-activate         don't auto configure/activate (only print commands)
   --run-action          send the action goal after activation
   --restart-window      kill and recreate the tmux window
@@ -45,6 +46,7 @@ AUTO_ACTIVATE="true"
 RUN_ACTION="false"
 RESTART_WINDOW="false"
 ATTACH="false"
+ROBOT_NAMESPACE="mole"
 CONTROLLER=""
 EXTRA_LAUNCH_ARGS=()
 
@@ -60,6 +62,8 @@ while [[ $# -gt 0 ]]; do
       WS="${2:-}"; shift 2 ;;
     --use-sim-time)
       USE_SIM_TIME="${2:-}"; shift 2 ;;
+    --robot-namespace)
+      ROBOT_NAMESPACE="${2:-}"; shift 2 ;;
     --no-activate)
       AUTO_ACTIVATE="false"; shift ;;
     --run-action)
@@ -98,6 +102,10 @@ if ! is_bool "$USE_SIM_TIME"; then
   echo "--use-sim-time must be true|false (got: $USE_SIM_TIME)" >&2
   exit 2
 fi
+if [[ -z "$ROBOT_NAMESPACE" ]]; then
+  echo "--robot-namespace cannot be empty" >&2
+  exit 2
+fi
 
 WS="$(realpath -m "$WS")"
 if [[ ! -d "$WS" ]]; then
@@ -115,13 +123,30 @@ NODE_NAME=""
 ACTION_NAME=""
 BASE_LAUNCH_ARGS=()
 
+qualify_node_name() {
+  local namespace="$1"
+  local node="$2"
+  if [[ -z "$namespace" ]]; then
+    printf '/%s\n' "$node"
+  else
+    printf '/%s/%s\n' "$namespace" "$node"
+  fi
+}
+
 case "$CONTROLLER" in
   dig3d)
     PKG="mole_highlevel_controller_cpp"
     LAUNCH_FILE="dig_3d_controller_cpp.launch.py"
-    NODE_NAME="/dig_3d_controller"
+    NODE_NAME="$(qualify_node_name "$ROBOT_NAMESPACE" "dig_3d_controller")"
     ACTION_NAME="/run_dig_3d"
-    BASE_LAUNCH_ARGS=("use_sim_time:=$USE_SIM_TIME" "activate_controller:=false" "run_action:=false" "config:=default")
+    BASE_LAUNCH_ARGS=(
+      "use_sim_time:=$USE_SIM_TIME"
+      "activate_controller:=false"
+      "run_action:=false"
+      "robot_namespace:=$ROBOT_NAMESPACE"
+      "config:=no_aoa"
+      "mode:=fkfix_s203_3750"
+    )
     ;;
   newton)
     PKG="mole_highlevel_controller_cpp"
