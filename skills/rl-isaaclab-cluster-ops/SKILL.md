@@ -1,0 +1,134 @@
+---
+name: rl-isaaclab-cluster-ops
+description: "Submit, monitor, sync, and ledger Moleworks IsaacLab RL runs in `moleworks_ext`. Use when preparing a smoke test, launching Euler jobs, debugging failed Slurm runs, syncing experiments, comparing run configs, or updating `docs/EXPERIMENTS_ONGOING.md` and `docs/EXPERIMENTS_RUN.md`."
+---
+
+# IsaacLab Cluster Ops
+
+Use this skill for cluster-side RL operations in `moleworks_ext`.
+
+## Source Of Truth
+
+Read the repo workflow/docs before improvising:
+
+- `docs/AI_RESEARCHER_WORKFLOW.md`
+- `docs/EXPERIMENTS_ONGOING.md`
+- `docs/EXPERIMENTS_RUN.md`
+- `docs/MULTI_GPU_TRAINING.md`
+- `docker/cluster/cluster_interface.sh`
+- `docker/cluster/sync_experiments.sh`
+- `scripts/utils/cluster_run_report.sh`
+- `scripts/utils/compare_run_configs.py`
+
+## Hard Rules
+
+- Local smoke first, with W&B disabled.
+- Real training runs use W&B.
+- Do not talk about "pulling a policy" unless the job actually trained one.
+- Keep experiment docs current in the same work session as submit/sync/closeout.
+- Prefer targeted live diagnostics and targeted sync before broad full-log sync.
+
+## Local Smoke Gate
+
+Prefer preparing or running a tiny bounded smoke command before cluster launch:
+
+```bash
+export WANDB_MODE=disabled
+/workspace/isaaclab/isaaclab.sh -p scripts/rsl_rl/train.py \
+  --task <TASK> \
+  --num_envs 4 \
+  --max_iterations 3 \
+  --headless
+unset WANDB_MODE
+```
+
+## Submit
+
+Default cluster entrypoint:
+
+```bash
+JOB_TIME=30m NUM_GPUS=2 GPU_TYPE=rtx_3090 \
+./docker/cluster/cluster_interface.sh job \
+  --task <TASK> \
+  --num_envs 64000 \
+  --max_iterations 10000
+```
+
+Notes:
+
+- In multi-GPU mode, `--num_envs` is the total across GPUs.
+- With resume, `--max_iterations` is additional learning iterations beyond the loaded checkpoint.
+- If using a git worktree, launch from that worktree root and prove the staged code copy matches the worktree.
+
+## Monitor And Debug
+
+Use narrow checks first:
+
+```bash
+ssh euler 'squeue -u $USER'
+ssh euler 'sacct -j <jobid> --format=JobID,State,Elapsed,Timelimit,Partition%12,ExitCode -P'
+ssh euler 'tail -100 /cluster/scratch/<user>/moleworks_ext_<timestamp>/slurm-<jobid>.out'
+ssh euler 'tail -50 /cluster/scratch/<user>/moleworks_ext_<timestamp>/slurm-<jobid>.err'
+```
+
+Preferred live diagnostic helper:
+
+```bash
+scripts/utils/cluster_run_report.sh
+scripts/utils/cluster_run_report.sh --job-ids <jobA> <jobB> --sync-params
+```
+
+Use `compare_run_configs.py` before manual YAML archaeology:
+
+```bash
+python3 scripts/utils/compare_run_configs.py --run-a <runA> --run-b <runB>
+```
+
+## Sync
+
+Full sync when needed:
+
+```bash
+./docker/cluster/sync_experiments.sh
+./docker/cluster/sync_experiments.sh --remove
+```
+
+Targeted-first workflow:
+
+1. `cluster_run_report.sh --job-ids ... --sync-params`
+2. compare configs if needed
+3. full sync only when you need checkpoints or broader artifacts
+
+## Experiment Docs
+
+Treat these as mandatory:
+
+- `docs/EXPERIMENTS_ONGOING.md` for live runs
+- `docs/EXPERIMENTS_RUN.md` for benchmarked/completed/stopped runs
+
+For every new real run, record:
+
+- `name`
+- `run_name`
+- `wandb_run`
+- `wandb_url`
+- environment
+- date in UTC
+- short intention
+- job id and key artifact path when known
+
+Before each monitoring report:
+
+- reconcile `EXPERIMENTS_ONGOING.md` against live `squeue`
+- if a listed job is no longer live, treat it as finished by default
+- benchmark/archive it, then move it to `EXPERIMENTS_RUN.md`
+
+## Reporting Format
+
+Use one-line snapshots:
+
+```text
+<job_id> | <run_name> | <task> | wandb_run=<...> | wandb_url=<...> | timeout=<...> | full=<...> | close=<...>
+```
+
+Always include `run_name`, task, and W&B identity, not just job ids.
