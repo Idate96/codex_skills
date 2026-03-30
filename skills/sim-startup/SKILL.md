@@ -21,9 +21,14 @@ Start IsaacLab sim and the ROS stack with three tmux windows: `sim`, `robot`, `p
 - **Check for a running sim before starting a new one**:
   - On the host, run `nvidia-smi` and look for processes like:
     - `.../isaac_sim/kit/python/bin/python3`
-  - If you see one or more, stop the sim **from the ROS container**:
+  - Map every suspicious GPU PID back to its command before killing anything:
+    - `ps -fp <pid>`
+  - Only stop the actual Isaac Sim / Isaac Lab kit process for this stack.
+    Do **not** kill unrelated CUDA users such as tests, other Python jobs, or remote desktop helpers.
+  - If you see one or more Isaac kit processes, stop the sim **from the ROS container**:
     - `mole_sim_ctl stop`
-  - Re-run `nvidia-smi` and confirm those Isaac Sim processes are gone before starting a new sim.
+  - Re-run `nvidia-smi` and confirm the Isaac kit PID is gone **and** VRAM drops before starting a new sim.
+  - Important: killing the outer `docker exec`/`timeout` is not enough. Isaac can leave an inner kit child alive, so always verify with `nvidia-smi` after cleanup.
 
 ### 1) Clean tmux organization
 In your current tmux session, create three windows: `sim`, `robot`, `perception`.
@@ -99,7 +104,17 @@ ros2 launch mole_perception_bringup bringup.launch.py \
 ```
 Capture the pane output after the command starts.
 
-### 5) (Optional) Start Foxglove bridge (separate window: `foxglove`)
+### 5) Controller rollout order (important)
+For sim digging rollouts, keep this order:
+1. Start sim.
+2. Start robot/TF.
+3. Start perception/excavation mapping.
+4. Only after those are healthy, launch and activate the controller.
+5. Only after the controller is active, send the action goal.
+
+Do not send the goal before robot/perception are live, or you risk controller startup succeeding against stale or missing topics/TF.
+
+### 6) (Optional) Start Foxglove bridge (separate window: `foxglove`)
 Keep Foxglove in its own tmux window (do **not** piggyback on `robot`).
 - If `foxglove` already exists, **ask** before killing it; otherwise create it.
 - Always capture the pane output after starting.
@@ -109,7 +124,7 @@ source /home/lorenzo/.bashrc
 ros2 launch foxglove_bridge foxglove_bridge_launch.xml port:=8765
 ```
 
-### 6) Quick sanity checks (optional)
+### 7) Quick sanity checks (optional)
 Recommended: just inspect the three tmux windows (`sim`, `robot`, `perception`) and confirm nothing obviously failed (tracebacks, exceptions, nodes exiting, repeated `[ERROR]`).
 
 If something looks wrong, run one or two of these (keep long timeouts for TF buffer warmup):

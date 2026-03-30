@@ -7,6 +7,37 @@ description: "End-to-end IsaacLab RL workflow in moleworks_ext: run with isaacla
 
 Single-skill workflow for IsaacLab-based RL: local smoke test → cluster submit → monitor/debug → sync → playback.
 
+## 0) If IsaacLab Debugging Also Uses The ROS Stack
+
+When an IsaacLab investigation includes a ROS parity stack, Dig3D replay, or
+Newton-via-ROS comparison, clean that ROS stack up before the next IsaacLab
+launch. Do not leave a previous container-side tmux session or ROS launch tree
+running in parallel with IsaacLab.
+
+Preferred teardown sequence in the ROS container:
+
+```bash
+tmux kill-session -t <session_name> 2>/dev/null || true
+
+ps -eo pid,cmd | rg 'newton_bridge.launch.py|standalone_dig_newton_env.py|dig_3d_controller_cpp.launch.py|robot.launch.py|mole_state_publisher.launch.py|compare_dig3d_live_obs.py|publish_flat_excavation_map|ros2 action send_goal'
+
+kill <pid1> <pid2> ... 2>/dev/null || true
+sleep 2
+kill -9 <pid1> <pid2> ... 2>/dev/null || true
+```
+
+Then verify host/container resources before starting the next GPU workload:
+
+```bash
+docker stats --no-stream --format '{{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}' <container>
+nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits
+```
+
+Hard rule:
+
+- If the tmux session is gone but the ROS/Newton processes are still alive,
+  cleanup is not done yet.
+
 ## 1) Always Run IsaacLab Scripts via Wrapper
 
 **IMPORTANT**: Any script that touches Isaac Sim/Lab must use:
@@ -80,6 +111,76 @@ Important semantics:
 - In multi-GPU mode, `--num_envs` is interpreted as total envs and split across GPUs (e.g., `32000` with `NUM_GPUS=2` becomes `16000/GPU`).
 - With `--resume`, `--max_iterations` is treated as additional learning iterations beyond the loaded checkpoint iteration (not a strict total cap).
 
+## 3.2) Reward Sweeps and Direct Checkpoint Resume
+
+Prefer CLI overrides for quick reward sweeps instead of cloning many task IDs.
+
+Current useful train-time overrides in `scripts/rsl_rl/train.py`:
+- `--close_reward_weight`
+- `--max_depth_tracking_weight`
+- `--pullup_barrier_weight`
+- `--terminal_penalty`
+- `--base_vel_target`
+- `--base_vel_sigma`
+- `--base_vel_weight`
+
+Example: from-scratch reward sweep arm
+
+```bash
+JOB_TIME=8h NUM_GPUS=1 GPU_TYPE=rtx_3090 ./docker/cluster/cluster_interface.sh job \
+  --task Moleworks-Isaac-m445-digging-3D-shared-turn-w-cabin \
+  --num_envs 48000 \
+  --max_iterations 400 \
+  --seed 201 \
+  --experiment_name Isaac-m445-excavation3D_sharedturn_wcabin_rewards_v1 \
+  --run_name wcabrs1_combo_c25_d020_p020_it400_s201 \
+  --close_reward_weight 0.25 \
+  --max_depth_tracking_weight 0.02 \
+  --pullup_barrier_weight 0.02
+```
+
+If you want a short fine-tune from an existing checkpoint, use direct resume:
+
+```bash
+JOB_TIME=8h NUM_GPUS=1 GPU_TYPE=rtx_3090 ./docker/cluster/cluster_interface.sh job \
+  --task Moleworks-Isaac-m445-digging-3D-shared-turn-w-cabin \
+  --num_envs 48000 \
+  --max_iterations 300 \
+  --seed 201 \
+  --resume True \
+  --resume_path /cluster/project/.../model_250.pt \
+  --run_name wcabrs1_ft_combo \
+  --close_reward_weight 0.25 \
+  --max_depth_tracking_weight 0.02 \
+  --pullup_barrier_weight 0.02
+```
+
+Notes:
+- `--resume_path` bypasses `experiment_name/load_run/checkpoint` lookup and loads the exact checkpoint path you provide.
+- Use from-scratch sweeps when you want clean reward comparisons.
+- Use short fine-tunes only for fast screening after a strong baseline already exists.
+
+## 3.1) Worktrees on Cluster (Mandatory when using a worktree)
+
+If you are working from a git worktree instead of the main `moleworks_ext` checkout:
+
+- Launch cluster commands from the worktree root, not the main repo root.
+- Keep the in-container path canonical. The staged worktree should still mount at the normal `moleworks_ext` path inside the container; do not invent worktree-specific in-container paths.
+- Expect gitignored env files such as `docker/cluster/.env.cluster` and `docker/.env.moleworks_ext` to be missing in secondary worktrees. Materialize/copy them locally before submit, or use the repo helper if present.
+- Prove the cluster is using the staged worktree code, not just the main checkout. Preferred proof:
+  1. stage a worktree-only file or task into the submit
+  2. run a cluster smoke script through `CLUSTER_EXECUTABLE`
+  3. verify the smoke output or marker file from cluster logs
+- Run sync commands from the same worktree you submitted from, so pulled logs/checkpoints land in the matching checkout.
+
+Recommended worktree smoke submit:
+
+```bash
+CLUSTER_EXECUTABLE=scripts/utils/cluster_worktree_submit_smoke.py \
+  JOB_TIME=30m NUM_GPUS=1 GPU_TYPE=rtx_2080_ti ./docker/cluster/cluster_interface.sh job \
+  --tasks <TASK_A> <TASK_B>
+```
+
 ## 4) Monitor Jobs (Euler)
 
 ```bash
@@ -116,6 +217,31 @@ Typical symptom:
 - batch step state is `CANCELLED` with exit `0:15`
 
 If that happens, rerun on a longer partition/time (for example `PARTITION=gpuhe.24h JOB_TIME=24h`).
+
+### Detect Stale-File-Handle Startup Failures
+
+If a job fails in the first minute with messages like:
+
+```text
+Stale file handle
+.../docker/cluster/run_singularity.sh: error reading input file
+```
+
+then the staged `/cluster/project/.../moleworks_ext_*` code copy is being removed while
+the shell is still executing files from it. Treat this as a cluster staging/runtime bug,
+not an RL config bug.
+
+Checks:
+
+```bash
+ssh euler 'sacct -j <jobid> --format=JobID,State,Elapsed,ExitCode -P'
+ssh euler 'tail -120 /cluster/project/.../slurm-<jobid>.out'
+ssh euler 'tail -120 /cluster/project/.../slurm-<jobid>.err'
+```
+
+Fix:
+- Do not early-delete the staged code copy while `run_singularity.sh` is still executing from it.
+- Defer removal until job exit, or execute the launcher from a stable path outside the staged tree.
 
 ## 6) Sync Results
 
@@ -160,6 +286,14 @@ python3 scripts/utils/compare_run_configs.py \
 ```
 
 Use this tool first for "why run A vs B differs?" before manual YAML inspection.
+
+### Smoke Jobs vs Training Jobs
+
+Do not talk about "syncing the policy" unless the submitted job actually trains a policy.
+
+- Real training jobs (`scripts/rsl_rl/train.py`) produce checkpoints and must be synced, benchmarked, and tracked in the experiment docs.
+- Smoke or diagnostic jobs launched via `CLUSTER_EXECUTABLE` usually do not produce meaningful checkpoints. For those jobs, sync logs only if needed for proof/debugging; do not pretend there is a policy artifact to recommend.
+- If a smoke/diagnostic job is used to prove worktree staging, prefer writing a marker file into the shared cluster logs path so the evidence survives workdir cleanup.
 
 ## 6.1) Policy Pull Protocol (Mandatory)
 
@@ -356,6 +490,40 @@ python3 scripts/plot_tb_scalars.py \
 ```
 
 Temporal progression plots are the default diagnostic source when close/full benchmark numbers look inconsistent with W&B summaries.
+
+## 8.1) ROS Stack Cleanup After Parity / Playback Tests
+
+If an IsaacLab debugging session also uses a ROS stack for parity, playback, or
+controller-side policy checks, always tear that ROS side down before finishing or
+before relaunching.
+
+Minimum cleanup:
+
+1. Stop the tmux session that launched the ROS stack inside the container.
+2. Kill ad hoc background helpers such as flat map publishers or custom bag
+   recorders.
+3. Check for orphaned `ros2 launch`, controller, state-publisher, and
+   `robot_state_publisher` processes.
+4. Verify the container is back near idle RAM / GPU VRAM before the next test.
+
+Example inside the ROS container:
+
+```bash
+tmux kill-session -t <session_name> || true
+ps -eo pid,cmd | rg 'ros2 launch|dig_3d_controller|robot_state_publisher|mole_joint_state_publisher|publish_flat_excavation_map' || true
+```
+
+Example host-side checks:
+
+```bash
+docker stats --no-stream --format '{{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}' <container>
+nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits
+```
+
+Hard rule:
+
+- Do not leave a previous ROS parity stack running in the background while
+  launching another IsaacLab playback or ROS-side parity session.
 
 ## RL Debugging Tips
 

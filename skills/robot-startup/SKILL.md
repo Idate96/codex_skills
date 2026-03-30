@@ -7,6 +7,17 @@ description: Set up the standard Moleworks ROS 2 tmux session for on-machine wor
 
 Create a tmux session that matches the standard on-machine window layout and starts the usual launch commands (no hardcoded window indexes).
 
+This skill is for the real robot stack only.
+
+Do not stretch it to cover simulation startup:
+- for Newton sim in the ROS container, use `newton-sim-ros-startup`
+- for IsaacLab/Terra sim, use `sim-startup`
+
+Reason:
+- `robot-startup` includes machine-only actions like hydraulic unlock and engine RPM handling
+- sim startup uses different containers, `use_sim_time:=true`, different window layouts, and different health checks
+- merging them would make the hardware workflow less predictable
+
 Base stack only remains the default. If the user explicitly asks for base stack plus a dig controller, pass `--dig-controller <dig3d|newton|dig|dig-ee>` to the startup script so the `dig` window is created too.
 
 Unless the user explicitly opts out or requests different post-start settings, this skill also performs the standard machine-ready steps after startup:

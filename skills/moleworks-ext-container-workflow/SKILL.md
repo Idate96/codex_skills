@@ -20,6 +20,12 @@ Use this skill when you need to run or debug commands inside `isaac-lab-molework
 - Capture pane output immediately after launch (`tmux capture-pane -p ...`).
 - Reuse long-running command sessions/panes instead of spawning many short-lived process handles.
   This avoids hitting the unified exec process limit during long debug loops.
+- Before killing/restarting Isaac, verify the GPU owner first:
+  - `nvidia-smi`
+  - `ps -fp <pid>` for each suspicious CUDA PID
+  - Only kill the actual Isaac kit process for this workflow, not unrelated CUDA jobs.
+- After cleanup, re-run `nvidia-smi` and confirm VRAM dropped.
+  Killing an outer `docker exec` or `timeout` can leave the inner Isaac kit child alive.
 
 ## Preflight
 1. Verify the container is up:
