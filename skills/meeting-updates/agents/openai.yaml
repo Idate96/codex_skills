@@ -1,0 +1,4 @@
+interface:
+  display_name: "Meeting Updates"
+  short_description: "Recurring meeting note updates"
+  default_prompt: "Use this skill to add or refine recurring meeting updates while matching the document style and hierarchy."

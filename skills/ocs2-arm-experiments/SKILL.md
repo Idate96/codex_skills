@@ -12,7 +12,7 @@ description: Start/restart Mole OCS2 arm controller experiments with real actuat
 For **every** commanded motion segment, record full diagnostics. Do not run "naked" segments.
 
 Required artifacts per segment:
-- action/goal log
+- goal publish log
 - pre/post inspection snapshots
 - continuous per-sample benchmark CSV (errors, command/limit ratios, per-joint command diagnostics)
 
@@ -39,7 +39,7 @@ For each segment `SEG_TAG` (example: `seg3_z2p5_to_0p7`):
 python3 src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_controller/scripts/mole_m4_tuning_cli.py \
   inspect -- --out-dir "${RUN_DIR}/${SEG_TAG}_pre"
 
-# 2) send goal + keep full action logs
+# 2) send goal + keep full direct-target publish logs
 python3 src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_controller/scripts/mole_m4_tuning_cli.py \
   goal -- --r <R> --theta-deg <THETA> --z <Z> --pitch-deg <PITCH> \
   --timeout-sec 20 --result-timeout-sec 120 --no-quiet-feedback \
@@ -295,12 +295,15 @@ ros2 topic echo --once /mole/ocs2/arm_controller/command_chain_diagnostics
 ros2 run mole_ocs2_arm_controller mole_m4_command_chain_diag_summary.py
 ```
 
-### 4. Goal Publish (Preferred: Bridge-Free Deterministic)
+### 4. Goal Publish (Preferred: Direct Semantic Target)
 
-Use direct target publication (no bridge/action dependency) via policy step checker:
-- publishes `/mole/ocs2/target`
-- can call reset service when requested (use `--no-reset` for normal closed-loop target updates)
-- validates predicted policy horizon in the same run
+Use `goal --` for the real send path. On current `main`, this does **not** go
+through the old action path by default. It directly publishes
+`MpcTargetTrajectories` to `/mole/ocs2/target`, and `--pitch-deg` means the
+calibrated semantic `bucket_angle`, not raw EE Euler pitch.
+
+Use `predicted --` only as a dry-run policy/DDP check. It does not replace the
+actual target send.
 
 1) Read current cylindrical pose:
 
@@ -313,7 +316,7 @@ Important:
 - Treat `mole_m4_print_ee_cyl.py` / TF as the source of truth for the current EE pose.
 - Do **not** derive cylindrical hold targets from `/mole/ocs2/observation.state`; that topic is not a drop-in EE pose source.
 
-2) Send deterministic absolute target and check policy/DDP behavior:
+2) Optionally dry-run the target first and check policy/DDP behavior:
 
 ```bash
 python3 ~/ros2_ws/src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_controller/scripts/mole_m4_tuning_cli.py \
@@ -328,6 +331,20 @@ python3 ~/ros2_ws/src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_co
   --json
 ```
 
+3) Send the real target:
+
+```bash
+python3 ~/ros2_ws/src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_controller/scripts/mole_m4_tuning_cli.py \
+  goal -- \
+  --r 5.41 \
+  --theta-deg 30.0 \
+  --z 0.10 \
+  --pitch-deg 33.8 \
+  --no-call-reset \
+  --timeout-sec 20 \
+  --result-timeout-sec 60
+```
+
 For a relative `+30 deg` step, keep `r/z/pitch` from the current printout and add `30` to current theta.
 
 For large-theta tests, prefer absolute goals from the **just-read** current pose rather than chaining stale relative assumptions.
@@ -340,7 +357,7 @@ python3 ~/ros2_ws/src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_co
 ros2 topic echo --once /mole/ocs2/arm_controller/diagnostics | rg -n "safe_stop_active|cmd_vel.J_TURN|cmd_sat_max_ratio"
 ```
 
-Optional (action path, requires bridge):
+Optional (legacy action/GUI path, requires bridge):
 
 Enable bridge in launch:
 

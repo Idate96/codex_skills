@@ -1,4 +1,4 @@
 interface:
   display_name: "Kleinkram Upload"
-  short_description: "Stage, upload, and verify Kleinkram files"
-  default_prompt: "Use $kleinkram-upload to prepare a Kleinkram-safe payload, upload it to a mission, and verify hash+size."
+  short_description: "Upload bags and manage Kleinkram access"
+  default_prompt: "Use $kleinkram-upload to upload Moleworks data to Kleinkram or to inspect and update project/user access."

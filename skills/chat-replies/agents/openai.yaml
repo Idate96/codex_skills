@@ -1,0 +1,4 @@
+interface:
+  display_name: "Chat Replies"
+  short_description: "Read chat, reply, and handle meeting links"
+  default_prompt: "Use $chat-replies to read recent Google Chat context, reply in the correct DM or space, or create a calendar meeting from the chat and post the Meet link back."

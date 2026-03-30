@@ -1,0 +1,4 @@
+interface:
+  display_name: "Student Onboarding"
+  short_description: "RSL student onboarding flow"
+  default_prompt: "Use this skill to onboard a new RSL student project across the spreadsheet, Drive folder setup, and follow-up admin steps."
