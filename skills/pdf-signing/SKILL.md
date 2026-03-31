@@ -10,13 +10,14 @@ Use this when the task is to place an existing signature image onto a PDF. This 
 ## Workflow
 
 1. Find the target PDF, usually in `~/Downloads`.
-2. Find an existing signature image. Prefer a transparent PNG if one already exists.
-3. Inspect the signature page before editing:
+2. Use the default signature image at `/home/lorenzo/Documents/General/signature_tight_crop_transparent.png`.
+3. If that file is missing, find another existing signature image. Prefer a transparent PNG.
+4. Inspect the signature page before editing:
    - Render the relevant page with `pdftoppm -png`.
    - Use `view_image` on the rendered page.
-4. Place the signature with `scripts/place_signature.py`.
-5. Render the edited page and verify the placement visually.
-6. Save to a new output PDF unless Lorenzo explicitly asks to overwrite the source.
+5. Place the signature with `scripts/place_signature.py`.
+6. Render the edited page and verify the placement visually.
+7. Save to a new output PDF unless Lorenzo explicitly asks to overwrite the source.
 
 ## Commands
 
@@ -26,7 +27,7 @@ Apply one or more signatures:
 python3 /home/lorenzo/git/codex_skills/skills/pdf-signing/scripts/place_signature.py \
   --input "/path/to/input.pdf" \
   --output "/path/to/output.pdf" \
-  --signature "/path/to/signature.png" \
+  --signature "/home/lorenzo/Documents/General/signature_tight_crop_transparent.png" \
   --page 3 \
   --rect 76,320,220,352 \
   --rect 76,478,220,510
@@ -43,6 +44,7 @@ Then open `/tmp/pdf_signing_preview/page-3.png` with `view_image`.
 
 ## Notes
 
+- Default signature asset: `/home/lorenzo/Documents/General/signature_tight_crop_transparent.png`.
 - `--page` is 1-based.
 - Each `--rect` is `x0,y0,x1,y1` in PDF points.
 - PyMuPDF uses a top-left origin with `y` increasing downward.
