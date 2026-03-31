@@ -21,15 +21,18 @@ if ! command -v timeout >/dev/null 2>&1; then
   exit 1
 fi
 
-ssh_config="$(ssh -G starship-1)"
+ssh_alias="starship-1"
+remote_hostname="starship"
+
+ssh_config="$(ssh -G "${ssh_alias}")"
 ssh_user="$(awk '$1=="user" {print $2; exit}' <<<"${ssh_config}")"
 if [[ "${ssh_user}" != "lorenzo" ]]; then
-  echo "Unexpected SSH user for starship-1: ${ssh_user}" >&2
+  echo "Unexpected SSH user for ${ssh_alias}: ${ssh_user}" >&2
   exit 1
 fi
 
 tailscale_status="$(tailscale status)"
-if ! grep -E -q "[[:space:]]starship-1[[:space:]]" <<<"${tailscale_status}"; then
+if ! grep -E -q "[[:space:]]${ssh_alias}[[:space:]]" <<<"${tailscale_status}"; then
   profile_id="$(sudo tailscale switch --list | awk '$2=="lorenzoterenzi96@gmail.com" {print $1; exit}')"
   if [[ -z "${profile_id}" ]]; then
     echo "Could not find tailscale profile for lorenzoterenzi96@gmail.com" >&2
@@ -40,7 +43,7 @@ if ! grep -E -q "[[:space:]]starship-1[[:space:]]" <<<"${tailscale_status}"; the
 fi
 
 set +e
-ssh_output="$(timeout 12 ssh -o BatchMode=yes -o ConnectTimeout=8 starship-1 'hostname; whoami' 2>&1)"
+ssh_output="$(timeout 12 ssh -o BatchMode=yes -o ConnectTimeout=8 "${ssh_alias}" 'hostname; whoami' 2>&1)"
 ssh_status=$?
 set -e
 
@@ -52,7 +55,7 @@ if [[ "${ssh_status}" -ne 0 ]]; then
     echo "Tailscale SSH approval required: ${approval_url}" >&2
   fi
   if [[ "${ssh_status}" -eq 124 ]]; then
-    echo "SSH check timed out while waiting for starship-1." >&2
+    echo "SSH check timed out while waiting for ${ssh_alias}." >&2
   fi
   echo "SSH check failed. If Tailscale printed an approval URL, let the user approve it and rerun." >&2
   exit "${ssh_status}"
@@ -61,7 +64,7 @@ fi
 ssh_host="$(printf '%s\n' "${ssh_output}" | sed -n '1p')"
 ssh_user_out="$(printf '%s\n' "${ssh_output}" | sed -n '2p')"
 
-if [[ "${ssh_host}" != "starship-1" ]]; then
+if [[ "${ssh_host}" != "${remote_hostname}" ]]; then
   echo "Unexpected SSH host: ${ssh_host}" >&2
   exit 1
 fi
@@ -71,4 +74,4 @@ if [[ "${ssh_user_out}" != "lorenzo" ]]; then
   exit 1
 fi
 
-echo "SSH connectivity to lorenzo@starship-1 verified."
+echo "SSH connectivity to lorenzo@${ssh_alias} verified (remote hostname ${remote_hostname})."

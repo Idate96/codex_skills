@@ -1,4 +1,0 @@
-interface:
-  display_name: "SSH Starship-1"
-  short_description: "Connect to lorenzo@starship-1 on the lorenzoterenzi96 tailnet"
-  default_prompt: "Connect to lorenzo@starship-1 via the lorenzoterenzi96@gmail.com Tailscale account and verify SSH access."

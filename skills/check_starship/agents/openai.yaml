@@ -1,0 +1,4 @@
+interface:
+  display_name: "Check Starship"
+  short_description: "Verify SSH access to the starship-1 alias on the lorenzoterenzi96 tailnet"
+  default_prompt: "Connect to lorenzo@starship-1 via the lorenzoterenzi96@gmail.com Tailscale account and verify SSH access to the remote host starship."

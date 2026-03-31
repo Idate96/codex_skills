@@ -1,13 +1,13 @@
 ---
-name: ssh-starship-1
+name: check_starship
 description: Connect to `lorenzo@starship-1` over Tailscale and verify that this machine is on the `lorenzoterenzi96@gmail.com` tailnet. Use when the user asks to SSH into `starship-1`, `starship one`, or typo `starhip one`, confirm access from this workstation, or open an interactive shell after Tailscale browser approval.
 ---
 
-# SSH Starship-1
+# Check Starship
 
 ## Overview
 
-Use this skill to make SSH access to `starship-1` deterministic. Verify that the `starship-1` peer is visible in Tailscale, switch to the `lorenzoterenzi96@gmail.com` profile if needed, then run a strict SSH check that verifies `hostname=starship-1` and `whoami=lorenzo`. If Tailscale SSH permissions block the check, surface the approval URL directly from the failing SSH output.
+Use this skill to make SSH access to the `starship-1` SSH alias deterministic. Verify that the `starship-1` peer is visible in Tailscale, switch to the `lorenzoterenzi96@gmail.com` profile if needed, then run a strict SSH check that verifies `hostname=starship` and `whoami=lorenzo`. If Tailscale SSH permissions block the check, surface the approval URL directly from the failing SSH output.
 
 ## Workflow
 
@@ -22,7 +22,7 @@ sudo tailscale switch "$profile_id"
 ```
 3. Run the strict connectivity check:
 ```bash
-bash scripts/check_starship_1_ssh.sh
+bash scripts/check_starship.sh
 ```
 4. Start the interactive shell if needed:
 ```bash
@@ -43,4 +43,4 @@ ssh starship-1
 
 ## Script
 
-- `scripts/check_starship_1_ssh.sh`: Verify peer visibility, switch to `lorenzoterenzi96@gmail.com` if needed, then verify SSH access end-to-end.
+- `scripts/check_starship.sh`: Verify peer visibility, switch to `lorenzoterenzi96@gmail.com` if needed, then verify SSH access end-to-end.
