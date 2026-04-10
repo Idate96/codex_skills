@@ -75,6 +75,12 @@ if [[ ! -d "$BAG_ROOT" ]]; then
   echo "Bag root not found: $BAG_ROOT" >&2
   exit 2
 fi
+if [[ -f "$BAG_ROOT/upload_name_map.yaml" ]]; then
+  echo "Bag root looks like a flattened Kleinkram mission payload: $BAG_ROOT" >&2
+  echo "Reconstruct split runs first, then pass one reconstructed run root to --bag-root." >&2
+  echo "Helper: /home/lorenzo/codex_skills/skills/kleinkram-upload/scripts/reconstruct_split_bags.py" >&2
+  exit 2
+fi
 if [[ ! -f "$BAG_ROOT/sensors/metadata.yaml" ]]; then
   echo "Missing $BAG_ROOT/sensors/metadata.yaml" >&2
   exit 2

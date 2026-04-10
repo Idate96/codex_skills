@@ -31,11 +31,19 @@ Why this matters:
 ## Checking ROS Topics
 
 ```bash
+echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset}"
 ros2 topic list
 timeout 10 ros2 topic hz /your_topic
 timeout 10 ros2 topic echo /your_topic --once
 ros2 topic info /your_topic --verbose
 ```
+
+If you are running multiple ROS stacks on different domains:
+
+- verify `ROS_DOMAIN_ID` in the active shell before trusting any graph output
+- keep one tmux session per domain when possible
+- encode the domain in the session name so captures and restarts are unambiguous
+- do not conclude "the topic is gone" until you have ruled out a domain mismatch
 
 ## Common ROS2 Debugging Commands
 
@@ -61,6 +69,13 @@ tmux new-window -n ros2
 tmux send-keys -t ros2 "bash -lc 'ros2 launch your_package your_launch.py; exec bash -i'" C-m
 sleep 0.5
 tmux capture-pane -p -S -200 -t ros2
+```
+
+For multi-domain debugging, make the tmux target itself identify the domain, for example:
+
+```bash
+tmux new-session -d -s ros123_debug
+tmux send-keys -t ros123_debug "bash -lc 'export ROS_DOMAIN_ID=123; ros2 topic list; exec bash -i'" C-m
 ```
 
 ## Moleworks / Newton Handoff

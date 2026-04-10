@@ -10,8 +10,9 @@ This helper keeps the live workflow simple:
 
 Some deployments expose /access/addUserToProject. Others only expose
 /projects/:uuid/access. The grant-user command tries the legacy route first.
-If the deployment returns 404, the script falls back to a full project-access
-rewrite and requires the target user's primary access-group UUID.
+If the deployment returns 404, the script falls back either to a custom
+access-group workflow or to a full project-access rewrite when the caller
+already knows the target user's primary access-group UUID.
 """
 
 from __future__ import annotations
@@ -146,6 +147,20 @@ def pretty_dump(data: Any) -> None:
     print(json.dumps(data, indent=2, sort_keys=False))
 
 
+def slugify_token(value: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", value.strip().lower()).strip("_")
+    return slug or "user"
+
+
+def infer_fallback_group_name(project_name: str, user: dict[str, Any]) -> str:
+    email = user.get("email")
+    if isinstance(email, str) and "@" in email:
+        user_token = email.split("@", 1)[0]
+    else:
+        user_token = user.get("name") or user.get("uuid") or "user"
+    return f"{slugify_token(project_name)}__{slugify_token(user_token)}"
+
+
 def resolve_single_user(session: Session, query: str) -> dict[str, Any]:
     status, payload = api_request(
         session,
@@ -221,6 +236,125 @@ def get_project_access(session: Session, project_uuid: str) -> list[dict[str, An
             f"failed to read project access for {project_uuid}: {status} {payload}"
         )
     return payload["data"]
+
+
+def search_access_groups(
+    session: Session,
+    search: str,
+    take: int = 20,
+) -> list[dict[str, Any]]:
+    status, payload = api_request(
+        session,
+        "GET",
+        "/access?"
+        + urllib.parse.urlencode({"search": search, "skip": 0, "take": take}),
+    )
+    if status != 200:
+        raise SystemExit(f"access-group search failed: {status} {payload}")
+    return payload["data"]
+
+
+def get_access_group(session: Session, group_uuid: str) -> dict[str, Any]:
+    status, payload = api_request(session, "GET", f"/access/{group_uuid}")
+    if status != 200:
+        raise SystemExit(
+            f"failed to read access-group {group_uuid}: {status} {payload}"
+        )
+    return payload
+
+
+def find_existing_project_group_for_user(
+    session: Session,
+    project_uuid: str,
+    user_uuid: str,
+) -> dict[str, Any] | None:
+    for row in get_project_access(session, project_uuid):
+        if row.get("type") != "CUSTOM":
+            continue
+        group = get_access_group(session, row["uuid"])
+        memberships = group.get("memberships", [])
+        if any(
+            membership.get("user", {}).get("uuid") == user_uuid
+            for membership in memberships
+        ):
+            return {
+                "uuid": group["uuid"],
+                "name": group["name"],
+                "type": group.get("type", row.get("type", "CUSTOM")),
+                "memberCount": row.get("memberCount", len(memberships)),
+                "rights": row.get("rights"),
+            }
+    return None
+
+
+def resolve_or_create_custom_access_group(
+    session: Session,
+    name: str,
+    auth_user_uuid: str | None = None,
+) -> dict[str, Any]:
+    matches = [group for group in search_access_groups(session, name) if group["name"] == name]
+    if len(matches) > 1:
+        raise SystemExit(
+            "access-group name must resolve to at most one visible group:\n"
+            + json.dumps(matches, indent=2)
+        )
+    if len(matches) == 1:
+        return matches[0]
+
+    status, payload = api_request(session, "POST", "/access", {"name": name})
+    if status not in (200, 201):
+        raise SystemExit(f"access-group create failed: {status} {payload}")
+
+    return {
+        "uuid": payload["uuid"],
+        "name": payload["name"],
+        "type": payload.get("type", "CUSTOM"),
+        "memberCount": len(payload.get("memberships", [])),
+        "creator": payload.get("creator", {"uuid": auth_user_uuid}),
+    }
+
+
+def add_user_to_access_group(
+    session: Session,
+    group_uuid: str,
+    user_uuid: str,
+    *,
+    can_edit_group: bool = False,
+) -> None:
+    status, payload = api_request(
+        session,
+        "POST",
+        f"/access/{group_uuid}/users",
+        {"userUuid": user_uuid, "canEditGroup": can_edit_group},
+    )
+    if status in (200, 201):
+        return
+    if status == 409:
+        return
+    raise SystemExit(
+        f"failed to add user {user_uuid} to access-group {group_uuid}: {status} {payload}"
+    )
+
+
+def add_access_group_to_project(
+    session: Session,
+    group_uuid: str,
+    project_uuid: str,
+    rights: int,
+) -> None:
+    status, payload = api_request(
+        session,
+        "POST",
+        f"/access/{group_uuid}/projects/{project_uuid}",
+        {"rights": rights},
+    )
+    if status in (200, 201):
+        return
+    if status == 409:
+        return
+    raise SystemExit(
+        f"failed to add access-group {group_uuid} to project {project_uuid}: {status} {payload}"
+    )
 
 
 def try_legacy_grant(
@@ -316,10 +450,49 @@ def cmd_grant_user(args: argparse.Namespace) -> None:
 
         used_fallback = True
         if args.primary_group_uuid is None:
-            raise SystemExit(
-                "deployment does not expose /access/addUserToProject; "
-                "rerun with --primary-group-uuid"
+            existing_group = find_existing_project_group_for_user(
+                session,
+                project["uuid"],
+                user["uuid"],
             )
+            fallback_group_name = (
+                args.fallback_group_name
+                or (existing_group["name"] if existing_group else None)
+                or infer_fallback_group_name(project["name"], user)
+            )
+            if args.dry_run:
+                print(f"# dry-run {project['name']} ({project['uuid']})")
+                pretty_dump(
+                    {
+                        "mode": "custom-access-group-fallback",
+                        "user": user,
+                        "project": {
+                            "uuid": project["uuid"],
+                            "name": project["name"],
+                        },
+                        "rights": args.rights,
+                        "existingMatchingGroup": existing_group,
+                        "fallbackGroupName": fallback_group_name,
+                    }
+                )
+                continue
+
+            fallback_group = existing_group or resolve_or_create_custom_access_group(
+                session, fallback_group_name
+            )
+            add_user_to_access_group(session, fallback_group["uuid"], user["uuid"])
+            add_access_group_to_project(
+                session,
+                fallback_group["uuid"],
+                project["uuid"],
+                rights,
+            )
+            print(
+                f"granted {args.rights} to {user['uuid']} on "
+                f"{project['name']} via custom access-group {fallback_group['name']} "
+                f"({fallback_group['uuid']})"
+            )
+            continue
 
         current_rows = get_project_access(session, project["uuid"])
         new_rows = []
@@ -394,6 +567,7 @@ def build_parser() -> argparse.ArgumentParser:
     grant_user.add_argument("--primary-group-uuid")
     grant_user.add_argument("--primary-group-name")
     grant_user.add_argument("--primary-group-member-count", type=int, default=1)
+    grant_user.add_argument("--fallback-group-name")
     grant_user.add_argument("--dry-run", action="store_true")
     grant_user.set_defaults(func=cmd_grant_user)
 

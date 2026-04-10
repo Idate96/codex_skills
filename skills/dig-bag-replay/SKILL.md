@@ -62,6 +62,23 @@ Before launch, the helper stops prior replay-style processes in that container:
 - end effector: `shovel`
 - excavation preload: `package://mole_maps/maps/hong0326_no_holes/hong0326_no_holes_surface`
 
+## Kleinkram Downloads
+
+Downloaded Kleinkram missions produced by the upload skill are usually flattened into one mission directory. `dig_bag_replay_tmux.sh` expects one split run root with `sensors/`, `state/`, `commands/`, `lidar/`, and optional `elevation_map/`, so reconstruct first:
+
+```bash
+python3 /home/lorenzo/codex_skills/skills/kleinkram-upload/scripts/reconstruct_split_bags.py \
+  /path/to/downloaded_project/mission_name/project_name/mission_name
+```
+
+Then point `--bag-root` at one reconstructed run:
+
+```bash
+~/.codex/skills/dig-bag-replay/scripts/dig_bag_replay_tmux.sh \
+  --bag-root /path/to/downloaded_project/reconstructed_runs/run_name \
+  --attach
+```
+
 ## Workflow
 
 Use full split-run replay when:

@@ -8,6 +8,10 @@ description: Start or restart the Moleworks IsaacLab simulation and ROS2 stack i
 ## Overview
 Start IsaacLab sim and the ROS stack with three tmux windows: `sim`, `robot`, `perception`. The robot window runs only the minimal robot/TF/RViz (no perception). The perception window runs `mole_perception_bringup` plus excavation mapping.
 
+This skill is for the IsaacLab/Terra path, not the single-container Newton tmux workflow.
+If everything runs inside one `moleworks_ros` container, use `newton-sim-ros-startup` and keep the default Fast DDS setup.
+For this mixed-container path, `ROS_DOMAIN_ID=24` is the default local choice unless the user overrides it.
+
 ## Workflow
 
 ### 0) Preflight
@@ -15,10 +19,16 @@ Start IsaacLab sim and the ROS stack with three tmux windows: `sim`, `robot`, `p
   - ROS container is the one running the `moleworks_ros` image.
   - Isaac container is the one running the `isaac-lab-moleworks_ext-dev` image.
 - Always use the same `ROS_DOMAIN_ID` on both sides (example: `24`).
-- Use Cyclone DDS if already configured:
-  - `export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`
-  - `export CYCLONEDDS_URI=file:///home/lorenzo/moleworks/ros2_ws/src/moleworks_ros/.ros/cyclonedds.xml`
+- DDS rule:
+  - Default to the normal container DDS setup.
+  - Only add Cyclone overrides in this mixed-container skill if the stack already depends on them or you have a concrete DDS failure to fix.
+  - Do not copy those Cyclone exports into the single-container Newton workflow.
 - **Check for a running sim before starting a new one**:
+  - First inspect host memory and GPU headroom:
+    - `free -h`
+    - `nvidia-smi --query-gpu=index,name,memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits`
+  - Also inspect leftover ROS/Newton/sim processes before restarting:
+    - `ps -eo pid,ppid,%mem,%cpu,etime,cmd | rg 'isaac|kit/python|standalone_dig_newton_env|newton_bridge.launch.py|robot.launch.py|mole_state_publisher|mole_perception_bringup|excavation_mapping|dig_3d_controller|ros2 launch'`
   - On the host, run `nvidia-smi` and look for processes like:
     - `.../isaac_sim/kit/python/bin/python3`
   - Map every suspicious GPU PID back to its command before killing anything:
@@ -36,13 +46,12 @@ In your current tmux session, create three windows: `sim`, `robot`, `perception`
 - If any of those windows already exist, **ask** before killing them; otherwise create new ones with the same names.
 - Always capture pane output after each launch command.
 - When launching via `tmux send-keys`, run commands as `bash -lc '...; exec bash -i'` so the window stays inspectable even if the command exits.
+- Set `ROS_DOMAIN_ID=24` once per window before the launch command instead of resourcing or re-exporting between every follow-up command.
 
 ### 2) Start sim (window: `sim`)
 Run inside the ROS container:
 ```bash
 export ROS_DOMAIN_ID=24
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-export CYCLONEDDS_URI=file:///home/lorenzo/moleworks/ros2_ws/src/moleworks_ros/.ros/cyclonedds.xml
 source /opt/ros/jazzy/setup.bash
 source /home/lorenzo/moleworks/ros2_ws/install/setup.bash
 mole_sim_ctl terra
@@ -53,8 +62,6 @@ Capture the pane output immediately after launch.
 Robot/TF/RViz only (no perception):
 ```bash
 export ROS_DOMAIN_ID=24
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-export CYCLONEDDS_URI=file:///home/lorenzo/moleworks/ros2_ws/src/moleworks_ros/.ros/cyclonedds.xml
 source /opt/ros/jazzy/setup.bash
 source /home/lorenzo/moleworks/ros2_ws/install/setup.bash
 ros2 launch mole_bringup robot.launch.py \
@@ -72,8 +79,6 @@ Run the perception bringup (it now includes excavation mapping).
 - Use a map name if you want a design map, or `map_name:=none` to initialize from live elevation.
 ```bash
 export ROS_DOMAIN_ID=24
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-export CYCLONEDDS_URI=file:///home/lorenzo/moleworks/ros2_ws/src/moleworks_ros/.ros/cyclonedds.xml
 source /opt/ros/jazzy/setup.bash
 source /home/lorenzo/moleworks/ros2_ws/install/setup.bash
 ros2 launch mole_perception_bringup bringup.launch.py \
@@ -139,4 +144,4 @@ If something looks wrong, run one or two of these (keep long timeouts for TF buf
 - For real hardware runs, set `on_machine:=true` and enable sensors in the perception launch.
 - TF is on `/tf` and `/tf_static` (not `/mole/tf`).
 - `CABIN_ANCHOR` is only required for the desired-elevation `profile` override; the dig controller uses `CABIN`/`BASE`.
-- Expected noise: the sim side runs ROS 2 Humble while the ROS container is Jazzy, so CycloneDDS commonly prints lots of warnings on both sides (for example: “Failed to parse type hash ... from USER_DATA (null)” and various `serdata.cpp`/`rcutils` error-state warnings). Treat these as normal unless topics/TF are actually missing.
+- If you explicitly opt into Cyclone for this mixed-container stack, expect some Humble/Jazzy DDS warning noise. Treat it as transport noise unless topics/TF are actually missing.

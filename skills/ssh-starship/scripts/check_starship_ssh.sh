@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+host_alias="starship"
+accepted_status_names_regex='[[:space:]](starship|starship-1)[[:space:]]'
+
 if ! command -v tailscale >/dev/null 2>&1; then
   echo "tailscale command not found" >&2
   exit 1
@@ -21,18 +24,15 @@ if ! command -v timeout >/dev/null 2>&1; then
   exit 1
 fi
 
-ssh_alias="starship-1"
-remote_hostname="starship"
-
-ssh_config="$(ssh -G "${ssh_alias}")"
+ssh_config="$(ssh -G "${host_alias}" 2>/dev/null)"
 ssh_user="$(awk '$1=="user" {print $2; exit}' <<<"${ssh_config}")"
 if [[ "${ssh_user}" != "lorenzo" ]]; then
-  echo "Unexpected SSH user for ${ssh_alias}: ${ssh_user}" >&2
+  echo "Unexpected SSH user for ${host_alias}: ${ssh_user}" >&2
   exit 1
 fi
 
 tailscale_status="$(tailscale status)"
-if ! grep -E -q "[[:space:]]${ssh_alias}[[:space:]]" <<<"${tailscale_status}"; then
+if ! grep -E -q "${accepted_status_names_regex}" <<<"${tailscale_status}"; then
   profile_id="$(sudo tailscale switch --list | awk '$2=="lorenzoterenzi96@gmail.com" {print $1; exit}')"
   if [[ -z "${profile_id}" ]]; then
     echo "Could not find tailscale profile for lorenzoterenzi96@gmail.com" >&2
@@ -40,10 +40,16 @@ if ! grep -E -q "[[:space:]]${ssh_alias}[[:space:]]" <<<"${tailscale_status}"; t
   fi
 
   sudo tailscale switch "${profile_id}" >/dev/null
+
+  tailscale_status="$(tailscale status)"
+  if ! grep -E -q "${accepted_status_names_regex}" <<<"${tailscale_status}"; then
+    echo "Could not find ${host_alias} in tailscale status after switching profiles." >&2
+    exit 1
+  fi
 fi
 
 set +e
-ssh_output="$(timeout 12 ssh -o BatchMode=yes -o ConnectTimeout=8 "${ssh_alias}" 'hostname; whoami' 2>&1)"
+ssh_output="$(timeout 12 ssh -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR "${host_alias}" 'hostname; whoami' 2>&1)"
 ssh_status=$?
 set -e
 
@@ -55,16 +61,17 @@ if [[ "${ssh_status}" -ne 0 ]]; then
     echo "Tailscale SSH approval required: ${approval_url}" >&2
   fi
   if [[ "${ssh_status}" -eq 124 ]]; then
-    echo "SSH check timed out while waiting for ${ssh_alias}." >&2
+    echo "SSH check timed out while waiting for ${host_alias}." >&2
   fi
   echo "SSH check failed. If Tailscale printed an approval URL, let the user approve it and rerun." >&2
   exit "${ssh_status}"
 fi
 
-ssh_host="$(printf '%s\n' "${ssh_output}" | sed -n '1p')"
-ssh_user_out="$(printf '%s\n' "${ssh_output}" | sed -n '2p')"
+ssh_lines="$(printf '%s\n' "${ssh_output}" | sed '/^[[:space:]]*$/d')"
+ssh_host="$(printf '%s\n' "${ssh_lines}" | tail -n 2 | head -n 1)"
+ssh_user_out="$(printf '%s\n' "${ssh_lines}" | tail -n 1)"
 
-if [[ "${ssh_host}" != "${remote_hostname}" ]]; then
+if [[ "${ssh_host}" != "starship" ]]; then
   echo "Unexpected SSH host: ${ssh_host}" >&2
   exit 1
 fi
@@ -74,4 +81,4 @@ if [[ "${ssh_user_out}" != "lorenzo" ]]; then
   exit 1
 fi
 
-echo "SSH connectivity to lorenzo@${ssh_alias} verified (remote hostname ${remote_hostname})."
+echo "SSH connectivity to lorenzo@${host_alias} verified."

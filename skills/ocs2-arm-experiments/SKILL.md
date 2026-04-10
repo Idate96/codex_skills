@@ -32,6 +32,10 @@ python3 ~/ros2_ws/src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_co
   --csv "${RUN_DIR}/segments.csv"
 ```
 
+Preferred live goal-send entry point:
+- Use `ros2 run mole_ocs2_arm_controller mole_m4_send_cyl_goal.py` for actual commanded motion segments.
+- Treat `scripts/mole_m4_tuning_cli.py goal` only as a wrapper around that sender, not the primary operator path.
+
 For each segment `SEG_TAG` (example: `seg3_z2p5_to_0p7`):
 
 ```bash
@@ -40,8 +44,8 @@ python3 src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_controller/s
   inspect -- --out-dir "${RUN_DIR}/${SEG_TAG}_pre"
 
 # 2) send goal + keep full direct-target publish logs
-python3 src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_controller/scripts/mole_m4_tuning_cli.py \
-  goal -- --r <R> --theta-deg <THETA> --z <Z> --pitch-deg <PITCH> \
+ros2 run mole_ocs2_arm_controller mole_m4_send_cyl_goal.py \
+  --r <R> --theta-deg <THETA> --z <Z> --pitch-deg <PITCH> \
   --timeout-sec 20 --result-timeout-sec 120 --no-quiet-feedback \
   2>&1 | tee "${RUN_DIR}/${SEG_TAG}_action.log"
 
@@ -132,6 +136,22 @@ Rules:
 - If a throwaway/live workspace is being used (for example `/home/lorenzo/tmp/mpc_machine_test_ws`), do **not** review or tune against stale defaults in another checkout.
 - For every review bundle, copy the exact live task file and the exact live turn-model source files that produced the run.
 
+Container overlay guard:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source /workspace/moleworks/ros2_ws/install/setup.bash
+readlink -f /workspace/moleworks/ros2_ws/install/setup.bash
+ros2 pkg prefix mole_msgs
+ros2 pkg prefix mole_ocs2_arm_controller
+```
+
+In the `moleworks_ros` Newton/Terra container, do **not** rely on a shell banner such as
+`Sourcing ROS2 workspace at /home/lorenzo/ros2_ws`. That shell default can leave you with a graph that
+looks alive while custom interfaces and OCS2 packages are missing in the current pane. For this workflow,
+re-source `/workspace/moleworks/ros2_ws/install/setup.bash` and verify both package prefixes before
+launching OCS2, benchmark scripts, or planner services.
+
 ### 0.2) True-Hold Rule (Mandatory)
 
 Do **not** call a controller state "hold" just because the arm looks stationary.
@@ -194,6 +214,11 @@ Use/attach to the existing `ros` tmux session and create an `ocs2` window with 2
 - left pane: launch OCS2
 - right pane: rosbag + helper commands
 
+If the rest of the Newton / ROS stack is already running in a container-local tmux session
+(for example `newton_arm`), use that same in-container session for OCS2 windows. Do **not**
+create a separate host-side tmux session that attaches into the container for a shared run.
+Everyone inspecting the stack should see the same tmux namespace and window names.
+
 Common tmux commands:
 
 ```bash
@@ -250,9 +275,10 @@ Manual launch path (use only if you need custom handover/debug):
 Launch OCS2 arm with real actuator commands:
 
 ```bash
-cd ~/ros2_ws
 source /opt/ros/jazzy/setup.bash
-source install/setup.bash
+source /workspace/moleworks/ros2_ws/install/setup.bash
+ros2 pkg prefix mole_ocs2_arm_controller
+ros2 pkg prefix mole_msgs
 
 ros2 launch mole_ocs2_arm_controller ocs2_arm.launch.py \
   use_sim_time:=false \
@@ -297,10 +323,13 @@ ros2 run mole_ocs2_arm_controller mole_m4_command_chain_diag_summary.py
 
 ### 4. Goal Publish (Preferred: Direct Semantic Target)
 
-Use `goal --` for the real send path. On current `main`, this does **not** go
-through the old action path by default. It directly publishes
-`MpcTargetTrajectories` to `/mole/ocs2/target`, and `--pitch-deg` means the
-calibrated semantic `bucket_angle`, not raw EE Euler pitch.
+Use `ros2 run mole_ocs2_arm_controller mole_m4_send_cyl_goal.py` for the real
+send path. The `mole_m4_tuning_cli.py goal` subcommand is only a wrapper around
+that sender and should not be treated as the primary live operator entry point.
+On current `main`, the direct sender does **not** go through the old action
+path by default. It directly publishes `MpcTargetTrajectories` to
+`/mole/ocs2/target`, and `--pitch-deg` means the calibrated semantic
+`bucket_angle`, not raw EE Euler pitch.
 
 Use `predicted --` only as a dry-run policy/DDP check. It does not replace the
 actual target send.
@@ -334,8 +363,7 @@ python3 ~/ros2_ws/src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_co
 3) Send the real target:
 
 ```bash
-python3 ~/ros2_ws/src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_controller/scripts/mole_m4_tuning_cli.py \
-  goal -- \
+ros2 run mole_ocs2_arm_controller mole_m4_send_cyl_goal.py \
   --r 5.41 \
   --theta-deg 30.0 \
   --z 0.10 \
@@ -369,8 +397,7 @@ launch_target_bridge:=true
 CLI action goal:
 
 ```bash
-python3 ~/ros2_ws/src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_controller/scripts/mole_m4_tuning_cli.py \
-  goal -- \
+ros2 run mole_ocs2_arm_controller mole_m4_send_cyl_goal.py \
   --dtheta-deg 30 \
   --timeout-sec 20 \
   --result-timeout-sec 60 \

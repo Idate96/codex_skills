@@ -42,7 +42,7 @@ scripts/upload_verify.sh \
 
 ```bash
 # 1) Find the target user.
-scripts/manage_access.py search-users --query "Christian Helms"
+scripts/manage_access.py search-users --query "colleague@ethz.ch"
 
 # 2) List Moleworks projects.
 scripts/manage_access.py list-projects --pattern moleworks
@@ -50,15 +50,29 @@ scripts/manage_access.py list-projects --pattern moleworks
 # 3) Inspect current access on a project.
 scripts/manage_access.py project-access --project moleworks
 
-# 4) Grant project access.
+# 4) Grant project access directly when the primary group UUID is known.
 # The script first tries the legacy /access/addUserToProject route.
 # If the deployment does not expose it, pass the target user's primary
 # access-group UUID and it will fall back to POST /projects/:uuid/access.
 scripts/manage_access.py grant-user \
-  --user-query "Christian Helms" \
+  --user-query "colleague@ethz.ch" \
   --project-pattern moleworks \
   --rights create \
   --primary-group-uuid <target_primary_group_uuid>
+
+# 5) If the primary group UUID is not readily available, the script can
+# auto-create or reuse a dedicated custom fallback group.
+scripts/manage_access.py grant-user \
+  --user-query "colleague@ethz.ch" \
+  --project 12345678-1234-1234-1234-123456789abc \
+  --rights create
+
+# 6) Optional: override the generated fallback group name.
+scripts/manage_access.py grant-user \
+  --user-query "colleague@ethz.ch" \
+  --project 12345678-1234-1234-1234-123456789abc \
+  --rights create \
+  --fallback-group-name project_slug__colleague
 ```
 
 ## Upload Workflow
@@ -68,12 +82,41 @@ scripts/manage_access.py grant-user \
 3. Upload and verify with `upload_verify.sh`.
 4. Confirm mission contents with `klein mission info` and `klein list files`.
 
+## Download + Reconstruct Split Bags
+
+Kleinkram missions built with `prepare_payload.py` are intentionally flattened for upload safety. For split DIG runs, download the mission first, then reconstruct one replayable run root per original source directory from the mission's `upload_name_map.yaml`.
+
+Example:
+
+```bash
+# 1) Download one mission into a local folder.
+klein download \
+  --project moleworks_rl_digging \
+  --mission dig__soil_sysid_manual__20260331 \
+  --dest /home/lorenzo/Downloads/kleinkram/moleworks_rl_digging/dig__soil_sysid_manual__20260331 \
+  --nested \
+  --create-dirs \
+  --yes
+
+# 2) Reconstruct split rosbag roots under reconstructed_runs/.
+python3 scripts/reconstruct_split_bags.py \
+  /home/lorenzo/Downloads/kleinkram/moleworks_rl_digging/dig__soil_sysid_manual__20260331/moleworks_rl_digging/dig__soil_sysid_manual__20260331
+```
+
+The helper defaults to hardlinks, so reconstructing large missions does not duplicate the bag data on disk.
+If Kleinkram skipped a known-corrupt remote file during download, rerun reconstruction with `--skip-missing` so the healthy runs still get staged.
+
 ## Access Workflow
 
-1. Use `manage_access.py search-users` to resolve the target user UUID.
-2. Use `manage_access.py list-projects` or `manage_access.py project-access` to confirm the exact project set and current rights.
+1. Use `manage_access.py search-users` with the collaborator's email to resolve the user UUID.
+2. Use `manage_access.py list-projects` or `manage_access.py project-access` to confirm the exact project UUID and current rights.
 3. Prefer `manage_access.py grant-user` for adding a user to one or more projects.
 4. Re-run `manage_access.py project-access` after each mutation and confirm the new entry is present.
+5. If the deployment rejects direct user grant because `/access/addUserToProject` is missing and you do not have the target user's primary-group UUID, the script should fall back automatically to a dedicated custom access group:
+   - first reuse an existing custom project group that already contains that user, if one exists
+   - otherwise create or reuse a small project-specific group
+   - add the user to that group
+   - grant that group access to the project
 
 ## Access Notes
 
@@ -84,8 +127,47 @@ scripts/manage_access.py grant-user \
   - `write` = `20`
   - `delete` = `30`
 - On some deployments, the older `/access/*` management routes are absent even though `/projects/:uuid/access` works.
-- When `/access/addUserToProject` is missing, project updates still work, but you must provide the target user's primary access-group UUID via `--primary-group-uuid`.
+- When `/access/addUserToProject` is missing, the script first tries the automatic custom-group fallback; use `--primary-group-uuid` only when you explicitly want the direct `/projects/:uuid/access` rewrite path.
+- Primary access groups are hidden from normal access-group search on this deployment, so the primary-group UUID is not always easy to resolve quickly.
+- Practical fallback: if `--primary-group-uuid` is absent, the script first checks whether the project already has a matching custom group containing that user, then falls back to a generated dedicated custom access group name from the project and user identifiers.
+- Use `--fallback-group-name` only when you want to force a specific custom group name.
 - Use `create` when you want the same collaborator level that the `Leggedrobotics` affiliation group has on the canonical Moleworks projects.
+
+## UUID Resolution
+
+- User UUID:
+  - `python3 scripts/manage_access.py search-users --query "user@domain.com"`
+  - Prefer the exact email address over a partial name search.
+- Project UUID:
+  - `python3 scripts/manage_access.py list-projects --pattern moleworks`
+  - or inspect a known project directly with `project-access`
+  - or reuse the project UUID from the upload confirmation if the project was just created
+- Primary-group UUID:
+  - not reliably searchable on this deployment because primary groups are hidden
+  - use it only if you already have it from a trusted source
+- If you do not have the primary-group UUID, just run `grant-user` without it and let the script fall back automatically.
+
+## Fast Path: Diego + `moleworks_arm_control`
+
+- Diego's Kleinkram / ETH email: `digarcia@ethz.ch`
+- Diego user UUID: `5e4e0af7-0fca-4934-9470-070131c207e5`
+- `moleworks_arm_control` project UUID: `6b62504e-f6fd-4aa6-bacd-fc2a231ed761`
+- Verified working fallback group for this project: `moleworks_arm_control__diego`
+  - group UUID: `9596a4f5-02eb-4250-b2c4-4f20e4f4c891`
+  - rights on project: `create` (`10`)
+
+If Diego reports missing access again on this exact project, check whether the custom group is still present on the project ACL before doing anything else:
+
+```bash
+python3 scripts/manage_access.py project-access \
+  --project 6b62504e-f6fd-4aa6-bacd-fc2a231ed761
+```
+
+If needed, recreate the same pattern with the API:
+
+1. Create or reuse the custom group `moleworks_arm_control__diego`
+2. Add user UUID `5e4e0af7-0fca-4934-9470-070131c207e5` to that group
+3. Grant the group `create` rights on project UUID `6b62504e-f6fd-4aa6-bacd-fc2a231ed761`
 
 ## On-Network Fallback
 
@@ -132,8 +214,18 @@ scripts/manage_access.py grant-user \
   --primary-group-uuid <target_primary_group_uuid>
 ```
 
+Grant access to one project with the generic automatic fallback:
+
+```bash
+scripts/manage_access.py grant-user \
+  --user-query "colleague@ethz.ch" \
+  --project 12345678-1234-1234-1234-123456789abc \
+  --rights create
+```
+
 ## Resources
 
 - `scripts/prepare_payload.py`: Build filtered, renamed payload + traceability map.
 - `scripts/upload_verify.sh`: Create mission (safe rerun), upload, verify hash+size, print mission summary.
 - `scripts/manage_access.py`: Refresh auth from `~/.kleinkram.json`, search users/projects, inspect project access, and grant project access with a legacy-route fallback.
+- `scripts/reconstruct_split_bags.py`: Rebuild split rosbag roots from a flattened downloaded mission payload using `upload_name_map.yaml`.

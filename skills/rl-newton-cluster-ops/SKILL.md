@@ -89,6 +89,11 @@ Expected local destinations:
 - `logs/rsl_rl/<experiment>/<run_name>/`
 - `logs/slurm/slurm-<jobid>.out`
 
+Treat the final folder name under `logs/rsl_rl/<experiment>/` as the canonical `run_name`.
+Example:
+- `/cluster/scratch/$USER/moleworks_logs/rsl_rl/fee_excavation_runtime_cache_ab/2026-03-30_22-10-27_fee_excavation-prepr_runtime_cache_on_s201_4090`
+- canonical `run_name`: `2026-03-30_22-10-27_fee_excavation-prepr_runtime_cache_on_s201_4090`
+
 Use the broad `./sync_logs.sh` only when the user wants a full refresh.
 
 ## Ledger Rules

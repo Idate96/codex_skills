@@ -18,19 +18,31 @@ Use this when the task is to place an existing signature image onto a PDF. This 
 5. Place the signature with `scripts/place_signature.py`.
 6. Render the edited page and verify the placement visually.
 7. Save to a new output PDF unless Lorenzo explicitly asks to overwrite the source.
+8. If `python3` does not have `fitz`/`PyMuPDF`, run the script through `uv` instead of trying to mutate the system Python.
 
 ## Commands
 
 Apply one or more signatures:
 
 ```bash
-python3 /home/lorenzo/git/codex_skills/skills/pdf-signing/scripts/place_signature.py \
+python3 /home/lorenzo/codex_skills/skills/pdf-signing/scripts/place_signature.py \
   --input "/path/to/input.pdf" \
   --output "/path/to/output.pdf" \
   --signature "/home/lorenzo/Documents/General/signature_tight_crop_transparent.png" \
   --page 3 \
   --rect 76,320,220,352 \
   --rect 76,478,220,510
+```
+
+If `fitz` is missing from `python3`, use:
+
+```bash
+uv run --with PyMuPDF python3 /home/lorenzo/codex_skills/skills/pdf-signing/scripts/place_signature.py \
+  --input "/path/to/input.pdf" \
+  --output "/path/to/output.pdf" \
+  --signature "/home/lorenzo/Documents/General/signature_tight_crop_transparent.png" \
+  --page 1 \
+  --rect 686,146,818,175
 ```
 
 Render a page for visual checking:
@@ -48,5 +60,8 @@ Then open `/tmp/pdf_signing_preview/page-3.png` with `view_image`.
 - `--page` is 1-based.
 - Each `--rect` is `x0,y0,x1,y1` in PDF points.
 - PyMuPDF uses a top-left origin with `y` increasing downward.
+- Verified ETH monthly timesheet supervisor signature rectangle on the current SAP landscape A4 form:
+  - page `1`
+  - rect `686,146,818,175`
 - Prefer matching the size and baseline of any existing handwritten signature already present in the document.
 - If the user asks for a true digital signature, stop and say this skill only handles visual signature placement.

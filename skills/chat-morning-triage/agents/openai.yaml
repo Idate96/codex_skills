@@ -1,0 +1,4 @@
+interface:
+  display_name: "Chat Morning Triage"
+  short_description: "Scan recent Chat messages and turn them into a todo list"
+  default_prompt: "Use $chat-morning-triage to scan Lorenzo's recent Google Chat activity and produce a concise morning todo list with urgent items, replies needed, follow-ups, and FYIs."
