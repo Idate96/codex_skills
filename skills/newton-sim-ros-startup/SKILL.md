@@ -1,6 +1,6 @@
 ---
 name: newton-sim-ros-startup
-description: Start or restart the Moleworks ROS2 stack using the Newton simulator inside the default moleworks_ros:latest Docker container. Use when you need a clean tmux layout for Newton bridge, robot/TF/RViz, perception (elevation + excavation mapping), optional Foxglove bridge, or an isolated bridge-only validation stack on a specific ROS domain, all with use_sim_time:=true.
+description: Start or restart the Moleworks ROS2 stack using the Newton simulator in the default moleworks_ros runtime shell, assuming the current shell is already inside the target container unless the user says otherwise. Use when you need a clean tmux layout for Newton bridge, robot/TF/RViz, perception (elevation + excavation mapping), optional Foxglove bridge, or an isolated bridge-only validation stack on a specific ROS domain, all with use_sim_time:=true.
 ---
 
 # Newton Sim ROS Startup
@@ -11,30 +11,61 @@ Use this only for the single-container Newton workflow inside `moleworks_ros:lat
 
 If the stack is split across Isaac/Terra and ROS containers, use `sim-startup` or `moleworks-terra-stack` instead.
 
+For standardized post-bringup Nav2 validation in Newton, use the fast Nav2 validation layout in this skill.
+
 ## Non-Negotiables
 
-- Attach to the running `moleworks_ros` container with `docker_attach.sh` and work from one tmux session inside it.
-- Once inside the container, prefer container-local tmux as the shared control plane. Do not hide shared stack bringup behind a separate host-side tmux session that attaches into the container.
+- Assume the current shell is already inside the target `moleworks_ros` runtime unless the user explicitly says otherwise or direct checks prove you are on the host.
+- If you are already inside the container, stay in that shell and use container-local tmux as the shared control plane. Do not detach and re-attach through Docker just to normalize the workflow.
+- Only use `docker_attach.sh` when the user explicitly wants a host-to-container attach flow or when direct checks prove you are on the host shell.
 - Do not use `docker exec` for normal interactive bringup.
+- If the Docker CLI is unavailable in the current shell but `/workspace/moleworks/ros2_ws` and the Newton worktree are already mounted locally, treat the current shell as the active runtime shell and continue with the documented fallback-style preflight below instead of stalling on container discovery.
 - Keep the container default Fast DDS setup.
 - Do not export `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp` or `CYCLONEDDS_URI` for this workflow.
 - Use `ROS_DOMAIN_ID=24` unless the user explicitly asks for a different domain.
 - If the user asks for an isolated side stack, use one tmux session per ROS domain instead of mixing domains in one session.
 - On this Fast DDS setup, keep `ROS_DOMAIN_ID <= 232`. Domain `333` is invalid here.
-- Newton runs with `gui:=true` here.
+- Use `/workspace/moleworks/ros2_ws` as the canonical in-container ROS workspace path.
+- Source `/workspace/moleworks/ros2_ws/install/setup.bash` as the single ROS entrypoint. Do not stack `/opt/ros/jazzy/setup.bash` plus `install/local_setup.bash` in this workflow.
+- If `install/setup.bash` warns about missing Nav2 package prefixes, the workspace install is stale. Remove the stale install prefixes and re-source `install/setup.bash` before debugging controller behavior.
+- Default to headless Newton for stack bringup and automated single-workspace testing. Only add `--gui` or `gui:=true` when the user explicitly wants visual inspection.
 - If the user asks to load a map, load the same terrain artifact on both sides:
   - Newton soil via the existing `--elevation-map` support in `standalone_fee_terra_newton_env.py`
   - ROS excavation mapping via `design_bag_path`
+- For the Hong no-holes `fee_terra` workflow, use the default floating-base reset pose
+  `x=-0.001212`, `y=0.299973`, `yaw=180 deg` unless the user explicitly asks for a different pose.
+- The pose-reset order matters on Hong no-holes: if you are also applying a Newton runtime profile, apply the
+  runtime profile first and only then call `/mole/reset_robot_pose`, because the runtime-profile reset can
+  overwrite the floating-base orientation.
 - The terrain seed order is strict: restart Newton sim with the requested map, or load terrain on the Newton side at runtime, before launching robot/perception/dig.
 - Do not try to reseed Newton terrain after the rest of the ROS stack is already live. If the Newton soil seed is wrong, restart the split stack in the right order instead of patching it mid-run.
 - Source ROS once per tmux window, not before every single command.
+- In tmux, run one long-lived stack process in the foreground per pane. Do not use `nohup` for shared bringup panes.
+- Before reusing a pane, stop the current process with `Ctrl-C` and verify the old process tree is gone.
 - Before every restart, check RAM, VRAM, and stale ROS/Newton processes. Do not stack a new sim on top of leftovers.
-- For Nav2 or any sim driving workflow, enable the arm hold controller by default so the arm does not sag while the base moves.
+- For Nav2 or any split sim driving workflow, do not add deleted arm/wheel/turn hold-controller nodes back into the stack. The current Newton stale-command semantics should keep arm, turn, and steering stable without them.
+- For the integrated `single_workspace` workflow, there should be no hold-controller nodes. The BT owns the arm-MPC/dig handoff directly.
+- Before sending Nav2 or split-stack goals, verify `/mole/actuator_commands` and `/mole/cmd_vel_smoothed` do not have duplicate publishers. In integrated `single_workspace`, seeing both `mole_arm_mpc_controller` and `dig_3d_controller` as `/mole/actuator_commands` publisher endpoints is normal; extra hold/drive publishers are the problem.
+- In the current local Newton `fee_terra` workflow, TF is exposed on the global `/tf` and `/tf_static`
+  topics even when `robot_namespace:=mole` is set. Do not assume `/mole/tf` and `/mole/tf_static`
+  exist in this stack. Any ad-hoc `TransformListener`, `tf2_echo`, or probe node should use the default
+  global TF topics unless you have explicitly verified a namespaced TF transport on the branch you are running.
 - Do not substitute ad-hoc viewer scripts for `standalone_fee_terra_newton_env.py` or `standalone_dig_newton_env.py` when the user expects ROS bridge, pointcloud, or perception parity.
 
-## 0) Host Preflight
+## 0) Shell Identity And Attach Fallback
 
-Find the running container and check resources:
+First determine whether the current shell is already the target runtime shell. Prefer this before any Docker CLI step:
+
+```bash
+test -f /.dockerenv && echo IN_DOCKERENV || echo NO_DOCKERENV
+test -f /workspace/moleworks/ros2_ws/install/setup.bash && echo HAS_ROS_WS || echo NO_ROS_WS
+test -d /home/lorenzo/moleworks/moleworks_newton && echo HAS_NEWTON_WORKTREE || echo NO_NEWTON_WORKTREE
+which docker || true
+```
+
+If `/.dockerenv` exists and `/workspace/moleworks/ros2_ws/install/setup.bash` is present, assume you are already in the correct container and skip Docker discovery/attach.
+
+Only if those checks fail, or if the user explicitly says you are starting from the host shell, inspect the running container and host resources:
 
 ```bash
 docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
@@ -50,7 +81,7 @@ cd /home/lorenzo/moleworks/ros2_ws/src/moleworks_ros/docker
 ./docker_launch.sh moleworks_ros:latest mole.Dockerfile --name moleworks_ros --detach
 ```
 
-Attach the normal way:
+Attach the normal way only in that host-shell case:
 
 ```bash
 cd /home/lorenzo/moleworks/ros2_ws/src/moleworks_ros/docker
@@ -59,26 +90,41 @@ cd /home/lorenzo/moleworks/ros2_ws/src/moleworks_ros/docker
 
 If `lorenzo` is not present in that container, retry with `--user root`.
 
-## 1) Container Preflight
+If `docker` is not available in the current shell, but the machine already has the mounted ROS workspace and Newton worktree, treat the current shell as the active runtime shell and continue immediately:
 
-Inside the attached shell:
+```bash
+test -d /workspace/moleworks/ros2_ws
+test -d /home/lorenzo/moleworks/moleworks_newton
+source /workspace/moleworks/ros2_ws/install/setup.bash
+source /home/lorenzo/moleworks/moleworks_newton/.venv/bin/activate
+```
+
+For this fallback-style path, keep using the same tmux layout, `ROS_DOMAIN_ID`, and Foxglove ports described below. The only difference is the shell you launch them from.
+
+## 1) Runtime Shell Preflight
+
+In the active runtime shell (already in-container by default, or after an explicit attach/fallback decision):
 
 ```bash
 export ROS_DOMAIN_ID=24
-source /opt/ros/jazzy/setup.bash
 source /workspace/moleworks/ros2_ws/install/setup.bash
 export MW_ROS_WS=/workspace/moleworks/ros2_ws
 export MW_LOCAL_SURFACE_PKG=package://mole_maps/maps/hong0326_no_holes/hong0326_no_holes_surface
 export MW_LOCAL_SURFACE_MCAP=/workspace/moleworks/ros2_ws/src/moleworks_maps/maps/hong0326_no_holes/hong0326_no_holes_surface/hong0326_no_holes_surface_0.mcap
+export MW_LOCAL_SURFACE_DEFAULT_X_M=-0.001212
+export MW_LOCAL_SURFACE_DEFAULT_Y_M=0.299973
+export MW_LOCAL_SURFACE_DEFAULT_YAW_DEG=180.0
 ```
 
-Overlay guard for this container:
+Overlay guard for this runtime shell:
 
 ```bash
 export ROS_DOMAIN_ID=24
-source /opt/ros/jazzy/setup.bash
 source /workspace/moleworks/ros2_ws/install/setup.bash
 export MW_ROS_WS=/workspace/moleworks/ros2_ws
+export MW_LOCAL_SURFACE_DEFAULT_X_M=-0.001212
+export MW_LOCAL_SURFACE_DEFAULT_Y_M=0.299973
+export MW_LOCAL_SURFACE_DEFAULT_YAW_DEG=180.0
 readlink -f "$MW_ROS_WS/install/setup.bash"
 ros2 pkg prefix mole_msgs
 ros2 pkg prefix mole_ocs2_arm_controller
@@ -95,11 +141,14 @@ overlay. Immediately re-source `/workspace/moleworks/ros2_ws/install/setup.bash`
 before any `ros2 launch`, `ros2 run`, or service call. If `ros2 pkg prefix mole_ocs2_arm_controller` fails
 or points somewhere else, stop and fix the overlay first.
 
-Run Newton branch commands from the active Newton worktree root. Example:
+Run Newton branch commands from the local `moleworks_newton` checkout. Keep the sibling
+`newton` checkout present at `~/moleworks/newton`, because `moleworks_newton` resolves
+editable `tool.uv.sources` from `../newton`. Example:
 
 ```bash
-cd /workspace/moleworks/.worktrees/moleworks_newton_pre_pr113_redesign
+cd /home/lorenzo/moleworks/moleworks_newton
 export MW_NEWTON_ROOT=$PWD
+test -d /home/lorenzo/moleworks/newton
 ```
 
 For Newton standalone ROS bridge scripts from the worktree, also activate the worktree venv after sourcing the ROS overlay:
@@ -109,8 +158,17 @@ source /workspace/moleworks/ros2_ws/install/setup.bash
 source "$MW_NEWTON_ROOT/.venv/bin/activate"
 ```
 
+If Newton reports `ModuleNotFoundError: No module named 'mcap'` or similar MCAP support failures,
+repair the worktree venv before retrying:
+
+```bash
+sudo chown -R lorenzo:lorenzo "$MW_NEWTON_ROOT/.venv" 2>/dev/null || true
+rm -rf "$MW_NEWTON_ROOT/.venv"
+(cd "$MW_NEWTON_ROOT" && uv sync)
+```
+
 If the user explicitly asks for a different ROS domain, replace `24` consistently in every pane and in every
-`nohup env ROS_DOMAIN_ID=...` launch. Do not mix domains inside one tmux session.
+launch command. Do not mix domains inside one tmux session.
 
 Recommended naming for isolated runs:
 
@@ -153,6 +211,16 @@ Confirm X11 is present before launch:
 echo "DISPLAY=$DISPLAY"
 ```
 
+Quick TF health check for the namespaced Moleworks stack:
+
+```bash
+timeout 15 bash -lc 'export ROS_DOMAIN_ID=24; source /workspace/moleworks/ros2_ws/install/setup.bash; ros2 run tf2_ros tf2_echo map BASE_GRAV --ros-args -r __ns:=/mole 2>&1' | head -20
+```
+
+If you launch your own Python probe, default to the global TF topics for this workflow. Only force a
+`namespace="mole"` TF subscription after you have verified that the running branch actually publishes
+`/mole/tf` and `/mole/tf_static`.
+
 If GUI apps fail to appear, also verify the host Xauth file exists:
 
 ```bash
@@ -163,10 +231,51 @@ Clean up stale session state:
 
 ```bash
 tmux kill-session -t newton_sim 2>/dev/null || true
-pkill -f 'standalone_fee_terra_newton_env|standalone_dig_newton_env|native_fee_terra_default_viewer.py|newton_bridge.launch.py|robot.launch.py|mole_state_publisher|mole_perception_bringup|dig_3d_controller_cpp.launch.py|compare_dig3d_live_obs.py|foxglove_bridge' || true
+self=$$
+mw_stack_patterns=(
+  'standalone_fee_terra_newton_env.py'
+  'standalone_dig_newton_env.py'
+  'native_fee_terra_default_viewer.py'
+  'newton_bridge.launch.py'
+  'robot.launch.py'
+  'mole_state_publisher.launch.py'
+  'mole_perception_bringup'
+  'dig_3d_controller_cpp.launch.py'
+  'compare_dig3d_live_obs.py'
+  'foxglove_bridge'
+  'ackermann_drive_controller_node'
+  'controller_server'
+  'planner_server'
+  'behavior_server'
+  'bt_navigator'
+  'velocity_smoother'
+  'collision_monitor'
+  'waypoint_follower'
+  'opennav_docking'
+  'lifecycle_manager_navigation'
+  'odom_nav2_adapter'
+  'dynamic_footprint_publisher'
+  'robot_state_publisher/robot_state_publisher'
+  'mole_joint_state_publisher_node'
+  'elevation_mapping_node.py'
+)
+for pat in "${mw_stack_patterns[@]}"; do
+  for pid in $(pgrep -f "$pat" || true); do
+    [ "$pid" = "$self" ] && continue
+    kill "$pid" 2>/dev/null || true
+  done
+done
 sleep 2
-pkill -9 -f 'standalone_fee_terra_newton_env|standalone_dig_newton_env|native_fee_terra_default_viewer.py|newton_bridge.launch.py|robot.launch.py|mole_state_publisher|mole_perception_bringup|dig_3d_controller_cpp.launch.py|compare_dig3d_live_obs.py|foxglove_bridge' || true
+for pat in "${mw_stack_patterns[@]}"; do
+  for pid in $(pgrep -f "$pat" || true); do
+    [ "$pid" = "$self" ] && continue
+    kill -9 "$pid" 2>/dev/null || true
+  done
+done
 ```
+
+Do not use bare `pkill -f` against a large regex inside a shared shell unless you are sure it will not match
+the shell that is running the cleanup command.
 
 Also check for orphan attach-shell parents that can keep background `nohup` launches alive even after tmux is gone:
 
@@ -195,8 +304,7 @@ before blaming Newton or the bridge:
 ros2 topic info /mole/actuator_commands -v
 ```
 
-For the minimal Newton stack, unexpected publishers such as `dig_3d_controller`,
-`wheel_hold_controller`, or a stale planner/executor mean the domain is still contaminated.
+For the minimal Newton stack, unexpected publishers such as `dig_3d_controller` or a stale planner/executor mean the domain is still contaminated.
 Kill that old launch tree first and only then re-test passthrough.
 
 If the `ros2` CLI graph looks empty or inconsistent while the processes are clearly alive,
@@ -239,14 +347,46 @@ tmux list-windows -t ros123_bridge
 Use this layout when the task is low-level command validation, bridge-only diagnostics, or Foxglove inspection
 below `robot.launch.py` / Nav2.
 
+For fast Newton + Nav2 validation, prefer this narrower layout instead of the full perception/dig layout:
+
+```bash
+tmux new-session -d -s newton_sim -n newton
+tmux new-window -t newton_sim -n robot
+tmux new-window -t newton_sim -n state_pub
+tmux new-window -t newton_sim -n ackermann
+tmux new-window -t newton_sim -n nav2
+tmux new-window -t newton_sim -n foxglove
+tmux new-window -t newton_sim -n golden
+tmux new-window -t newton_sim -n debug
+tmux list-windows -t newton_sim
+```
+
+Use this profile when the goal is:
+
+- Foxglove visibility
+- Ackermann drive validation
+- Nav2 path following
+- the lateral-shift golden maneuver
+
 For the integrated Terra single-workspace workflow, use the `single_ws` window instead of the separate
 `robot`, `state_pub`, `perception`, and `dig` windows.
+
+For the integrated Terra single-workspace workflow, prefer the minimal layout instead of the full split stack:
+
+```bash
+tmux new-session -d -s newton_${ROS_DOMAIN_ID} -n newton
+tmux new-window -t newton_${ROS_DOMAIN_ID} -n stack
+tmux new-window -t newton_${ROS_DOMAIN_ID} -n debug
+tmux new-window -t newton_${ROS_DOMAIN_ID} -n foxglove
+tmux list-windows -t newton_${ROS_DOMAIN_ID}
+```
+
+Use the default tmux socket. Do not hide this run behind a custom socket unless the user explicitly asks for isolation.
 
 Recommended shell prologue for each window:
 
 ```bash
 export ROS_DOMAIN_ID=24
-source /opt/ros/jazzy/setup.bash
 source /workspace/moleworks/ros2_ws/install/setup.bash
 export MW_ROS_WS=/workspace/moleworks/ros2_ws
 readlink -f "$MW_ROS_WS/install/setup.bash"
@@ -256,9 +396,46 @@ If you start a window with a one-shot `tmux new-window '...'` command instead of
 an interactive shell first, inline the same `source` sequence inside that quoted command.
 Do not assume the standalone Newton script can import ROS Python packages otherwise.
 
+### Fast Nav2 Loop
+
+When the task is only Newton + Ackermann + Nav2 validation, stay on the narrow `newton + robot + state_pub + ackermann + nav2 + foxglove + debug` layout. Do not launch perception, Dig3D, or `single_workspace` unless the user explicitly needs them.
+
+If only Nav2 / Ackermann packages changed, rebuild the smallest useful set first:
+
+```bash
+colcon build --symlink-install --packages-select \
+  mole_msgs \
+  mole_highlevel_msgs \
+  mole_nav2_utils \
+  mole_nav2_bringup \
+  mole_highlevel_controller_cpp
+```
+
+If only Python or YAML files changed under `mole_bringup`, `mole_nav2_bringup`, or the Newton bridge, skip the rebuild and restart only the affected tmux windows. Avoid broad `--packages-up-to` rebuilds for this loop; unrelated packages such as `ocs2_robotic_assets` can fail and waste the iteration.
+
+For fast headless Nav2 bringup, append `--disable-lidar-publisher` to `standalone_fee_terra_newton_env.py` unless the user explicitly needs the soil point cloud. The point cloud is not needed for base-nav smoke tests and this avoids the known headless crash:
+
+```text
+RuntimeError: Soil point cloud sampled no points inside imported terrain bounds.
+```
+
+Use this validation order:
+
+1. `timeout 15 ros2 topic echo /mole/state --once`
+2. `ros2 action list | rg "/mole/(navigate_to_pose|follow_path)"`
+3. `ros2 topic info /mole/actuator_commands -v`
+4. `ros2 topic info /mole/cmd_vel_smoothed -v`
+5. straight goal smoke test
+6. mild curved goal smoke test
+7. `nav2_lateral_shift_golden.py`
+
+If a curved or lateral run leaves Newton in repeated `numerical_failure` resets, restart only that `newton_sim_<domain>` session before the next case. Do not keep sending goals into a reset-churning bridge.
+
 ## 3) Launch Windows
 
-Use detached jobs so the panes stay usable. Write logs to `/tmp`.
+Run the main stack in the foreground in each tmux pane. One pane should own one long-lived process.
+Do not use `nohup` inside these shared bringup panes. That is how duplicate launch trees survive pane restarts
+and later fight each other on `/tf`, `/clock`, `/mole/actuator_commands`, and Nav2 topics.
 
 ### newton
 
@@ -267,33 +444,30 @@ Hong no-holes surface into Newton itself. This is the Newton-side half of the du
 
 ```bash
 cd "$MW_NEWTON_ROOT"
-nohup env ROS_DOMAIN_ID=24 \
-  python scripts/ros/standalone_fee_terra_newton_env.py \
+python scripts/ros/standalone_fee_terra_newton_env.py \
   --elevation-map "$MW_LOCAL_SURFACE_MCAP" \
   --elevation-layer elevation \
-  --max-depth-layer desired_elevation \
-  --gui \
-  > /tmp/newton.log 2>&1 &
-tail -f /tmp/newton.log
+  --max-depth-layer desired_elevation
+
+# For fast headless Nav2 validation, add --disable-lidar-publisher.
 ```
+
+Add `--gui` only when the user explicitly wants to inspect Newton visually.
 
 If the command is launched directly from `tmux new-window '...'`, write it like this instead:
 
 ```bash
-cd "$MW_NEWTON_ROOT"
-nohup bash -lc '
+tmux new-window -t newton_sim -n newton "bash -lc '
   export ROS_DOMAIN_ID=24
-  source /opt/ros/jazzy/setup.bash
   source /workspace/moleworks/ros2_ws/install/setup.bash
   source "$MW_NEWTON_ROOT/.venv/bin/activate"
   export MW_LOCAL_SURFACE_MCAP=/workspace/moleworks/ros2_ws/src/moleworks_maps/maps/hong0326_no_holes/hong0326_no_holes_surface/hong0326_no_holes_surface_0.mcap
+  cd \"$MW_NEWTON_ROOT\"
   exec python scripts/ros/standalone_fee_terra_newton_env.py \
     --elevation-map "$MW_LOCAL_SURFACE_MCAP" \
     --elevation-layer elevation \
-    --max-depth-layer desired_elevation \
-    --gui
-' > /tmp/newton.log 2>&1 &
-tail -f /tmp/newton.log
+    --max-depth-layer desired_elevation
+'"
 ```
 
 That exact failure mode shows up as `ModuleNotFoundError: No module named 'mole_msgs'`.
@@ -304,47 +478,34 @@ For non-`fee_terra` tasks, fall back to `standalone_dig_newton_env.py` and pass 
 If the branch is using the ROS launch wrapper instead, use:
 
 ```bash
-nohup env ROS_DOMAIN_ID=24 \
-  ros2 launch mole_bringup newton_bridge.launch.py \
+ros2 launch mole_bringup newton_bridge.launch.py \
   use_sim_time:=true \
   gui:=true \
-  publish_tf:=false \
-  > /tmp/newton.log 2>&1 &
-tail -f /tmp/newton.log
+  publish_tf:=false
 ```
 
 ### robot
 
 ```bash
-nohup env ROS_DOMAIN_ID=24 \
-  ros2 launch mole_bringup robot.launch.py \
+ros2 launch mole_bringup robot.launch.py \
   use_sim_time:=true \
   on_machine:=false \
   launch_low_level:=false \
   launch_perception:=false \
-  launch_rviz:=true \
+  launch_rviz:=false \
   launch_foxglove:=false \
-  launch_arm_hold_controller:=true \
-  activate_arm_hold_controller:=true \
-  launch_turn_hold_controller:=true \
-  activate_turn_hold_controller:=false \
-  elevation_map_frame_mode:=map \
-  > /tmp/robot.log 2>&1 &
-tail -f /tmp/robot.log
+  robot_namespace:=mole
 ```
 
-For this skill, treat arm hold as part of the default sim-nav safety posture. Do not launch a Nav2 driving stack in Newton sim with the arm unheld unless the user explicitly asks for that.
+For this skill, rely on the native Newton stale-command freeze semantics for uncommanded arm, turn, and steering joints. Do not add deleted helper nodes back into the sim-nav stack.
 
 For the bridge-only layout, use `robot` as the model/TF sidecar instead of `robot.launch.py`:
 
 ```bash
-nohup env ROS_DOMAIN_ID=123 \
-  ros2 launch mole_joint_state_publisher mole_state_publisher.launch.py \
+ros2 launch mole_joint_state_publisher mole_state_publisher.launch.py \
   use_sim_time:=true \
   namespace:=mole \
-  publish_frequency:=25.0 \
-  > /tmp/robot.log 2>&1 &
-tail -f /tmp/robot.log
+  publish_frequency:=25.0
 ```
 
 This is the minimal sidecar that makes Foxglove show the excavator model on a bridge-only domain. It provides:
@@ -361,80 +522,149 @@ Without it, Foxglove can connect successfully but still show no robot geometry.
 Use this when `map -> CABIN` is disconnected or when sim TF needs the Mole state publisher path:
 
 ```bash
-nohup env ROS_DOMAIN_ID=24 \
-  ros2 launch mole_joint_state_publisher mole_state_publisher.launch.py \
-  use_sim_time:=true \
-  > /tmp/state_pub.log 2>&1 &
-tail -f /tmp/state_pub.log
+ros2 launch mole_joint_state_publisher mole_state_publisher.launch.py \
+  use_sim_time:=true
 ```
 
 ### perception
 
-For Dig3D parity in Newton sim, use local excavation mapping and keep robot self-filter off unless the user explicitly wants a different setting:
+For Dig3D parity in Newton sim, use the same local perception contract as the machine-facing stack:
+
+- `mapping_profile:=local`
+- `enable_robot_self_filter:=true`
+- let `mole_perception_bringup` keep its default local runtime choices instead of overriding them by hand
+- this means elevation mapping consumes the canonical filtered cloud when the self-filter is healthy
+- excavation mapping consumes the default local upstream layer `inpaint` from `elevation_map_filter`, not `smooth`
 
 ```bash
-nohup env ROS_DOMAIN_ID=24 \
-  ros2 launch mole_perception_bringup bringup.launch.py \
+ros2 launch mole_perception_bringup bringup.launch.py \
   use_sim_time:=true \
+  on_machine:=false \
   mapping_profile:=local \
   enable_camera:=false \
   enable_lidar:=false \
   enable_elevation_mapping:=true \
   enable_excavation_mapping:=true \
-  enable_robot_self_filter:=false \
-  excavation_mapping_upstream_layer:=smooth \
-  > /tmp/perception.log 2>&1 &
-tail -f /tmp/perception.log
+  enable_robot_self_filter:=true \
+  design_bag_path:=$MW_LOCAL_SURFACE_MCAP
 ```
+
+If the current image has a broken `mole_pointcloud_filter` runtime (for example a Fast-CDR symbol lookup error),
+do not switch excavation mapping to `smooth` as a workaround. Keep `mapping_profile:=local`, keep the same
+`design_bag_path`, and use a temporary fallback with:
+
+```bash
+enable_robot_self_filter:=false
+```
+
+That preserves the correct local mapping contract and the despiked/inpainted excavation-map handoff, even if the
+filtered-cloud producer is temporarily unavailable in this image.
 
 ### single_ws
 
 For the full local Terra single-workspace workflow, prefer one integrated launch over the split
-`robot` + `state_pub` + `perception` + `dig` bringup. This launch already manages wheel hold,
-turn hold, OCS2 arm MPC, Dig3D, workspace planning, and the Terra executor.
+`robot` + `state_pub` + `perception` + `dig` bringup. This launch manages OCS2 arm MPC, Dig3D,
+workspace planning, and the Terra executor in one place. There should be no hold-controller nodes
+in this workflow.
+
+Use the canonical bundled local workspace preset unless the user explicitly asks for a different
+testing geometry:
+- `workspace_planner/config/canonical_dig_dump_workspace.yaml`
+- integrated bringup arg: `workspace_config_name:=canonical_dig_dump_workspace.yaml`
 
 Use the Hong no-holes local seed on both sides:
 - Newton: `--elevation-map "$MW_LOCAL_SURFACE_MCAP"`
-- ROS: `design_bag_path:=$MW_LOCAL_SURFACE_PKG`
+- ROS: `design_bag_path:=$MW_LOCAL_SURFACE_MCAP`
+
+For the default Hong no-holes single-workspace start pose, reset the base to `yaw=180 deg` after any Newton-side
+runtime-profile apply and before starting the integrated ROS stack:
+
+```bash
+ros2 service call /mole/reset_robot_pose mole_msgs/srv/ResetRobotPose "{
+  x_m: $MW_LOCAL_SURFACE_DEFAULT_X_M,
+  y_m: $MW_LOCAL_SURFACE_DEFAULT_Y_M,
+  yaw_deg: $MW_LOCAL_SURFACE_DEFAULT_YAW_DEG
+}"
+```
+
+Do not do this reset before `/mole/newton/apply_runtime_profile` when the Hong no-holes workspace target is also
+being authored, because the runtime-profile reset can put the bucket back on top of the obstacle.
 
 Do not start `single_workspace.launch.py` against a Newton viewer that was not launched with the same
 surface artifact. That creates exactly the perception mismatch where lidar sees one terrain and ROS
 excavation mapping is seeded from another.
 
+If you are not intentionally testing a separate planner overlay, do not source an extra temporary workspace
+before this launch. The default `moleworks_ros` install is the expected overlay. Only source an additional
+workspace when the user explicitly wants that planner build.
+
+#### Local Workspace Planner Bootstrap
+
+When the user explicitly wants the local workspace-planner flow on the Hong no-holes terrain, use the
+surface-only seed bag and the canonical local fan workspace. This is the current integrated bootstrap:
+
 ```bash
-nohup env ROS_DOMAIN_ID=24 \
-  bash -lc 'source /opt/ros/jazzy/setup.bash && \
-  source /workspace/moleworks/ros2_ws/install/setup.bash && \
-  source /tmp/sw100_wspl_install/setup.bash && \
+bash -lc 'source /workspace/moleworks/ros2_ws/install/setup.bash && \
   ros2 launch mole_bringup single_workspace.launch.py \
   use_sim_time:=true \
   on_machine:=false \
   launch_rviz:=false \
-  enable_robot_self_filter:=false \
-  excavation_mapping_upstream_layer:=smooth \
-  use_dump_pitch_schedule:=false \
-  ocs2_task_profile:=real_no_collisions \
+  robot_namespace:=mole \
+  workspace_config_name:=canonical_dig_dump_workspace.yaml \
   design_map_name:=none \
-  design_bag_path:=$MW_LOCAL_SURFACE_PKG \
-  workspace_config_path:=/workspace/moleworks/ros2_ws/src/moleworks_ros/high_level_planning/workspace_planner/config/test_workspace_dump_point_45.yaml' \
-  > /tmp/single_ws.log 2>&1 &
-tail -f /tmp/single_ws.log
+  design_bag_path:=$MW_LOCAL_SURFACE_MCAP \
+  workspace_planner_timeout_sec:=60.0 \
+  ocs2_task_profile:=real_collisions \
+  enable_robot_self_filter:=true'
 ```
+
+Why this exact contract:
+
+- `canonical_dig_dump_workspace.yaml` is the current local dig/dump fan preset used by the workspace planner.
+- `design_bag_path:=$MW_LOCAL_SURFACE_MCAP` seeds excavation mapping with the Hong surface-only bag so
+  `/excavation_mapping/apply_runtime_profile` can succeed before Terra starts.
+- `design_map_name:=none` avoids looking for a nonexistent `hong0326_no_holes_design` artifact; the explicit
+  bag path is the intended local bootstrap.
+- `enable_robot_self_filter:=true` keeps elevation mapping on the filtered-cloud local contract and keeps
+  excavation mapping on the final processed `inpaint` layer.
+
+Recommended run order for single-workspace:
+
+1. Start Newton headless with the requested `--elevation-map`.
+2. Wait for `/mole/reset_robot_pose`.
+3. Reset the Hong no-holes floating base to `yaw=180 deg`.
+4. Launch `single_workspace.launch.py` with the same `design_bag_path`.
+5. Verify there are no hold-controller nodes:
+
+```bash
+ros2 node list | rg 'hold|wheel|turn_hold|arm_hold'
+```
+
+6. Watch for this expected early sequence in the stack log:
+   - `LoadWorkspaceActionNode: workspace loaded successfully`
+   - `ComputeWorkspaceNextActionActionNode: DIG_PASS`
+   - `ResetArmMpcActionNode: MPC reset succeeded`
+   - `EnableArmMpcController -> SUCCESS`
+   - `move_to_dig -> SUCCESS`
+   - `dig_action -> RUNNING`
+
+Current known failure signature on `real_collisions`:
+- startup/bootstrap is no longer the blocker if the flags above are off
+- the first cycle can still fail later at `move_to_dump` with
+  `ArmMpcMoveActionNode: target not reached within 30.00 s`
+- treat that as a dump-leg motion problem, not a map-load or arm-controller activation problem
 
 ### dig
 
 Bring up Dig3D only after Newton, robot, state publisher, and perception are healthy:
 
 ```bash
-nohup env ROS_DOMAIN_ID=24 \
-  ros2 launch mole_highlevel_controller_cpp dig_3d_controller_cpp.launch.py \
+ros2 launch mole_highlevel_controller_cpp dig_3d_controller_cpp.launch.py \
   use_sim_time:=true \
   config:=no_aoa \
   mode:=weightedobs_rate0050_s203_1750 \
   activate_controller:=true \
-  run_action:=false \
-  > /tmp/dig3d.log 2>&1 &
-tail -f /tmp/dig3d.log
+  run_action:=false
 ```
 
 ### foxglove
@@ -442,24 +672,18 @@ tail -f /tmp/dig3d.log
 Optional:
 
 ```bash
-nohup env ROS_DOMAIN_ID=24 \
-  ros2 launch foxglove_bridge foxglove_bridge_launch.xml \
+ros2 launch foxglove_bridge foxglove_bridge_launch.xml \
   port:=8765 \
-  use_sim_time:=true \
-  > /tmp/foxglove.log 2>&1 &
-tail -f /tmp/foxglove.log
+  use_sim_time:=true
 ```
 
 For isolated side stacks, prefer a non-default port and state it explicitly, for example:
 
 ```bash
-nohup env ROS_DOMAIN_ID=123 \
-  ros2 launch foxglove_bridge foxglove_bridge_launch.xml \
+ros2 launch foxglove_bridge foxglove_bridge_launch.xml \
   port:=8766 \
   address:=0.0.0.0 \
-  use_sim_time:=true \
-  > /tmp/foxglove.log 2>&1 &
-tail -f /tmp/foxglove.log
+  use_sim_time:=true
 ```
 
 If Foxglove connects but the excavator is not visible, check for these topics first:
@@ -470,6 +694,43 @@ ros2 topic info /mole/robot_description -v
 ```
 
 That failure mode is usually missing model publishers, not a bridge failure.
+
+### ackermann
+
+Use the Ackermann drive controller as the low-level base executor for Nav2:
+
+```bash
+ros2 launch mole_highlevel_controller_cpp joy_drive_cpp.launch.py \
+  use_sim_time:=true \
+  on_machine:=false \
+  activate_controller:=true \
+  robot_namespace:=mole \
+  cmd_vel_remap:=cmd_vel_smoothed
+```
+
+### nav2
+
+Bring up Nav2 without RViz in its own window:
+
+```bash
+ros2 launch mole_nav2_bringup bringup.launch.py \
+  use_sim_time:=true \
+  on_machine:=false \
+  launch_rviz:=false \
+  robot_namespace:=mole \
+  publish_static_map_odom_tf:=true
+```
+
+### golden
+
+For the standard lateral-shift regression, run the golden directly in tmux and log it:
+
+```bash
+python3 /workspace/moleworks/ros2_ws/src/moleworks_ros/mole_bringup/scripts/nav2_lateral_shift_golden.py \
+  --robot-ns mole \
+  --lateral-m 1.0 \
+  --timeout-sec 180.0 2>&1 | tee /tmp/nav2_golden.log
+```
 
 ## 4) Sanity Checks
 
@@ -488,17 +749,54 @@ If the Newton GUI seems missing, inspect the host X tree:
 xwininfo -root -tree 2>/dev/null | rg 'Newton Viewer|RViz'
 ```
 
-For sim-nav bringup, also confirm the hold controllers ended up where you expect:
+For the fast Nav2 layout, also verify these before sending a goal:
 
 ```bash
-ros2 lifecycle get /mole/arm_hold_controller
+timeout 8 ros2 topic hz /clock
+timeout 15 ros2 topic echo /mole/state --once
+timeout 8 ros2 run tf2_ros tf2_echo map BASE_GRAV --ros-args -r __ns:=/mole
+ros2 action list | sort
+ros2 topic info /mole/actuator_commands -v
+ros2 topic info /mole/cmd_vel_smoothed -v
+```
+
+Expected result:
+
+- `/clock` is live at a stable sim rate
+- `map -> BASE_GRAV` resolves
+- `/mole/navigate_to_pose` and `/mole/follow_path` exist
+- `/mole/actuator_commands` has exactly one `ackermann_drive_controller` publisher in the Nav2 layout; no hold-controller publishers
+- `/mole/cmd_vel_smoothed` has exactly one `velocity_smoother` publisher
+
+Do not use `ros2 topic echo --once /mole/cmd_vel_smoothed` as the primary health check before a goal is active. That topic can be idle until Nav2 is actually driving.
+
+For sim-nav bringup, confirm the drive chain is healthy:
+
+```bash
 ros2 lifecycle get /mole/ackermann_drive_controller
 ros2 topic info /mole/actuator_commands -v
+ros2 topic info /mole/cmd_vel_smoothed -v
+ros2 node list | sort | uniq -d
 ```
 
 Expected state after startup:
-- `/mole/arm_hold_controller`: `active [3]`
-- `/mole/ackermann_drive_controller`: usually `inactive [2]` until you intentionally enable driving
+- `/mole/ackermann_drive_controller`: `active [3]` for the fast Nav2 layout
+- `/mole/actuator_commands`: exactly one `ackermann_drive_controller` publisher in the Nav2 layout, or one dig/executor publisher in the Terra layout; no stale extras and no hold-controller publishers in the Nav2 layout
+- `/mole/cmd_vel_smoothed`: exactly one `velocity_smoother` publisher when the Nav2 layout is up
+- `ros2 node list | sort | uniq -d`: no duplicate node names
+
+For integrated `single_workspace`, also check:
+
+```bash
+ros2 lifecycle get /mole/mole_arm_mpc_controller
+ros2 node list | rg 'hold|wheel|turn_hold|arm_hold' || true
+ros2 topic info /mole/actuator_commands -v
+```
+
+Expected state:
+- no hold-controller nodes
+- `mole_arm_mpc_controller` may still show as `inactive` before the first `EnableArmMpcController`
+- `/mole/actuator_commands` may list both `mole_arm_mpc_controller` and `dig_3d_controller`; that is expected for this integrated workflow
 
 For bridge-only stacks, the expected minimum graph is:
 
@@ -512,12 +810,11 @@ For bridge-only stacks, the expected minimum graph is:
 - `/tf`
 - `/tf_static`
 
-If the arm is visibly sinking even though arm hold was launched, do not trust the current hold target. Re-capture it from the reset posture:
+If the arm is visibly sinking or shaking, do not look for deleted hold-controller nodes. Reset the robot and check for competing actuator publishers instead:
 
 ```bash
-ros2 lifecycle set /mole/arm_hold_controller deactivate
 ros2 service call /mole/reset_robot std_srvs/srv/Trigger '{}'
-ros2 lifecycle set /mole/arm_hold_controller activate
+ros2 topic info /mole/actuator_commands -v
 ```
 
 Use `/reset` only when you want the full Newton environment reset. Use `/mole/reset_robot` when you want to respawn the robot without changing terrain.
@@ -534,7 +831,9 @@ For Dig3D parity runs, keep the rollout order strict:
 6. Apply the runtime profile to both:
    - `/mole/excavation_mapping/apply_runtime_profile`
    - `/mole/newton/apply_runtime_profile`
-7. Only then launch Dig3D and send `/run_dig_3d`.
+7. On Hong no-holes, if the user did not request a different spawn pose, call `/mole/reset_robot_pose` with
+   `x=-0.001212`, `y=0.299973`, `yaw=180 deg` after the runtime-profile apply.
+8. Only then launch Dig3D and send `/run_dig_3d`.
 
 Do not send the goal before the runtime profile is applied on both sides.
 Do not treat “map loaded” as complete unless both the Newton soil and ROS excavation mapping were seeded from the same artifact.
@@ -549,9 +848,47 @@ Inside the container:
 
 ```bash
 tmux kill-session -t newton_sim 2>/dev/null || true
-pkill -f 'standalone_fee_terra_newton_env|standalone_dig_newton_env|native_fee_terra_default_viewer.py|newton_bridge.launch.py|robot.launch.py|mole_state_publisher|mole_perception_bringup|dig_3d_controller_cpp.launch.py|compare_dig3d_live_obs.py|foxglove_bridge' || true
+self=$$
+mw_stack_patterns=(
+  'standalone_fee_terra_newton_env.py'
+  'standalone_dig_newton_env.py'
+  'native_fee_terra_default_viewer.py'
+  'newton_bridge.launch.py'
+  'robot.launch.py'
+  'mole_state_publisher.launch.py'
+  'mole_perception_bringup'
+  'dig_3d_controller_cpp.launch.py'
+  'compare_dig3d_live_obs.py'
+  'foxglove_bridge'
+  'ackermann_drive_controller_node'
+  'controller_server'
+  'planner_server'
+  'behavior_server'
+  'bt_navigator'
+  'velocity_smoother'
+  'collision_monitor'
+  'waypoint_follower'
+  'opennav_docking'
+  'lifecycle_manager_navigation'
+  'odom_nav2_adapter'
+  'dynamic_footprint_publisher'
+  'robot_state_publisher/robot_state_publisher'
+  'mole_joint_state_publisher_node'
+  'elevation_mapping_node.py'
+)
+for pat in "${mw_stack_patterns[@]}"; do
+  for pid in $(pgrep -f "$pat" || true); do
+    [ "$pid" = "$self" ] && continue
+    kill "$pid" 2>/dev/null || true
+  done
+done
 sleep 2
-pkill -9 -f 'standalone_fee_terra_newton_env|standalone_dig_newton_env|native_fee_terra_default_viewer.py|newton_bridge.launch.py|robot.launch.py|mole_state_publisher|mole_perception_bringup|dig_3d_controller_cpp.launch.py|compare_dig3d_live_obs.py|foxglove_bridge' || true
+for pat in "${mw_stack_patterns[@]}"; do
+  for pid in $(pgrep -f "$pat" || true); do
+    [ "$pid" = "$self" ] && continue
+    kill -9 "$pid" 2>/dev/null || true
+  done
+done
 ```
 
 Re-check resources before the next launch:
