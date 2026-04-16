@@ -5,11 +5,12 @@ usage() {
   cat <<'USAGE'
 dig_split_recording_tmux.sh
 
-Start split recording for dig/newton runs in tmux using estimator-style bags plus a
-separate elevation_map bag.
+Start split recording for dig/newton runs in tmux using the canonical rosbag_record launch.
 
 Creates one run directory with:
-  sensors/ state/ commands/ lidar/ camera/ elevation_map/
+  raw/sensors/ raw/state/ raw/commands/ raw/lidar/ raw/camera/ raw/elevation_map/
+For dig_3d scenarios it also records:
+  raw/dig3d_special_obs/
 
 Usage:
   dig_split_recording_tmux.sh --scenario NAME [options]
@@ -36,7 +37,7 @@ is_bool() {
 SESSION="ros"
 WINDOW="record"
 WS="${HOME}/ros2_ws"
-OUTPUT_ROOT="${HOME}/rosbags/dig"
+OUTPUT_ROOT="${HOME}/mcap/dig"
 ELEVATION_TOPIC="/mole/elevation_map_filter"
 USE_SIM_TIME="false"
 RESTART_WINDOW="false"
@@ -98,15 +99,6 @@ if [[ ! -f "$WS/install/setup.bash" ]]; then
   exit 2
 fi
 
-ESTIMATOR_SCRIPT="$WS/src/moleworks_ros/mole_utils/mole_utils/rosbag_recording/estimator_eval_session.py"
-if [[ -f "$ESTIMATOR_SCRIPT" ]]; then
-  ESTIMATOR_RECORDER="python3 \"$ESTIMATOR_SCRIPT\""
-elif command -v record_estimator_eval_session >/dev/null 2>&1; then
-  ESTIMATOR_RECORDER="record_estimator_eval_session"
-else
-  ESTIMATOR_RECORDER="ros2 run mole_utils record_estimator_eval_session"
-fi
-
 mkdir -p "$OUTPUT_ROOT"
 
 TMUX_HAS_SESSION="false"
@@ -143,36 +135,50 @@ sleep 0.2
 tmux send-keys -t "$right_pane" C-c
 sleep 0.2
 
-EST_CMD="cd \"$WS\" && source /opt/ros/jazzy/setup.bash && source install/setup.bash && \
-$ESTIMATOR_RECORDER \"$SCENARIO\" \
-  --output-root \"$OUTPUT_ROOT\" \
-  --timestamp \"$TIMESTAMP\" \
-  --record-sensors \
-  --record-state \
-  --record-commands \
-  --record-lidar \
-  --record-camera \
-  --record-tf-in-sensors"
-
-if [[ "$USE_SIM_TIME" == "true" ]]; then
-  EST_CMD+=" --use-sim-time"
+RECORD_DIG3D_SPECIAL_OBS="false"
+RECORD_ACTIONS="false"
+ACTION_NAME=""
+EXTRA_STATE_TOPICS=""
+if [[ "$SCENARIO" == dig_3d* ]]; then
+  RECORD_DIG3D_SPECIAL_OBS="true"
+  RECORD_ACTIONS="true"
+  ACTION_NAME="/run_dig_3d"
+  EXTRA_STATE_TOPICS="/dig_3d/actual_joint_velocity,/dig_3d/torque_lower_limit,/dig_3d/torque_upper_limit,/dig_3d/torque_saturation"
 fi
 
-ELEV_CMD="cd \"$WS\" && source /opt/ros/jazzy/setup.bash && source install/setup.bash && \
-ros2 bag record -s mcap \
-  --max-cache-size 104857600 \
-  --output \"$RUN_DIR/elevation_map\" \
-  --topics \"$ELEVATION_TOPIC\""
+RECORD_CMD="cd \"$WS\" && source /opt/ros/jazzy/setup.bash && source install/setup.bash && \
+ros2 launch mole_bag_tools rosbag_record.launch.py \
+  bag_path:=\"$RUN_DIR\" \
+  append_timestamp:=false \
+  record_sensors:=true \
+  record_state:=true \
+  record_commands:=true \
+  record_lidar:=true \
+  record_camera:=true \
+  record_elevation_map:=true \
+  record_dig3d_special_obs:=\"$RECORD_DIG3D_SPECIAL_OBS\" \
+  record_controller_observations:=true \
+  record_actions:=\"$RECORD_ACTIONS\" \
+  action_name:=\"$ACTION_NAME\" \
+  extra_state_topics:=\"$EXTRA_STATE_TOPICS\" \
+  use_sim_time:=\"$USE_SIM_TIME\" \
+  elevation_map_topic:=\"$ELEVATION_TOPIC\""
 
-tmux send-keys -t "$left_pane" "echo 'Starting estimator split recorder in: $RUN_DIR'" C-m
-tmux send-keys -t "$left_pane" "$EST_CMD" C-m
+WATCH_CMD="printf 'Watching bags under: %s\n\n' \"$RUN_DIR\"; while true; do \
+  date; \
+  find \"$RUN_DIR/raw\" -maxdepth 2 -type f -name metadata.yaml | sort; \
+  sleep 2; \
+  printf '\033[2J\033[H'; \
+done"
 
-tmux send-keys -t "$right_pane" "echo 'Starting elevation_map recorder in: $RUN_DIR/elevation_map'" C-m
-tmux send-keys -t "$right_pane" "$ELEV_CMD" C-m
+tmux send-keys -t "$left_pane" "echo 'Starting canonical split recorder in: $RUN_DIR'" C-m
+tmux send-keys -t "$left_pane" "$RECORD_CMD" C-m
+
+tmux send-keys -t "$right_pane" "$WATCH_CMD" C-m
 
 echo "Recording started in tmux: $SESSION:$WINDOW"
 echo "Run directory: $RUN_DIR"
-echo "Stop both panes with Ctrl-C when finished."
+echo "Stop the recorder with Ctrl-C in the left pane when finished."
 
 if [[ "$ATTACH" == "true" ]]; then
   exec tmux attach -t "$SESSION"

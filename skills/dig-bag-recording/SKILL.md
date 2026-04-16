@@ -1,6 +1,6 @@
 ---
 name: dig-bag-recording
-description: Start fast split rosbag recording for Mole dig/newton runs using the state-estimator convention. Use when you want separate bags for sensors, state, commands, lidar, camera (compressed image topics), and elevation_map, typically in tmux during digging experiments.
+description: Start fast split rosbag recording for Mole dig/newton runs using the canonical `rosbag_record.launch.py` workflow. Use when you want separate bags for sensors, state, commands, lidar, camera (compressed image topics), elevation_map, and Dig3D special observations during digging experiments.
 ---
 
 # Dig Bag Recording
@@ -15,25 +15,26 @@ description: Start fast split rosbag recording for Mole dig/newton runs using th
 
 This creates a single run directory:
 
-- `sensors/`
-- `state/`
-- `commands/`
-- `lidar/`
-- `camera/` (compressed image topics)
-- `elevation_map/`
+- `raw/sensors/`
+- `raw/state/`
+- `raw/commands/`
+- `raw/lidar/`
+- `raw/camera/` (compressed image topics)
+- `raw/elevation_map/`
+- `raw/dig3d_special_obs/` for `dig_3d*` scenarios
 
 ## Workflow
 
 1. Start recording with the helper script.
 2. Run digging action(s).
-3. Stop both recorders with `Ctrl-C` in the `record` tmux window panes.
+3. Stop the recorder with `Ctrl-C` in the left `record` tmux pane.
 4. Verify bag folders exist under the printed run directory.
 
 ## Defaults
 
 - tmux session/window: `ros:record`
 - workspace: `~/ros2_ws`
-- output root: `~/rosbags/dig`
+- output root: `~/mcap/dig`
 - elevation topic: `/mole/elevation_map_filter`
 - compressed camera topic preference:
   - `/hal/grpc_image_client/Main/image_raw/compressed`
