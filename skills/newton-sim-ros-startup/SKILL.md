@@ -32,19 +32,34 @@ For standardized post-bringup Nav2 validation in Newton, use the fast Nav2 valid
 - If the user asks to load a map, load the same terrain artifact on both sides:
   - Newton soil via the existing `--elevation-map` support in `standalone_fee_terra_newton_env.py`
   - ROS excavation mapping via `design_bag_path`
+- Premade STL target geometry is a ROS-side post-perception load into excavation mapping. Bring up
+  `mole_perception_bringup` first, then use `mesh_to_excavation_grid_map.py preview` and `apply`.
+  For cabin-control trench authoring, prefer `--cabin-control-farthest-x-m <distance>` over manually
+  combining `--mesh-anchor-x max --mesh-x <distance>`.
 - For the Hong no-holes `fee_terra` workflow, use the default floating-base reset pose
   `x=-0.001212`, `y=0.299973`, `yaw=180 deg` unless the user explicitly asks for a different pose.
+  Do not reset this map to `yaw=0 deg` for arm/planner tests: that places the excavator arm over the
+  local obstacle side of the Hong no-holes surface.
 - The pose-reset order matters on Hong no-holes: if you are also applying a Newton runtime profile, apply the
   runtime profile first and only then call `/mole/reset_robot_pose`, because the runtime-profile reset can
   overwrite the floating-base orientation.
 - The terrain seed order is strict: restart Newton sim with the requested map, or load terrain on the Newton side at runtime, before launching robot/perception/dig.
 - Do not try to reseed Newton terrain after the rest of the ROS stack is already live. If the Newton soil seed is wrong, restart the split stack in the right order instead of patching it mid-run.
+- If you stop or restart the Newton sim process after ROS-side nodes are already running, treat the whole ROS stack as contaminated by a sim-time jump. Do not try to recover by restarting only `ocs2`, `dig`, or other helper panes in place.
+- After a Newton restart in the split stack, restart the full ROS-side stack against the new clock: `robot`, `state_pub` if present, `perception`, `planner`, `ocs2`, `dig`, `executor`, and `foxglove` if it is part of the run.
 - Source ROS once per tmux window, not before every single command.
 - In tmux, run one long-lived stack process in the foreground per pane. Do not use `nohup` for shared bringup panes.
 - Before reusing a pane, stop the current process with `Ctrl-C` and verify the old process tree is gone.
 - Before every restart, check RAM, VRAM, and stale ROS/Newton processes. Do not stack a new sim on top of leftovers.
 - For Nav2 or any split sim driving workflow, do not add deleted arm/wheel/turn hold-controller nodes back into the stack. The current Newton stale-command semantics should keep arm, turn, and steering stable without them.
 - For the integrated `single_workspace` workflow, there should be no hold-controller nodes. The BT owns the arm-MPC/dig handoff directly.
+- For Terra BT/controller development, prefer a split dev layout with separate `planner`, `ocs2`, `dig`, and `executor`
+  windows. Keep the integrated `single_workspace.launch.py` path for end-to-end validation, not the main debug loop.
+- In the split Terra dev loop, apply workspace geometry once up front with `apply_workspace.py`, then restart only the
+  failing owner. If the BT fails but the rest of the stack is healthy, first try `/mole/terra_executor/restart`.
+- Exception: if the failing owner is `newton` or if the Newton process was restarted for any reason, do not try to restart
+  only the downstream ROS panes. Restart the full ROS-side stack as well, because OCS2 helper nodes and TF consumers can
+  retain old sim-time assumptions and degrade into `TF_OLD_DATA`, stale plans, or expired-policy SAFE_STOP.
 - Before sending Nav2 or split-stack goals, verify `/mole/actuator_commands` and `/mole/cmd_vel_smoothed` do not have duplicate publishers. In integrated `single_workspace`, seeing both `mole_arm_mpc_controller` and `dig_3d_controller` as `/mole/actuator_commands` publisher endpoints is normal; extra hold/drive publishers are the problem.
 - In the current local Newton `fee_terra` workflow, TF is exposed on the global `/tf` and `/tf_static`
   topics even when `robot_namespace:=mole` is set. Do not assume `/mole/tf` and `/mole/tf_static`
@@ -111,6 +126,7 @@ source /workspace/moleworks/ros2_ws/install/setup.bash
 export MW_ROS_WS=/workspace/moleworks/ros2_ws
 export MW_LOCAL_SURFACE_PKG=package://mole_maps/maps/hong0326_no_holes/hong0326_no_holes_surface
 export MW_LOCAL_SURFACE_MCAP=/workspace/moleworks/ros2_ws/src/moleworks_maps/maps/hong0326_no_holes/hong0326_no_holes_surface/hong0326_no_holes_surface_0.mcap
+export MW_LOCAL_WORKSPACE_CONFIG=/workspace/moleworks/ros2_ws/install/workspace_planner/share/workspace_planner/config/canonical_dig_dump_workspace.yaml
 export MW_LOCAL_SURFACE_DEFAULT_X_M=-0.001212
 export MW_LOCAL_SURFACE_DEFAULT_Y_M=0.299973
 export MW_LOCAL_SURFACE_DEFAULT_YAW_DEG=180.0
@@ -122,6 +138,7 @@ Overlay guard for this runtime shell:
 export ROS_DOMAIN_ID=24
 source /workspace/moleworks/ros2_ws/install/setup.bash
 export MW_ROS_WS=/workspace/moleworks/ros2_ws
+export MW_LOCAL_WORKSPACE_CONFIG=/workspace/moleworks/ros2_ws/install/workspace_planner/share/workspace_planner/config/canonical_dig_dump_workspace.yaml
 export MW_LOCAL_SURFACE_DEFAULT_X_M=-0.001212
 export MW_LOCAL_SURFACE_DEFAULT_Y_M=0.299973
 export MW_LOCAL_SURFACE_DEFAULT_YAW_DEG=180.0
@@ -383,6 +400,27 @@ tmux list-windows -t newton_${ROS_DOMAIN_ID}
 
 Use the default tmux socket. Do not hide this run behind a custom socket unless the user explicitly asks for isolation.
 
+For Terra BT/controller development, prefer the split layout instead of the integrated `single_ws` window:
+
+```bash
+tmux new-session -d -s newton_sim -n newton
+tmux new-window -t newton_sim -n robot
+tmux new-window -t newton_sim -n perception
+tmux new-window -t newton_sim -n planner
+tmux new-window -t newton_sim -n ocs2
+tmux new-window -t newton_sim -n dig
+tmux new-window -t newton_sim -n executor
+tmux new-window -t newton_sim -n foxglove
+tmux new-window -t newton_sim -n debug
+tmux list-windows -t newton_sim
+```
+
+Use this profile when you want to:
+
+- keep Newton/perception/controller state alive while iterating on the BT
+- restart only `workspace_planner`, OCS2, Dig3D, or the Terra executor
+- use `/mole/terra_executor/restart` as the first recovery step after BT failure
+
 Recommended shell prologue for each window:
 
 ```bash
@@ -395,6 +433,18 @@ readlink -f "$MW_ROS_WS/install/setup.bash"
 If you start a window with a one-shot `tmux new-window '...'` command instead of opening
 an interactive shell first, inline the same `source` sequence inside that quoted command.
 Do not assume the standalone Newton script can import ROS Python packages otherwise.
+For long shared-session relaunches, prefer the two-step pattern:
+- `tmux new-window -t <session> -n <name>`
+- then `tmux send-keys -t <session>:<name> ...`
+
+This is slower to type but more reliable than a single huge quoted `tmux new-window '...'`
+command when you are recovering any long launch pane under time pressure.
+
+General tmux recovery rules for this skill:
+- Before `tmux send-keys -t <session>:<name> ...`, verify the target window exists with `tmux list-windows -t <session>`.
+- If `tmux capture-pane` or `tmux send-keys` reports `can't find window`, stop and recreate the window first. Do not keep sending commands to a dead pane.
+- When a relaunch matters more than terseness, optimize for inspectability rather than command golf: create the window, send one command per line, then inspect the pane.
+- Prefer killing and recreating one bad launch pane over trying to salvage a half-started pane with mixed old and new commands in its scrollback.
 
 ### Fast Nav2 Loop
 
@@ -560,6 +610,139 @@ enable_robot_self_filter:=false
 That preserves the correct local mapping contract and the despiked/inpainted excavation-map handoff, even if the
 filtered-cloud producer is temporarily unavailable in this image.
 
+#### Premade STL Target Geometry
+
+Use this after the `perception` window is healthy when the user asks to load a premade trench,
+beam, or other STL target into excavation mapping. The mesh load is local-mode ROS target geometry;
+it does not replace the Newton soil surface. Keep Newton seeded with the same base surface map via
+`--elevation-map`, then apply the STL target to `/excavation_mapping/grid_map`.
+
+First preview the placement. For cabin-control trench/beam authoring, `CABIN_CONTROL +X` at
+`J_TURN=0` is the intended trench major axis, and `CABIN_CONTROL y=0` corresponds to BASE
+`y=-0.274` by default:
+
+```bash
+GEOM="$(ros2 pkg prefix mole_excavation_mapping)/share/mole_excavation_mapping/geometries/beam_segment_2m/beam_segment_2m_40cmDepth.stl"
+
+ros2 run mole_excavation_mapping mesh_to_excavation_grid_map.py preview \
+  "$GEOM" \
+  --output /tmp/target_preview.svg \
+  --authoring-frame BASE \
+  --cabin-control-farthest-x-m 7.0 \
+  --mesh-y 0.0 \
+  --mesh-anchor-y origin \
+  --align-major-axis x
+```
+
+Then apply the same placement to the live map:
+
+```bash
+ros2 run mole_excavation_mapping mesh_to_excavation_grid_map.py apply \
+  "$GEOM" \
+  --authoring-frame BASE \
+  --cabin-control-farthest-x-m 7.0 \
+  --mesh-y 0.0 \
+  --mesh-anchor-y origin \
+  --align-major-axis x \
+  --reference-mode local_min \
+  --mesh-reference-z max \
+  --map-topic /excavation_mapping/grid_map \
+  --load-service /excavation_mapping/load_excavation_map \
+  --dry-run-output /tmp/target_applied \
+  --timeout-sec 60 \
+  --tf-timeout-sec 30 \
+  --force
+```
+
+Rules for this mesh workflow:
+
+- Use `--align-major-axis x` for beam/trench STLs whose long axis should match the arm pull direction.
+- Use `--cabin-control-farthest-x-m 7.0` when the farthest `+X` point of the imported target should land
+  7 m from the static `CABIN_CONTROL, J_TURN=0` origin.
+- Use `--mesh-y 0.0` to keep the target centerline on the cabin-control strip centerline.
+- Use `--reference-mode local_min --mesh-reference-z max` for local trench-like cut volumes so the target
+  is anchored to one stable footprint height instead of following local soil noise.
+- The importer writes a `runtime_target` marker layer; local excavation mapping should log
+  `load_excavation_map applied (... runtime_target=true)`.
+- If Foxglove still shows the old target after a successful apply, restart the `perception` pane and reapply
+  the STL. Do not restart only OCS2 or Dig3D to fix a stale target map.
+
+For a quick ROS readback, inspect the loaded `dig_zone` bounds in `/excavation_mapping/grid_map`. With the
+7 m farthest-point example, the continuous target max-X is 7.0 m; the last occupied cell center will be
+slightly inside that value because of grid resolution.
+
+### planner
+
+In the split Terra dev loop, start the workspace planner server in its own window:
+
+```bash
+ros2 launch workspace_planner single_workspace.launch.py \
+  use_sim_time:=true \
+  robot_namespace:=mole \
+  frame_id:=map
+```
+
+Apply the workspace geometry once before starting the executor, and re-run it only when the workspace config changes:
+
+```bash
+ros2 run mole_bringup apply_workspace.py --ros-args \
+  -p use_sim_time:=true \
+  -p timeout_sec:=60.0 \
+  -p apply_only:=true \
+  -p tf_prefix:= \
+  -p runtime_apply_spec_path:=$MW_LOCAL_WORKSPACE_CONFIG \
+  -p apply_service_name:=/excavation_mapping/apply_runtime_profile \
+  -p apply_zones_service_name:=/excavation_mapping/apply_runtime_zones \
+  -p grid_map_topic:=/excavation_mapping/grid_map
+```
+
+### ocs2
+
+In the split Terra dev loop, mirror the integrated `single_workspace` OCS2 wiring:
+
+```bash
+ros2 launch mole_ocs2_arm_controller ocs2_arm.launch.py \
+  use_sim_time:=true \
+  robot_namespace:=mole \
+  auto_handover:=false \
+  taskProfile:=real_collisions \
+  elevation_map_topic:=/excavation_mapping/grid_map \
+  elevation_map_layer:=elevation \
+  command_lag_comp_sec:=0.0 \
+  delay_enable:=true \
+  delay_command_prefilter_enable:=true \
+  launch_move_leg:=true \
+  launch_dump_leg:=true \
+  launch_dump_scheduler:=true \
+  launch_policy_visualizer:=true \
+  bootstrap_auto_hold_on_configure:=false \
+  turn_servo_enable:=true \
+  boom_servo_enable:=true \
+  stick_servo_enable:=true \
+  tele_servo_enable:=true \
+  pitch_servo_enable:=true
+```
+
+Starship-specific runtime rule for the split OCS2 loop:
+- On `starship` / the local PC, pin both the MPC node and the arm controller to P-cores `8-11`, not `22-23`. The `22-23` convention is for the robot machine and maps to the wrong cores on Starship.
+- Pass `mpc_cpu_affinity:=8-11 arm_cpu_affinity:=8-11` in the launch command when you are on Starship.
+- After launch, verify the effective affinity with `taskset -pc <pid>`. If the launch helper still applied `22-23`, repin live to `8-11`.
+- Reapply `SCHED_FIFO/99` to the non-DDS threads after launch. Do not assume the internal realtime request succeeded; check with `ps -L -p <pid> -o pid,tid,cls,rtprio,pri,psr,comm`.
+
+Example live correction on Starship:
+
+```bash
+MPC_PID=$(pgrep -f '(^|/)mobile_manipulator_mpc_node($| )' | head -n1)
+ARM_PID=$(pgrep -f '(^|/)mole_arm_mpc_controller($| )' | head -n1)
+taskset -pc 8-11 "$MPC_PID"
+taskset -pc 8-11 "$ARM_PID"
+for pid in "$MPC_PID" "$ARM_PID"; do
+  ps -L -p "$pid" -o tid=,comm= | awk '$2 !~ /^dds/ {print $1}' | while read -r tid; do
+    sudo -n chrt -f -p 99 "$tid"
+  done
+done
+```
+
 ### single_ws
 
 For the full local Terra single-workspace workflow, prefer one integrated launch over the split
@@ -578,6 +761,10 @@ Use the Hong no-holes local seed on both sides:
 
 For the default Hong no-holes single-workspace start pose, reset the base to `yaw=180 deg` after any Newton-side
 runtime-profile apply and before starting the integrated ROS stack:
+
+This is not just a convention: on the Hong no-holes surface, `yaw=0 deg` puts the arm on the obstacle side.
+Use `yaw=180 deg` for single-workspace fan/dig/dump tests unless the test specifically needs the obstacle-side
+orientation.
 
 ```bash
 ros2 service call /mole/reset_robot_pose mole_msgs/srv/ResetRobotPose "{
@@ -828,19 +1015,50 @@ For Dig3D parity runs, keep the rollout order strict:
 3. Start `mole_state_publisher` if TF is split.
 4. If the Newton terrain seed is wrong or stale, stop here and restart Newton with the correct `--elevation-map` before continuing.
 5. Start local perception and excavation mapping with the same surface via `design_bag_path`.
-6. Apply the runtime profile to both:
-   - `/mole/excavation_mapping/apply_runtime_profile`
-   - `/mole/newton/apply_runtime_profile`
+6. Apply the requested target:
+   - for analytic runtime profiles, mirror the profile to both `/mole/excavation_mapping/apply_runtime_profile`
+     and `/mole/newton/apply_runtime_profile`
+   - for premade STL geometry, apply the STL to `/excavation_mapping/load_excavation_map` with
+     `mesh_to_excavation_grid_map.py apply`. Use `--cabin-control-farthest-x-m <distance>` when the
+     target far edge is specified from the static cabin-control origin.
 7. On Hong no-holes, if the user did not request a different spawn pose, call `/mole/reset_robot_pose` with
    `x=-0.001212`, `y=0.299973`, `yaw=180 deg` after the runtime-profile apply.
 8. Only then launch Dig3D and send `/run_dig_3d`.
 
-Do not send the goal before the runtime profile is applied on both sides.
+Do not send the goal before the runtime profile or premade target geometry is applied.
 Do not treat “map loaded” as complete unless both the Newton soil and ROS excavation mapping were seeded from the same artifact.
 Do not mirror a runtime profile into Newton on top of a stale split stack. Fix the Newton terrain seed first, then relaunch the downstream ROS stack.
 
 For `single_workspace.launch.py`, the executor owns that sequencing internally after Newton is up and
 the runtime workspace apply succeeds, so do not also launch the split `dig` window on top of it.
+
+### executor
+
+In the split Terra dev loop, start the BT executor in its own window instead of the integrated `single_ws` launch:
+
+```bash
+ros2 launch terra_planner terra_executor.launch.py \
+  use_sim_time:=true \
+  robot_namespace:=mole \
+  frame_id:=map \
+  single_workspace_mode:=true \
+  workspace_config_path:=$MW_LOCAL_WORKSPACE_CONFIG \
+  dig_action_name:=run_dig_3d \
+  workspace_planner_timeout_sec:=60.0
+```
+
+If the BT fails but Newton, perception, planner, OCS2, and Dig3D are still healthy, restart only the executor first:
+
+```bash
+ros2 service call /mole/terra_executor/restart std_srvs/srv/Trigger "{}"
+```
+
+If that does not recover the loop, escalate in this order:
+
+1. restart `executor`
+2. restart `dig`
+3. restart `ocs2`
+4. reset robot pose / workspace only if the failure is geometry-state related
 
 ## 6) Teardown
 
