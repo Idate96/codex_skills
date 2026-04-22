@@ -1,0 +1,3 @@
+interface:
+  display_name: "Open3D Mapping"
+  short_description: "Record and sync dense 1 cm camera-colored maps from Moleworks LiDAR and camera streams."
