@@ -57,6 +57,13 @@ For standardized post-bringup Nav2 validation in Newton, use the fast Nav2 valid
   windows. Keep the integrated `single_workspace.launch.py` path for end-to-end validation, not the main debug loop.
 - In the split Terra dev loop, apply workspace geometry once up front with `apply_workspace.py`, then restart only the
   failing owner. If the BT fails but the rest of the stack is healthy, first try `/mole/terra_executor/restart`.
+- Before tearing down or restarting after a failure, capture a failure-state bundle unless the user explicitly says to
+  skip it. The bundle should copy the latest pre-action Terra checkpoint for retry, plus tmux panes, process state,
+  ROS graph/state snapshots, and a diagnostic current excavation-map snapshot when `/excavation_mapping/save_map` is
+  available.
+- For Terra controller-debug runs, start a live `/controller_status` recorder with `--full-length` before the action
+  starts. Failure-state capture after the BT has stopped is useful for replay, but it cannot recover per-tick
+  termination booleans if the status topic has gone idle.
 - Exception: if the failing owner is `newton` or if the Newton process was restarted for any reason, do not try to restart
   only the downstream ROS panes. Restart the full ROS-side stack as well, because OCS2 helper nodes and TF consumers can
   retain old sim-time assumptions and degrade into `TF_OLD_DATA`, stale plans, or expired-policy SAFE_STOP.
@@ -1060,7 +1067,215 @@ If that does not recover the loop, escalate in this order:
 3. restart `ocs2`
 4. reset robot pose / workspace only if the failure is geometry-state related
 
-## 6) Teardown
+## 6) Failure Retry Checkpoint And Snapshot
+
+Before teardown or restart after a failed Newton/Terra run, save the retry checkpoint first. A Newton restart empties
+the bucket, so a mid-dig current map is not an exact replay of a full-bucket controller state. For controller retries,
+use the latest Terra checkpoint saved before the failed action. Also save a current map/pose snapshot for diagnosis, but
+label it as diagnostic unless the failure happened at a clean BT boundary with an empty bucket.
+
+Prefer the run directory when one exists so the bundle sits next to `logs/`, `runtime/`, and `checkpoints/`:
+
+```bash
+export ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-24}
+source /workspace/moleworks/ros2_ws/install/setup.bash
+RUN_DIR=${RUN_DIR:-/tmp/newton_failure_$(date -u +%Y%m%d_%H%M%S)}
+STATE_DIR="$RUN_DIR/failure_state/$(date -u +%Y%m%d_%H%M%S)"
+CURRENT_SNAPSHOT_DIR="$STATE_DIR/current_snapshot"
+mkdir -p "$STATE_DIR"
+
+{
+  echo "date_utc=$(date -u --iso-8601=seconds)"
+  echo "host=$(hostname)"
+  echo "ROS_DOMAIN_ID=$ROS_DOMAIN_ID"
+  echo "RUN_DIR=$RUN_DIR"
+  echo "PWD=$PWD"
+} > "$STATE_DIR/context.txt"
+
+LATEST_CHECKPOINT=$(
+  find "$RUN_DIR/checkpoints" -path '*checkpoint.yaml' -type f -printf '%T@ %p\n' 2>/dev/null | \
+    sort -nr | head -1 | sed 's/^[^ ]* //'
+)
+PAIR_INDEX=${PAIR_INDEX:-1}
+COMPLETED_DIGGING_LOOP_INDEX=${COMPLETED_DIGGING_LOOP_INDEX:-0}
+if [ -n "$LATEST_CHECKPOINT" ]; then
+  echo "$LATEST_CHECKPOINT" > "$STATE_DIR/retry_checkpoint_source.txt"
+  rm -rf "$STATE_DIR/retry_checkpoint"
+  cp -a "$(dirname "$LATEST_CHECKPOINT")" "$STATE_DIR/retry_checkpoint"
+  {
+    echo "python3 src/moleworks_ros/scripts/resume_from_checkpoint.py \\"
+    echo "  $STATE_DIR/retry_checkpoint/checkpoint.yaml \\"
+    echo "  --on_machine false"
+  } > "$STATE_DIR/retry_resume_command.txt"
+  read -r PAIR_INDEX COMPLETED_DIGGING_LOOP_INDEX < <(
+    python3 - "$LATEST_CHECKPOINT" <<'PY'
+import sys, yaml
+data = yaml.safe_load(open(sys.argv[1])) or {}
+print(int(data.get("pair_index", data.get("workspace_pair_index", 1))),
+      int(data.get("completed_digging_loop_index", data.get("digging_loop_index", 0))))
+PY
+  )
+fi
+
+python3 - "$CURRENT_SNAPSHOT_DIR" "$PAIR_INDEX" "$COMPLETED_DIGGING_LOOP_INDEX" "${ROBOT_NAMESPACE:-mole}" \
+  "${MAP_FRAME:-map}" "${BASE_FRAME:-base_link}" <<'PY'
+import math
+import sys
+import time
+from pathlib import Path
+
+import rclpy
+import yaml
+from mole_excavation_mapping.srv import SaveGridMap
+from rclpy.time import Time
+from tf2_ros import Buffer, TransformListener
+
+snapshot_dir = Path(sys.argv[1])
+pair_index = int(sys.argv[2])
+completed_index = int(sys.argv[3])
+robot_namespace = sys.argv[4].strip("/") or "mole"
+map_frame = sys.argv[5]
+base_frame = sys.argv[6]
+snapshot_dir.mkdir(parents=True, exist_ok=True)
+
+rclpy.init()
+node = rclpy.create_node("newton_failure_current_snapshot_capture")
+tf_buffer = Buffer()
+tf_listener = TransformListener(tf_buffer, node)
+del tf_listener
+
+tf = None
+deadline = time.monotonic() + 15.0
+last_error = None
+while time.monotonic() < deadline:
+    rclpy.spin_once(node, timeout_sec=0.1)
+    try:
+        tf = tf_buffer.lookup_transform(map_frame, base_frame, Time())
+        break
+    except Exception as exc:
+        last_error = exc
+if tf is None:
+    raise RuntimeError(f"TF {map_frame} -> {base_frame} unavailable: {last_error}")
+
+client = node.create_client(SaveGridMap, "/excavation_mapping/save_map")
+if not client.wait_for_service(timeout_sec=10.0):
+    raise RuntimeError("/excavation_mapping/save_map service not available")
+req = SaveGridMap.Request()
+req.uri = str(snapshot_dir / "excavation_map")
+req.topic = "grid_map"
+req.storage_id = "mcap"
+req.overwrite = True
+req.include_layers = []
+future = client.call_async(req)
+deadline = time.monotonic() + 20.0
+while rclpy.ok() and not future.done() and time.monotonic() < deadline:
+    rclpy.spin_once(node, timeout_sec=0.1)
+if not future.done():
+    raise RuntimeError("/excavation_mapping/save_map timed out")
+result = future.result()
+if result is None or not result.success:
+    message = "no response" if result is None else result.message
+    raise RuntimeError(f"/excavation_mapping/save_map failed: {message}")
+
+q = tf.transform.rotation
+yaw_deg = math.degrees(math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z)))
+metadata = {
+    "version": 1,
+    "created_at": time.strftime("%Y%m%d_%H%M%S"),
+    "map_name": "manual_failure_current_snapshot",
+    "checkpoint_dir": str(snapshot_dir),
+    "checkpoint_root": str(snapshot_dir.parent),
+    "plan_path": "",
+    "robot_namespace": robot_namespace,
+    "tf_prefix": "",
+    "workspace_pair_index": pair_index,
+    "pair_index": pair_index,
+    "digging_loop_index": completed_index,
+    "completed_digging_loop_index": completed_index,
+    "waypoint_index_after_load": pair_index * 2,
+    "excavation_map_uri": "excavation_map",
+    "excavation_map_topic": "grid_map",
+    "excavation_map_storage_id": "mcap",
+    "notes": "Diagnostic current snapshot. Newton restart empties bucket contents; use retry_checkpoint for controller retries after mid-dig failures.",
+    "robot_pose": {
+        "parent_frame": tf.header.frame_id,
+        "child_frame": tf.child_frame_id,
+        "x": float(tf.transform.translation.x),
+        "y": float(tf.transform.translation.y),
+        "z": float(tf.transform.translation.z),
+        "qx": float(q.x),
+        "qy": float(q.y),
+        "qz": float(q.z),
+        "qw": float(q.w),
+        "yaw_deg": float(yaw_deg),
+    },
+}
+(snapshot_dir / "checkpoint.yaml").write_text(yaml.safe_dump(metadata, sort_keys=False))
+(snapshot_dir / "resume_command.txt").write_text(
+    "python3 src/moleworks_ros/scripts/resume_from_checkpoint.py "
+    f"{snapshot_dir / 'checkpoint.yaml'} --on_machine false\n"
+)
+print(snapshot_dir / "checkpoint.yaml")
+node.destroy_node()
+rclpy.shutdown()
+PY
+
+tmux list-sessions > "$STATE_DIR/tmux_sessions.txt" 2>&1 || true
+tmux list-panes -a -F '#{session_name}:#{window_index}.#{pane_index} #{window_name} pid=#{pane_pid} cmd=#{pane_current_command}' \
+  > "$STATE_DIR/tmux_panes.txt" 2>&1 || true
+while read -r pane _; do
+  [ -z "$pane" ] && continue
+  safe_pane=$(echo "$pane" | tr ':.' '__')
+  tmux capture-pane -p -S -500 -t "$pane" > "$STATE_DIR/tmux_${safe_pane}.log" 2>&1 || true
+done < "$STATE_DIR/tmux_panes.txt"
+
+ps -eo pid,ppid,stat,etime,%cpu,%mem,cmd > "$STATE_DIR/processes.txt" 2>&1 || true
+free -h > "$STATE_DIR/memory.txt" 2>&1 || true
+nvidia-smi --query-gpu=index,name,memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits \
+  > "$STATE_DIR/gpu.txt" 2>&1 || true
+
+ros2 node list > "$STATE_DIR/ros_nodes.txt" 2>&1 || true
+ros2 topic list -t > "$STATE_DIR/ros_topics.txt" 2>&1 || true
+ros2 service list -t > "$STATE_DIR/ros_services.txt" 2>&1 || true
+for topic in /clock /mole/state /mole/joint_states /mole/actuator_commands /excavation_mapping/grid_map \
+  /controller_status /dig_3d/scooped_soil_volume; do
+  topic_file=$(echo "$topic" | sed 's#^/##; s#/#_#g')
+  timeout 10 ros2 topic echo "$topic" --once --full-length > "$STATE_DIR/topic_${topic_file}.txt" 2>&1 || true
+  ros2 topic info "$topic" -v > "$STATE_DIR/topic_${topic_file}_info.txt" 2>&1 || true
+done
+for node in /mole/terra_executor /mole/dig_3d_controller /mole/workspace_planner_server /mole/mole_arm_mpc_controller; do
+  ros2 param dump "$node" > "$STATE_DIR/params_$(basename "$node").yaml" 2>&1 || true
+done
+
+find "${RUN_DIR:-/tmp}" -path '*checkpoint.yaml' -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -20 \
+  > "$STATE_DIR/recent_checkpoints.txt" || true
+cp "$RUN_DIR"/logs/*.log "$STATE_DIR"/ 2>/dev/null || true
+
+echo "$STATE_DIR"
+```
+
+When adding the result to a validation note or replay manifest, record:
+
+- run directory
+- exact launch command or tmux pane log
+- retry `checkpoint.yaml` from `failure_state/.../retry_checkpoint/`
+- failure signal from `stack.log`
+- diagnostic `failure_state/.../current_snapshot/excavation_map`
+- `topic_mole_state.txt` and `topic_mole_joint_states.txt` if the failure depends on arm/base state
+
+The retry checkpoint restores the map and simulator base pose through the current resume services, and the bucket is
+expected to be empty after restart. The current snapshot records `/mole/state` and `/mole/joint_states` for diagnosis,
+but it is not an exact full-bucket replay unless the simulator gains explicit bucket-content and full-joint restore
+services.
+
+Do not restart Newton or kill the stack before this capture unless the process is actively harming the machine. If
+Newton itself is unstable but ROS callbacks are still alive, call `/mole/newton_pause` first and then capture:
+
+```bash
+ros2 service call /mole/newton_pause std_srvs/srv/SetBool "{data: true}" || true
+```
+
+## 7) Teardown
 
 Inside the container:
 
