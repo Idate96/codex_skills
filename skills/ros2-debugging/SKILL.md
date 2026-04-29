@@ -30,6 +30,11 @@ Why this matters:
 
 ## Checking ROS Topics
 
+On crowded robot PCs, a fresh-shell `ros2 topic list` can look empty even when the
+system is running. Treat that as a weak signal. Prefer direct checks for the
+specific topic/service/node, longer timeouts, TF evidence, tmux process/logs, and
+publisher ownership before restarting anything.
+
 ```bash
 echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset}"
 ros2 topic list

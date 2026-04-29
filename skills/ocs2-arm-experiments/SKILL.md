@@ -7,6 +7,24 @@ description: Start/restart Mole OCS2 arm controller experiments with real actuat
 
 ## Workflow
 
+### Delegated Startup / Configure Loop
+
+When the user explicitly allows subagents, delegate the repetitive OCS2 launch,
+configure, first-policy wait, activation, and publisher-exclusivity checks to a
+worker so the main thread stays focused on the motion decision.
+
+Delegation boundaries:
+- The worker may manage the `ros:ocs2_arm` tmux launch pane and run lifecycle
+  configure/activate checks.
+- The worker must not send live motion goals, publish `/mole/ocs2/target`, or
+  publish `/mole/actuator_commands`.
+- The worker must return only a compact status: launch profile/command,
+  lifecycle state, `bootstrap.done`, first-policy result, `/mole/actuator_commands`
+  publisher count/names, machine status flags, and any map/SDF blocker.
+- If `taskProfile:=real_collisions` fails with `No GridMap received yet`, the
+  worker reports that blocker. It may only relaunch with `real_no_collisions`
+  when the main agent or user has explicitly authorized the blind profile.
+
 ### 0) Segment Diagnostics Policy (Mandatory)
 
 For **every** commanded motion segment, record full diagnostics. Do not run "naked" segments.
@@ -115,9 +133,9 @@ When debugging oscillation, always inspect:
 If a remote GUI host is available, sync those artifacts immediately after each leg so command-vs-measured velocity can be inspected without rerunning the motion.
 
 Important:
-- `perseverance-wlan` is an SSH host alias for a remote machine with a screen/GUI, not a local directory.
-- For remote inspection, sync artifacts with `scp` or `rsync` to `perseverance-wlan:~/Downloads/ocs2_debug/...`.
-- Do not treat `/home/lorenzo/perseverance-wlan` as the remote host path unless it is explicitly mounted.
+- `perseverance` is the SSH host alias for the remote machine with a screen/GUI, not a local directory.
+- For remote inspection, sync artifacts with `scp` or `rsync` to `perseverance:~/Downloads/ocs2_debug/...`.
+- Do not treat `/home/lorenzo/perseverance` as the remote host path unless it is explicitly mounted.
 
 ### 0.1) Workspace / Runtime Provenance (Mandatory)
 
@@ -292,6 +310,34 @@ ros2 launch mole_ocs2_arm_controller ocs2_arm.launch.py \
   bootstrap_auto_hold_on_configure:=true \
   bootstrap_auto_activate:=false
 ```
+
+For real-soil dump-leg runs, prefer the integrated startup path instead of a second
+parallel dump-leg launch:
+
+```bash
+ros2 launch mole_ocs2_arm_controller ocs2_arm.launch.py \
+  use_sim_time:=false \
+  taskProfile:=real_collisions \
+  elevation_map_topic:=excavation_mapping/grid_map \
+  launch_policy_visualizer:=true \
+  launch_dump_leg:=true \
+  launch_dump_scheduler:=false \
+  launch_target_bridge:=false \
+  command_lag_comp_sec:=0.0 \
+  sdf_max_age_sec:=0.0 \
+  bootstrap_auto_hold_on_configure:=true \
+  bootstrap_auto_activate:=false
+
+ros2 lifecycle set /mole/mole_arm_mpc_controller configure
+ros2 service call /mole/mobile_manipulator_mpc_node/terrain_collision/recompute_sdf std_srvs/srv/Trigger "{}"
+timeout 12 ros2 topic echo --once /mole/ocs2/policy >/dev/null
+ros2 lifecycle set /mole/mole_arm_mpc_controller activate
+
+ros2 run mole_ocs2_arm_controller mole_m4_send_dump_leg_goal.py \
+  --r 6.5 --theta-deg 90.0 --z 1.5 --wait-settle --settle-timeout-sec 180
+```
+
+`mole_m4_send_dump_leg_goal.py` already publishes the target and calls `/mole/mole_arm_dump_leg/start`.
 
 Use `launch_target_bridge:=true` only when you explicitly want the action/GUI goal path.
 The standard `ocs2_arm.launch.py` surface no longer exposes the legacy turn reversal knobs.

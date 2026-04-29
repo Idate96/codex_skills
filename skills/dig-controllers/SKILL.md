@@ -15,7 +15,7 @@ If the user expects the controller to follow a target surface, excavation mappin
 ~/.codex/skills/dig-controllers/scripts/dig_controllers_tmux.sh --controller dig3d --attach
 ```
 
-`dig3d` now defaults to the non-AoA deployment preset `config:=no_aoa mode:=fkfix_s203_3750`.
+`dig3d` now defaults to the deployment preset and packaged shovel fillbridge policy.
 
 Newton controller:
 

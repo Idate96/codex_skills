@@ -12,6 +12,7 @@ description: Bring up and test the Moleworks Terra ROS2 + IsaacLab stack in the 
 - Always set the **same** `ROS_DOMAIN_ID` on both sides. On this machine, default to `24` unless the user overrides it.
 - This is a mixed-container IsaacLab/Terra skill, not the single-container Newton tmux workflow.
 - Single `moleworks_ros` container + tmux should keep the default Fast DDS setup.
+- If the ROS container shell is currently in robot discovery mode, run `local_ros` before starting or checking the Terra stack.
 - Only force the DDS implementation if needed:
   - `export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp` only when you are intentionally opting into Cyclone for this mixed-container stack
   - `export CYCLONEDDS_URI=...` only when you need a specific Cyclone config
@@ -110,10 +111,11 @@ tmux capture-pane -p -S -200
 - Restart Isaac dev container **from inside ROS container**:
   - `mole_sim_ctl restart`
   - then re-run `mole_sim_ctl terra`
-  - then re-run `mole_state`
+  - then re-run the health checks above
 
 ## Troubleshooting quick hits
 - **No /mole/state**: verify both sides have the same `ROS_DOMAIN_ID`, Isaac is still running, and only then check whether a DDS override is actually needed.
+- **Topic exists but no sample arrives**: `/mole/state` usually needs `--qos-reliability best_effort` on Jazzy.
 - **Single-container Newton confusion**: if everything is inside one `moleworks_ros` container with tmux, stop using this skill and switch to `newton-sim-ros-startup`. Do not carry Cyclone guidance across.
 - **CycloneDDS/serdata errors**: if you've been connected to a robot via FastDDS discovery server, try `unset FASTRTPS_DEFAULT_PROFILES_FILE ROS_DISCOVERY_SERVER` on both sides.
 - **"Failed to find a free participant index"**: set `CYCLONEDDS_URI` to a CycloneDDS config in each container (examples: Isaac: `$HOME/moleworks/moleworks_ext/.ros/cyclonedds.xml`, ROS: `$HOME/moleworks/ros2_ws/src/moleworks_ros/.ros/cyclonedds.xml`).

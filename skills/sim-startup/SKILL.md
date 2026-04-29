@@ -23,6 +23,7 @@ For this mixed-container path, `ROS_DOMAIN_ID=24` is the default local choice un
   - Default to the normal container DDS setup.
   - Only add Cyclone overrides in this mixed-container skill if the stack already depends on them or you have a concrete DDS failure to fix.
   - Do not copy those Cyclone exports into the single-container Newton workflow.
+  - If the ROS container shell is currently in robot discovery mode, run `local_ros` once before starting the sim stack.
 - **Check for a running sim before starting a new one**:
   - First inspect host memory and GPU headroom:
     - `free -h`
@@ -145,3 +146,4 @@ If something looks wrong, run one or two of these (keep long timeouts for TF buf
 - TF is on `/tf` and `/tf_static` (not `/mole/tf`).
 - `CABIN_ANCHOR` is only required for the desired-elevation `profile` override; the dig controller uses `CABIN`/`BASE`.
 - If you explicitly opt into Cyclone for this mixed-container stack, expect some Humble/Jazzy DDS warning noise. Treat it as transport noise unless topics/TF are actually missing.
+- If the ROS container was previously connected to a robot discovery server, run `local_ros` before the sim startup so the tmux windows stay on local Fast DDS.

@@ -144,8 +144,7 @@ case "$CONTROLLER" in
       "activate_controller:=false"
       "run_action:=false"
       "robot_namespace:=$ROBOT_NAMESPACE"
-      "config:=no_aoa"
-      "mode:=fkfix_s203_3750"
+      "config:=deployment"
     )
     ;;
   newton)
