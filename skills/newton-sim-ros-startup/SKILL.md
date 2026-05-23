@@ -27,6 +27,9 @@ For standardized post-bringup Nav2 validation in Newton, use the fast Nav2 valid
 - On this Fast DDS setup, keep `ROS_DOMAIN_ID <= 232`. Domain `333` is invalid here.
 - Use `/workspace/moleworks/ros2_ws` as the canonical in-container ROS workspace path.
 - Source `/workspace/moleworks/ros2_ws/install/setup.bash` as the single ROS entrypoint. Do not stack `/opt/ros/jazzy/setup.bash` plus `install/local_setup.bash` in this workflow.
+- Before any `colcon build`, make sure `cmake` resolves to the system binary, not Lorenzo's stale user wrapper.
+  If `colcon` fails with `/home/lorenzo/.local/bin/cmake` and `ModuleNotFoundError: No module named 'cmake'`,
+  rerun with `/usr/bin` ahead of `~/.local/bin` on `PATH`; this is an environment issue, not a package failure.
 - If `install/setup.bash` warns about missing Nav2 package prefixes, the workspace install is stale. Remove the stale install prefixes and re-source `install/setup.bash` before debugging controller behavior.
 - Default to headless Newton for stack bringup and automated single-workspace testing. Only add `--gui` or `gui:=true` when the user explicitly wants visual inspection.
 - If the user asks to load a map, load the same terrain artifact on both sides:
@@ -460,6 +463,10 @@ When the task is only Newton + Ackermann + Nav2 validation, stay on the narrow `
 If only Nav2 / Ackermann packages changed, rebuild the smallest useful set first:
 
 ```bash
+which -a cmake
+export PATH=/opt/ros/jazzy/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+hash -r
+cmake --version
 colcon build --symlink-install --packages-select \
   mole_msgs \
   mole_highlevel_msgs \
