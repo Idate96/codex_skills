@@ -568,6 +568,44 @@ ros2 lifecycle set /mole/mole_arm_mpc_controller activate
 If that does not clear it, restart the OCS2 controller node / stack and verify
 `/mole/actuator_commands` is zero before sending the next goal.
 
+If the live pane shows repeated
+- `The requested currentTime is greater than the received plan`
+- `policy_age` climbing into the seconds
+- `SAFE_STOP: MPC policy horizon expired`
+
+do **not** spend time toggling lifecycle transitions repeatedly. That is a stale-plan / late-solver fault; restart the full OCS2 launch window.
+
+Fast OCS2 restart recipe in the shared tmux session:
+
+```bash
+tmux list-windows -t newton_sim
+tmux kill-window -t newton_sim:ocs2 2>/dev/null || true
+pkill -f "mobile_manipulator_mpc_node" || true
+pkill -f "mole_arm_mpc_controller" || true
+pkill -f "mole_arm_move_leg.py" || true
+pkill -f "mole_arm_dump_leg.py" || true
+pkill -f "mole_arm_dump_scheduler.py" || true
+pkill -f "mole_m4_policy_visualizer" || true
+tmux new-window -t newton_sim -n ocs2
+tmux send-keys -t newton_sim:ocs2 "export ROS_DOMAIN_ID=24" C-m
+tmux send-keys -t newton_sim:ocs2 "source /workspace/moleworks/ros2_ws/install/setup.bash" C-m
+tmux send-keys -t newton_sim:ocs2 "ros2 launch mole_ocs2_arm_controller ocs2_arm.launch.py use_sim_time:=true robot_namespace:=mole auto_handover:=false taskProfile:=real_collisions elevation_map_topic:=/excavation_mapping/grid_map elevation_map_layer:=elevation command_lag_comp_sec:=0.0 delay_enable:=true delay_command_prefilter_enable:=true launch_move_leg:=true launch_dump_leg:=true launch_dump_scheduler:=true launch_policy_visualizer:=true bootstrap_auto_hold_on_configure:=true bootstrap_auto_activate:=false turn_servo_enable:=true boom_servo_enable:=true stick_servo_enable:=true tele_servo_enable:=true pitch_servo_enable:=true mpc_cpu_affinity:=22-23 arm_cpu_affinity:=22-23" C-m
+```
+
+Then re-bootstrap the controller:
+
+```bash
+ros2 lifecycle set /mole/mole_arm_mpc_controller configure
+ros2 lifecycle set /mole/mole_arm_mpc_controller activate
+ros2 lifecycle get /mole/mole_arm_mpc_controller
+ros2 topic info /mole/actuator_commands -v
+```
+
+Rules:
+- If `tmux capture-pane -pt newton_sim:ocs2` says `can't find window: ocs2`, recreate the window first. Do not keep sending commands to a dead pane.
+- For long relaunch commands in shared tmux sessions, prefer `tmux new-window` followed by `tmux send-keys` over a single huge quoted `tmux new-window '...'` command. It fails less often and is easier to inspect.
+- Restart only `ocs2` when Newton, TF, and the rest of the ROS stack are still healthy. If Newton was restarted, restart the full ROS-side stack instead.
+
 If `safe_stop_active=1` with a breakaway timeout reason:
 
 ```bash

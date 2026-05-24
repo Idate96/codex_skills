@@ -19,9 +19,9 @@ Oracle bundles your prompt + selected files into one “one-shot” request so a
   - Replace `--help` with any normal Oracle command, for example a dry run:
   - `npx -y -p node@22 -p @steipete/oracle -c 'node $(readlink -f $(which oracle)) --dry-run summary --files-report -p "<task>" --file .'`
 
-## Main use case (browser, GPT‑5.5 Pro with exact picker selection)
+## Main use case (browser, GPT-5.5 Pro with exact picker selection)
 
-Default workflow here: use Lorenzo's local Oracle fork at `/home/lorenzo/oracle` in browser mode. It reuses Oracle's persistent browser profile, selects the exact ChatGPT picker label `GPT-5.5 Pro`, and sets thinking time to `Extended`.
+Default workflow here: use Lorenzo's local Oracle fork at `/home/lorenzo/oracle` in browser mode. It reuses Oracle's persistent browser profile, selects the exact ChatGPT picker label `Pro`, sets `--browser-thinking-time extended`, and uploads resolved source files as a real ZIP archive for larger reviews. `Extended` is the thinking-time option, not a model-picker label.
 
 Important tested behavior as of April 23, 2026:
 
@@ -30,48 +30,53 @@ Important tested behavior as of April 23, 2026:
 - Upstream local tests on this machine:
   - `--model "5.5 Pro"` resolved to `gpt-5.4-pro`
   - `--model gpt-5.5-pro` resolved to `gpt-5-pro`
-- The local fork adds `--browser-model-label <label>` and honors it for GPT browser runs.
-- Verified live: `--browser-model-label "GPT-5.5 Pro" --browser-thinking-time extended` selected the Pro picker option, set `Thinking time: Extended`, submitted successfully, and the model self-reported `GPT-5.5 Pro`.
-- Do **not** rely on `--model` alone for GPT‑5.5 Pro in browser mode. Use the exact browser label flag.
+- The local fork adds `--browser-model-label <label>` and `--browser-thinking-time <level>` for GPT browser runs.
+- Do **not** rely on old Pro aliases for browser mode. Use the current GPT-5.5 Pro browser target explicitly.
 
 Recommended defaults:
 
 - Engine: browser (`--engine browser`)
 - CLI: `node /home/lorenzo/oracle/dist/bin/oracle-cli.js`
-- Model target: `--browser-model-label "GPT-5.5 Pro"`
-- Browser flags: `--browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome --browser-model-strategy select --browser-thinking-time extended`
+- Model target: `--browser-model-label "Pro" --browser-thinking-time extended`
+- Browser flags: `--browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome --browser-model-strategy select`
 - Attachments: always include the current git root repo by default; add sibling repos only when needed; avoid secrets.
 
 ## Golden path (fast + reliable)
 
 1. Resolve the current git root (`git rev-parse --show-toplevel`) and include that repo as the default Oracle context.
-2. Preview what you’re about to send (`--dry-run` + `--files-report` when needed).
-3. Do not spawn subagents only to inspect or filter the repo context; attaching the root repo is faster and preserves structure.
-4. Add sibling repos or evidence files with extra `--file` arguments only when the bug crosses repo boundaries.
-5. Run the local fork in browser mode with exact model-label selection; use API only when you explicitly want it.
-6. If the run detaches/timeouts: reattach to the stored session (don’t re-run).
+2. Preview what you’re about to send (`--dry-run` + `--files-report` when needed), mainly to check resolved files, upload size, secrets, and generated artifacts.
+3. Do not trim context only because the dry-run token estimate looks large in browser bundle mode; ChatGPT can inspect uploaded files, so the real browser constraint is a lightweight, valid ZIP with the right files.
+4. Do not spawn subagents only to inspect or filter the repo context; attaching the root repo is faster and preserves structure.
+5. Add sibling repos or evidence files with extra `--file` arguments only when the bug crosses repo boundaries.
+6. Run the local fork in browser mode with exact model-label selection; use API only when you explicitly want it.
+7. If the run detaches/timeouts: reattach to the stored session (don’t re-run).
 
 ## Commands (preferred)
 
 - Show help (once/session):
   - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --help`
 
-- Preview (no tokens):
+- Preview (no API tokens; browser upload estimates are advisory):
   - From the repo root: `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --dry-run summary --files-report -p "<task>" --file .`
   - From anywhere inside a repo: `ROOT=$(git rev-parse --show-toplevel) && node /home/lorenzo/oracle/dist/bin/oracle-cli.js --dry-run summary --files-report -p "<task>" --file "$ROOT"`
 
-- Token/cost sanity:
+- Upload/context sanity:
   - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --dry-run summary --files-report -p "<task>" --file .`
 
 - Browser run (main path; long-running is normal):
-  - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome --browser-model-strategy select --browser-model-label "GPT-5.5 Pro" --browser-thinking-time extended -p "<task>" --file .`
-  - Cross-repo example: `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome --browser-model-strategy select --browser-model-label "GPT-5.5 Pro" --browser-thinking-time extended -p "<task>" --file /path/to/root-repo --file /path/to/sibling-repo --file /path/to/evidence.log`
-  - The UI may still summarize the top bar as `ChatGPT`; trust the Oracle log lines `Model picker: Pro...` and `Thinking time: Extended`, or ask the model to self-report for a smoke test.
+  - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome --browser-model-strategy select --browser-model-label "Pro" --browser-thinking-time extended --browser-attachments always --browser-bundle-files -p "<task>" --file .`
+  - Cross-repo example: `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome --browser-model-strategy select --browser-model-label "Pro" --browser-thinking-time extended --browser-attachments always --browser-bundle-files -p "<task>" --file /path/to/root-repo --file /path/to/sibling-repo --file /path/to/evidence.log`
+  - If the saved run reports only generic `ui=ChatGPT` after a Pro selection, treat the run as unverified and rerun after checking model selection.
 
-- Manual paste fallback (assemble bundle, copy to clipboard):
-  - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --render --copy -p "<task>" --file .`
-  - Note: `--copy` is a hidden alias for `--copy-markdown`.
-  - Use this only when you explicitly want a flattened text bundle for manual paste. It is not the default recommendation for mixed code + artifact review.
+- Deep Research API run (only after explicit user consent because it uses paid API tokens):
+  - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine api --model o3-deep-research -p "<research question>"`
+  - Faster/cheaper option: `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine api --model o4-mini-deep-research -p "<research question>"`
+  - API Deep Research uses OpenAI model ids `o3-deep-research` / `o4-mini-deep-research`, uses web search by default, and will reject `--search off` because Oracle does not yet expose file-search/vector-store or remote-MCP data sources.
+
+- ChatGPT browser Deep research run (uses the Plus/tools menu, not API tokens):
+  - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome --browser-deep-research -p "<research question>"`
+  - Shorthand: `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --model deepresearch --browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome -p "<research question>"`
+  - Important status rule: ChatGPT Deep Research often renders its progress card only visually inside the ChatGPT page/sandbox frame. `document.body.innerText` may still show only the user prompt, and the `connector_openai_deep_research` target can have an empty DOM while the report is actively running. Before calling a browser Deep Research run stuck, failed, or safe to rerun/kill, take a viewport screenshot or accessibility/visual check of the ChatGPT conversation and look for the Deep Research checklist/progress card. If the Oracle session status is `running` and Chrome is alive, do not start a duplicate run.
 
 ## Attaching files (`--file`)
 
@@ -94,17 +99,18 @@ Recommended defaults:
   - Dotfiles are filtered unless you explicitly opt in with a pattern that includes a dot-segment (e.g. `--file ".github/**"`).
   - Default cap: files > 1 MB are rejected unless you raise `ORACLE_MAX_FILE_SIZE_BYTES` or `maxFileSizeBytes` in `~/.oracle/config.json`.
 
-## Prefer real files over flattened text
+## Prefer real files and ZIP archives
 
-- Prefer attaching the full root repo with `--file .` instead of manually filtering a small file set or flattening everything into one rendered text blob.
+- Prefer attaching the full root repo with `--file .` and let Oracle package the resolved source files as uploads.
 - This matters especially when the context includes both code and non-code artifacts such as CSVs, logs, JSON, notebooks, screenshots, or docs.
-- Real files preserve filenames, boundaries, and directory structure better than one giant pasted markdown bundle.
+- Real files and ZIP archives preserve filenames, boundaries, and directory structure.
+- In browser mode with `--browser-attachments always --browser-bundle-files`, do not treat the dry-run token estimate as a hard context limit. The uploaded ZIP is a file corpus the model can navigate; use the estimate only as a smell for unexpectedly broad context or accidental huge text files.
+- Prefer broad, structurally intact repo context when the ZIP is lightweight enough to upload. Snippet or stage a reduced bundle only when the upload is too large, contains secrets/binaries/generated artifacts, or the task truly needs a small exact excerpt.
 - When the input is a software worktree, preserve the whole root layout and relative paths so Oracle can reason about modules, tests, docs, and configs in context.
-- If the review spans many related files, consider sending them as one archive or zip-style bundle that keeps the directory structure intact rather than flattening everything into plain text.
+- If the review spans many related files, use `--browser-attachments always --browser-bundle-files` so Oracle uploads a real `.zip` archive.
 - Add a short explicit tree note in the prompt for orientation, especially for larger software uploads. Example: list the main roots and what lives there (`src/`, `test/`, `docs/`, `configs/`) or paste a short `tree` / `find` summary.
 - In the prompt, explicitly list what you attached and why. Do not assume Oracle will infer the role of each file or archive from filenames alone.
 - If you attach an archive plus sidecar notes, spell out both: what the archive contains, what structure it preserves, and what each extra note contributes.
-- Use `--render` / `--copy` mainly for manual paste workflows or when you intentionally want a single text artifact.
 - Do not spend time spawning agents solely to curate a minimal file list. Use `--files-report` to catch obvious generated/secret/huge files, then attach the root repo directly.
 
 ## Research-grade context for ML and robotics
@@ -137,26 +143,27 @@ Practical pattern for cross-repo investigations:
 - Zip the staged directory and attach the zip directly with `--file /abs/path/to/bundle.zip`.
 - In the prompt, explicitly say that Oracle should treat the bundle as a multi-repo robotics/ML workspace with attached experimental evidence.
 
-## Budget + observability
+## Upload Budget + Observability
 
-- Target: keep total input under ~196k tokens.
-- Use `--files-report` (and/or `--dry-run json`) to spot the token hogs before spending.
+- Browser bundle mode: prioritize lightweight upload size, sane file count, successful attachment chips, and no secrets/generated artifacts. The token estimate is advisory and should not by itself cause aggressive hand-snipping.
+- API mode or inline paste mode: token budget still matters; reduce context when the model would otherwise exceed its actual input window or cost target.
+- Use `--files-report` (and/or `--dry-run json`) to spot accidental token hogs, oversized text files, binaries, generated output, and files that should be excluded before spending time on a browser run.
 - If you need hidden/advanced knobs: `npx -y @steipete/oracle --help --verbose`.
 
 ## Engines (API vs browser)
 
 - Auto-pick: uses `api` when `OPENAI_API_KEY` is set, otherwise `browser`.
-- Browser engine supports GPT + Gemini only; use `--engine api` for Claude/Grok/Codex or multi-model runs.
+- Browser engine supports GPT + Gemini only; use `--engine api` for Claude/Grok/Codex, API Deep Research, or multi-model runs. Use `--browser-deep-research` for ChatGPT's browser Deep research composer mode.
 - **API runs require explicit user consent** before starting because they incur usage costs.
 - Browser model-selection warning for this machine:
-  - With Lorenzo's local fork, use `--browser-model-strategy select --browser-model-label "GPT-5.5 Pro" --browser-thinking-time extended`.
+  - With Lorenzo's local fork, use `--browser-model-strategy select --browser-model-label "Pro" --browser-thinking-time extended`.
   - With upstream `npx -y @steipete/oracle@0.9.0`, treat `--model "5.5 Pro"` and `--model gpt-5.5-pro` as unsafe in browser mode.
-  - Upstream fallback only: use `--browser-model-strategy current` and verify `GPT-5.5 Pro` directly in the ChatGPT UI.
+  - Upstream fallback only: use `--browser-model-strategy current` and verify `Pro` with extended thinking directly in the ChatGPT UI.
 - Browser auth fallback for ChatGPT:
   - Symptom: `No ChatGPT cookies were applied from your Chrome profile`.
   - First retry with `--browser-cookie-wait 5s`.
   - If cookie sync still fails, switch to manual login and reuse Oracle's own browser profile:
-    - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome --browser-model-strategy select --browser-model-label "GPT-5.5 Pro" --browser-thinking-time extended -p "<task>" --file .`
+    - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome --browser-model-strategy select --browser-model-label "Pro" --browser-thinking-time extended --browser-attachments always --browser-bundle-files -p "<task>" --file .`
   - Sign into ChatGPT in the Oracle-launched Chrome window, which uses `~/.oracle/browser-profile`.
   - Keep that Chrome window open until the run finishes; closing it early leaves the session in a `chrome-disconnected` state.
   - After the first successful manual login, future browser runs can reuse that Oracle profile with `--browser-manual-login`.
@@ -167,15 +174,18 @@ Practical pattern for cross-repo investigations:
     - bad throwaway profiles: `--user-data-dir=/tmp/oracle-browser-*` or `/tmp/oracle-reattach-*`
   - If stale throwaway Oracle windows are still around, kill them before asking the user to log in again. Otherwise they will log into the wrong window and nothing will persist.
   - When bringing up a fresh persistent session, prefer a fixed DevTools port so reattach/debugging is deterministic:
-    - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome --browser-model-strategy select --browser-model-label "GPT-5.5 Pro" --browser-thinking-time extended ...`
+    - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome --browser-model-strategy select --browser-model-label "Pro" --browser-thinking-time extended ...`
 - Browser attachments:
   - `--browser-attachments auto|never|always` (auto pastes inline up to ~60k chars then uploads).
-  - Important: in this Oracle version, `--browser-bundle-files` does **not** upload a real zip. It creates an `attachments-bundle.txt` text bundle and uploads that as one file.
-  - If you want a real archive that ChatGPT can inspect as a zip, build the zip yourself and attach the `.zip` file directly.
-  - For explicit zip upload, prefer:
-    - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome --browser-model-strategy select --browser-model-label "GPT-5.5 Pro" --browser-thinking-time extended --browser-attachments always -p "<task>" --file /abs/path/to/bundle.zip`
-  - Use `--browser-bundle-files` only when a single flattened text bundle is acceptable.
-  - For mixed code + artifact review where directory structure matters, a user-built zip is often more ergonomic than Oracle's text bundle.
+  - `--browser-bundle-files` packages resolved text attachments into a real `attachments-bundle.zip` upload.
+  - For repo-scale reviews, prefer `--browser-attachments always --browser-bundle-files`.
+  - Validate with `--dry-run summary --files-report --browser-attachments always --browser-bundle-files --file .` and inspect the printed `.zip` path if needed.
+  - When the active work is inside a container but browser upload is needed, run the browser-mode Oracle command from the host side where `/usr/bin/google-chrome` and the persistent `~/.oracle/browser-profile` are available, then attach the archive path from the shared filesystem.
+  - For high-value reviews, do not click send unless the live composer shows all three required facts: the exact model picker label (`Pro` here), the prompt/sentinel text, and the attachment chip or file-count UI with no upload/dedup/error message.
+  - If ChatGPT says the file was already uploaded, use a fresh archive name and add a tiny unique marker file to the archive before retrying.
+  - If driving Chrome through CDP, prefer archive paths under `~/Downloads` or another host-readable directory. `/tmp` can resolve to a zero-size upload in some Chrome sessions.
+  - If using `DOM.setFileInputFiles`, do not manually dispatch `input` or `change` events afterward unless you are deliberately debugging. In this ChatGPT UI that can double-trigger the upload and produce a duplicate-file error.
+  - Treat any answer that says it cannot access the attachment as a failed Oracle run, not as valid review feedback.
 - Remote browser host (signed-in machine runs automation):
   - Host: `oracle serve --host 0.0.0.0 --port 9473 --token <secret>`
   - Client: `oracle --engine browser --remote-host <host:port> --remote-token <secret> -p "<task>" --file .`
@@ -186,6 +196,18 @@ Practical pattern for cross-repo investigations:
 - Runs may detach or take a long time (browser + GPT‑5.5 Pro work often does). If the CLI times out: don’t re-run; reattach.
   - List: `oracle status --hours 72`
   - Attach: `oracle session <id> --render`
+- For browser Deep Research specifically, a quiet `output.log`, blank sandbox iframe DOM, or prompt-only `innerText` is not evidence of failure. Verify with a screenshot of the ChatGPT conversation first; the visible page can show an active checklist and search count even when the DOM text APIs are uninformative.
+- If a browser session is marked completed but the captured answer is only a stub such as “I’ll inspect…” or “I’ll review…”, treat it as a failed review, not as Oracle feedback. Reopen the conversation tab or rerun with an explicit instruction to return the final review directly and not a plan to inspect files.
+- When the user has other browser/Oracle queries running, treat isolation as part of the run:
+  - Use a unique `--slug` for the new request.
+  - Check active runs first: `node /home/lorenzo/oracle/dist/bin/oracle-cli.js status --hours 6 --limit 20`.
+  - After launch, verify Chrome has a separate ChatGPT page/tab for the new slug or title:
+    - `curl -s http://127.0.0.1:9222/json/list | rg -n '"title"|"url"'`
+  - Do not assume the selected/visible Chrome tab is the one Oracle is driving; trust the DevTools page list and the Oracle session slug.
+  - Browser-mode reattach/capture can still pick up an existing ChatGPT tab if several Oracle runs are active. For high-value reviews, add a short sentinel requirement to the prompt, such as `Start the final answer with ORACLE_REVIEW_SENTINEL_<slug>`. After completion, reject the saved answer if the sentinel is missing or the content obviously belongs to another request, inspect `~/.oracle/sessions/<slug>/output.log`, and rerun only after the competing browser runs have completed or been detached.
+  - If the user explicitly needs concurrent browser runs, isolate the new run with a copied Chrome profile and a different DevTools port instead of sharing `~/.oracle/browser-profile` on port `9222`. Example:
+    - `rsync -a --delete --exclude='Singleton*' --exclude='DevToolsActivePort' ~/.oracle/browser-profile/ ~/.oracle/browser-profile-<slug>/`
+    - `ORACLE_BROWSER_PROFILE_DIR=$HOME/.oracle/browser-profile-<slug> node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-port 9333 ...`
 - If a browser run gets stuck in `chrome-disconnected`, kill the stale Oracle/Chrome processes and start a fresh run instead of piling on more reattach commands.
 - Use `--slug "<3-5 words>"` to keep session IDs readable.
 - Duplicate prompt guard exists; use `--force` only when you truly want a fresh run.

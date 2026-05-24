@@ -114,10 +114,10 @@ if [[ -z "$SESSION" ]]; then
 fi
 if [[ -z "$ENDEFFECTOR_TYPE" ]]; then
   if [[ -t 0 ]]; then
-    read -r -p "End-effector type (shovel or shovel_w_teeth) [shovel]: " ENDEFFECTOR_TYPE
-    ENDEFFECTOR_TYPE="${ENDEFFECTOR_TYPE:-shovel}"
+    read -r -p "End-effector type (shovel_calibrated, shovel, or shovel_w_teeth) [shovel_calibrated]: " ENDEFFECTOR_TYPE
+    ENDEFFECTOR_TYPE="${ENDEFFECTOR_TYPE:-shovel_calibrated}"
   else
-    ENDEFFECTOR_TYPE="shovel"
+    ENDEFFECTOR_TYPE="shovel_calibrated"
   fi
 fi
 if [[ -z "$ENDEFFECTOR_TYPE" ]]; then

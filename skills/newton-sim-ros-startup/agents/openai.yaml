@@ -1,4 +1,4 @@
 interface:
   display_name: "Newton Sim ROS Startup"
-  short_description: "Start Newton sim tmux stack on the requested ROS domain"
-  default_prompt: "Start or restart the single-container Newton simulator and Mole ROS2 stack in tmux on the requested ROS domain, with default Fast DDS, GUI on, optional isolated bridge-only sidecars, and the requested local map loaded into both Newton soil and ROS excavation mapping."
+  short_description: "Start Newton sim ROS stacks and checkpoint resume flows"
+  default_prompt: "Start or restart the single-container Newton simulator and Mole ROS2 stack in tmux on the requested ROS domain, with default Fast DDS, headless Newton unless GUI is requested, optional isolated bridge-only sidecars, requested maps loaded into Newton soil and ROS excavation mapping, and Terra failure capture or resume from saved checkpoints when needed."

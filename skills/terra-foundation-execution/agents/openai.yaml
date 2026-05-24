@@ -1,0 +1,4 @@
+interface:
+  display_name: "Terra Foundation Execution"
+  short_description: "Run packaged Terra foundation plans end-to-end"
+  default_prompt: "Use $terra-foundation-execution to run the packaged flat foundation Terra plan in Newton, verify Nav2/map readiness, and measure post-dump stalls."

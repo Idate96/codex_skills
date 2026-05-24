@@ -1,0 +1,4 @@
+interface:
+  display_name: "Student Grading"
+  short_description: "Finalize student grading and offboarding"
+  default_prompt: "Use $grading-student to finalize a student grade handoff and update the RSL offboarding tracker."

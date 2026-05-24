@@ -28,6 +28,14 @@ Why this matters:
 - Short timeouts often fail before real transform data appears.
 - Piping to `head` is fine if the timeout is long enough.
 
+If the stack namespaces TF topics, your debug node must join that namespace or remap the TF topics. Example for a Moleworks-style stack that publishes `/mole/tf` and `/mole/tf_static`:
+
+```bash
+timeout 15 bash -lc 'ros2 run tf2_ros tf2_echo map BASE_GRAV --ros-args -r __ns:=/mole 2>&1' | head -20
+```
+
+For ad-hoc Python probes using `TransformListener`, create the node inside the same namespace as the robot stack; otherwise you can get a false `no tf` even though the transform graph is healthy.
+
 ## Checking ROS Topics
 
 On crowded robot PCs, a fresh-shell `ros2 topic list` can look empty even when the

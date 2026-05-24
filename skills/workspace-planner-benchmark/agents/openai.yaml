@@ -1,0 +1,4 @@
+interface:
+  display_name: "Workspace Planner Benchmark"
+  short_description: "Run standardized planner benchmark bundles"
+  default_prompt: "Use $workspace-planner-benchmark to regenerate the standardized workspace planner HTML bundle with index, leaderboard, manifest, progress CSV, and trench/fan animations."

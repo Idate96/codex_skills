@@ -16,10 +16,28 @@ Use this skill when Lorenzo asks to read or reply in Google Chat, or to pull fil
      - `https://www.googleapis.com/auth/chat.spaces`
      - `https://www.googleapis.com/auth/chat.messages.readonly`
      - `https://www.googleapis.com/auth/chat.messages.create` when sending
+   - Before the first Chat API call, run `which gws` and `gws auth status`.
+     - Use the installed `gws` binary for API calls. An installed/source checkout is not credential storage; active credentials normally live under `~/.config/gws`.
+     - If `gws auth status` reports `auth_method: none` or no credential source, say the local `gws` credentials are missing instead of repeatedly retrying Chat calls or switching to browser automation by default.
    - Use `pageSize: 10` by default for routine DM history reads.
    - Do not jump to `pageSize: 200` or similar large fetches unless there is a specific reason.
    - Expand the window only if the recent context is unclear, looks truncated, or Lorenzo explicitly asks for deeper history.
    - If the latest message looks blank, inspect `attachment[]` before assuming the sender sent an empty message.
+   - With the local `gws` CLI, Chat list/create commands pass required API parameters through `--params`, not first-class flags:
+     ```bash
+     gws chat spaces messages list \
+       --params '{"parent":"spaces/SPACE_ID","pageSize":10}'
+     gws chat spaces messages create \
+       --params '{"parent":"spaces/SPACE_ID"}' \
+       --json '{"text":"message body"}'
+     ```
+   - To reply in a thread, include the thread in the body:
+     ```bash
+     gws chat spaces messages create \
+       --params '{"parent":"spaces/SPACE_ID"}' \
+       --json '{"text":"message body","thread":{"name":"spaces/SPACE_ID/threads/THREAD_ID"}}'
+     ```
+   - If a thread reply returns `404` or Lorenzo says he cannot see it, repost a concise top-level message in the space and include any PR/review link directly.
    - For uploaded files, prefer `attachment[].attachmentDataRef.resourceName` over `attachment[].name` when downloading.
    - `downloadUri` can bounce to an interactive Google sign-in page from CLI usage, so do not rely on it for automation.
 3. Sort messages by `createTime`.
@@ -73,3 +91,7 @@ Use this skill when Lorenzo asks to read or reply in Google Chat, or to pull fil
 Read [references/collaborators.md](references/collaborators.md) when you need known collaborator DM mappings.
 
 Use `/home/lorenzo/codex_skills/skills/pdf-signing/SKILL.md` when a Chat-delivered PDF needs a visual signature.
+
+Known recurring workspace shortcut:
+
+- RSL GitHub access workflow test space: `https://chat.google.com/u/1/app/chat/AAQAHKnH5sY` -> `spaces/AAQAHKnH5sY`.

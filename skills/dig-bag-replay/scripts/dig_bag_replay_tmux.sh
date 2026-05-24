@@ -116,9 +116,6 @@ pkill -f "elevation_mapping_node.py" || true
 pkill -f "publish_grid_map_layers.py" || true
 pkill -f "robot_self_filter/self_filter" || true
 pkill -f "standalone_dig_newton_env.py" || true
-pkill -f "wheel_hold_controller_node" || true
-pkill -f "turn_hold_controller_node" || true
-pkill -f "arm_hold_controller_node" || true
 pkill -f "mole_tf_publisher_node" || true
 pkill -f "mole_joint_state_publisher.launch.py" || true
 pkill -f "mole_joint_state_publisher_node" || true

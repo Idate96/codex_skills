@@ -1,6 +1,6 @@
 ---
 name: newton-sim-ros-startup
-description: Start or restart the Moleworks ROS2 stack using the Newton simulator in the default moleworks_ros runtime shell, assuming the current shell is already inside the target container unless the user says otherwise. Use when you need a clean tmux layout for Newton bridge, robot/TF/RViz, perception (elevation + excavation mapping), optional Foxglove bridge, or an isolated bridge-only validation stack on a specific ROS domain, all with use_sim_time:=true.
+description: Start or restart the Moleworks ROS2 stack using the Newton simulator in the default moleworks_ros runtime shell, assuming the current shell is already inside the target container unless the user says otherwise. Use when you need a clean tmux layout for Newton bridge, robot/TF/RViz, perception (elevation + excavation mapping), optional Foxglove bridge, an isolated bridge-only validation stack on a specific ROS domain, or Terra failure capture and resume from saved checkpoints in Newton simulation, all with use_sim_time:=true.
 ---
 
 # Newton Sim ROS Startup
@@ -12,6 +12,14 @@ Use this only for the single-container Newton workflow inside `moleworks_ros:lat
 If the stack is split across Isaac/Terra and ROS containers, use `sim-startup` or `moleworks-terra-stack` instead.
 
 For standardized post-bringup Nav2 validation in Newton, use the fast Nav2 validation layout in this skill.
+
+For packaged flat-foundation Terra execution (`flat_foundation`, `flat_foundation_depth_0p5`, full multi-waypoint
+foundation plans, or post-dump stall measurement), use `terra-foundation-execution` after this startup preflight. Keep
+this skill focused on runtime bringup, process hygiene, failure capture, and checkpoint resume mechanics.
+
+For workspace-planner behavior debugging, per-action planner GridMaps, predicted-vs-executed scoop analysis, or replaying
+failed/high-discrepancy scoops from Terra checkpoints, also load the `workspace-planner-debug` skill. This skill handles
+the Newton runtime and restart discipline; `workspace-planner-debug` handles the planner-specific artifact and replay loop.
 
 ## Non-Negotiables
 
@@ -27,9 +35,16 @@ For standardized post-bringup Nav2 validation in Newton, use the fast Nav2 valid
 - On this Fast DDS setup, keep `ROS_DOMAIN_ID <= 232`. Domain `333` is invalid here.
 - Use `/workspace/moleworks/ros2_ws` as the canonical in-container ROS workspace path.
 - Source `/workspace/moleworks/ros2_ws/install/setup.bash` as the single ROS entrypoint. Do not stack `/opt/ros/jazzy/setup.bash` plus `install/local_setup.bash` in this workflow.
+- Build ROS packages from `/workspace/moleworks/ros2_ws`, not from `/workspace/moleworks/ros2_ws/src/moleworks_ros`.
+  A nested `src/moleworks_ros/install` can pass local tests but will not be used by the normal Newton/Terra stage panes.
 - Before any `colcon build`, make sure `cmake` resolves to the system binary, not Lorenzo's stale user wrapper.
   If `colcon` fails with `/home/lorenzo/.local/bin/cmake` and `ModuleNotFoundError: No module named 'cmake'`,
   rerun with `/usr/bin` ahead of `~/.local/bin` on `PATH`; this is an environment issue, not a package failure.
+- Before rebuilding, check `ros2 pkg prefix terra_planner` against the expected runtime prefix and then rebuild only the
+  smallest affected package set. For pure Python, launch, YAML, or symlink-installed script changes, skip the rebuild
+  and restart the affected tmux pane.
+- Export `MW_EXPECTED_ROS_PREFIX=/workspace/moleworks/ros2_ws/install` in tmux panes that launch Terra stages. Stage
+  launch files use this as a preflight guard against stale or nested ROS overlays.
 - If `install/setup.bash` warns about missing Nav2 package prefixes, the workspace install is stale. Remove the stale install prefixes and re-source `install/setup.bash` before debugging controller behavior.
 - Default to headless Newton for stack bringup and automated single-workspace testing. Only add `--gui` or `gui:=true` when the user explicitly wants visual inspection.
 - If the user asks to load a map, load the same terrain artifact on both sides:
@@ -37,8 +52,8 @@ For standardized post-bringup Nav2 validation in Newton, use the fast Nav2 valid
   - ROS excavation mapping via `design_bag_path`
 - Premade STL target geometry is a ROS-side post-perception load into excavation mapping. Bring up
   `mole_perception_bringup` first, then use `mesh_to_excavation_grid_map.py preview` and `apply`.
-  For cabin-control trench authoring, prefer `--cabin-control-farthest-x-m <distance>` over manually
-  combining `--mesh-anchor-x max --mesh-x <distance>`.
+  For trench authoring, use `--authoring-frame CABIN_CONTROL --mesh-anchor-x max --mesh-x <distance>`;
+  do not apply trench geometry in `BASE`.
 - For the Hong no-holes `fee_terra` workflow, use the default floating-base reset pose
   `x=-0.001212`, `y=0.299973`, `yaw=180 deg` unless the user explicitly asks for a different pose.
   Do not reset this map to `yaw=0 deg` for arm/planner tests: that places the excavator arm over the
@@ -64,6 +79,21 @@ For standardized post-bringup Nav2 validation in Newton, use the fast Nav2 valid
   skip it. The bundle should copy the latest pre-action Terra checkpoint for retry, plus tmux panes, process state,
   ROS graph/state snapshots, and a diagnostic current excavation-map snapshot when `/excavation_mapping/save_map` is
   available.
+- For Newton simulation retries, restore from a saved Terra checkpoint with
+  `src/moleworks_ros/scripts/resume_from_checkpoint.py ... --on_machine false` after the replacement stack is up. Do not
+  use the real-machine mode in Newton sim.
+- For workspace-planner debugging, treat Terra checkpoints as the canonical way to replay exactly the failed scoop or a
+  high predicted-vs-executed discrepancy scoop. Every `Saved checkpoint: .../<pair>_<completed_loop>` log line before
+  `move_to_dig` is the pre-action state for the next scoop. Preserve the matching checkpoint path in the failure bundle
+  and action-debug notes. If action `N` times out, fails, or has poor execution feedback, resume from the checkpoint whose
+  completed loop index is `N-1` (for the first scoop this is usually `.../1_0/checkpoint.yaml`). After starting a clean
+  Newton + ROS stack and the action-debug recorder, run:
+  `python3 /workspace/moleworks/ros2_ws/src/moleworks_ros/scripts/resume_from_checkpoint.py <checkpoint> --on-machine false`.
+  Then trigger Terra through `/mole/terra_executor/resume` or the existing executor workflow, keeping the same planner and
+  policy parameters unless the test is intentionally comparing a changed parameter.
+- When diagnosing high discrepancy, join planner action `N` to execution feedback reported on the next planner compute
+  (`attempt_count=N+1`) or on a terminal status with `attempt_count=N`. Do not compare the previous action's
+  `global_removed_m3` against the newly selected action's predicted volume without this attempt shift.
 - For Terra controller-debug runs, start a live `/controller_status` recorder with `--full-length` before the action
   starts. Failure-state capture after the BT has stopped is useful for replay, but it cannot recover per-tick
   termination booleans if the status topic has gone idle.
@@ -134,6 +164,7 @@ In the active runtime shell (already in-container by default, or after an explic
 export ROS_DOMAIN_ID=24
 source /workspace/moleworks/ros2_ws/install/setup.bash
 export MW_ROS_WS=/workspace/moleworks/ros2_ws
+export MW_EXPECTED_ROS_PREFIX=/workspace/moleworks/ros2_ws/install
 export MW_LOCAL_SURFACE_PKG=package://mole_maps/maps/hong0326_no_holes/hong0326_no_holes_surface
 export MW_LOCAL_SURFACE_MCAP=/workspace/moleworks/ros2_ws/src/moleworks_maps/maps/hong0326_no_holes/hong0326_no_holes_surface/hong0326_no_holes_surface_0.mcap
 export MW_LOCAL_WORKSPACE_CONFIG=/workspace/moleworks/ros2_ws/install/workspace_planner/share/workspace_planner/config/canonical_dig_dump_workspace.yaml
@@ -148,6 +179,7 @@ Overlay guard for this runtime shell:
 export ROS_DOMAIN_ID=24
 source /workspace/moleworks/ros2_ws/install/setup.bash
 export MW_ROS_WS=/workspace/moleworks/ros2_ws
+export MW_EXPECTED_ROS_PREFIX=/workspace/moleworks/ros2_ws/install
 export MW_LOCAL_WORKSPACE_CONFIG=/workspace/moleworks/ros2_ws/install/workspace_planner/share/workspace_planner/config/canonical_dig_dump_workspace.yaml
 export MW_LOCAL_SURFACE_DEFAULT_X_M=-0.001212
 export MW_LOCAL_SURFACE_DEFAULT_Y_M=0.299973
@@ -155,12 +187,19 @@ export MW_LOCAL_SURFACE_DEFAULT_YAW_DEG=180.0
 readlink -f "$MW_ROS_WS/install/setup.bash"
 ros2 pkg prefix mole_msgs
 ros2 pkg prefix mole_ocs2_arm_controller
+ros2 pkg prefix terra_planner
+test "$(ros2 pkg prefix terra_planner)" = "$MW_EXPECTED_ROS_PREFIX/terra_planner"
 ```
 
 Expected result:
 - `readlink -f` resolves to `/workspace/moleworks/ros2_ws/install/setup.bash`
 - `ros2 pkg prefix mole_msgs` resolves under `/workspace/moleworks/ros2_ws/install`
 - `ros2 pkg prefix mole_ocs2_arm_controller` resolves under `/workspace/moleworks/ros2_ws/install`
+- `ros2 pkg prefix terra_planner` resolves to `$MW_EXPECTED_ROS_PREFIX/terra_planner`
+
+Packaged flat-foundation Terra plan fixtures and end-to-end execution checks now live in
+`terra-foundation-execution`. Use that skill after this runtime preflight when the task is to run
+`flat_foundation_depth_0p5` or another packaged foundation plan.
 
 If a fresh attached shell prints `Sourcing ROS2 workspace at /home/lorenzo/ros2_ws`, do **not** trust that
 as the live overlay for this workflow. That is a shell convenience default, not the validated Newton/Terra
@@ -632,8 +671,7 @@ it does not replace the Newton soil surface. Keep Newton seeded with the same ba
 `--elevation-map`, then apply the STL target to `/excavation_mapping/grid_map`.
 
 First preview the placement. For cabin-control trench/beam authoring, `CABIN_CONTROL +X` at
-`J_TURN=0` is the intended trench major axis, and `CABIN_CONTROL y=0` corresponds to BASE
-`y=-0.274` by default:
+the live cabin yaw is the intended trench major axis:
 
 ```bash
 GEOM="$(ros2 pkg prefix mole_excavation_mapping)/share/mole_excavation_mapping/geometries/beam_segment_2m/beam_segment_2m_40cmDepth.stl"
@@ -641,8 +679,9 @@ GEOM="$(ros2 pkg prefix mole_excavation_mapping)/share/mole_excavation_mapping/g
 ros2 run mole_excavation_mapping mesh_to_excavation_grid_map.py preview \
   "$GEOM" \
   --output /tmp/target_preview.svg \
-  --authoring-frame BASE \
-  --cabin-control-farthest-x-m 7.0 \
+  --authoring-frame CABIN_CONTROL \
+  --mesh-anchor-x max \
+  --mesh-x 7.0 \
   --mesh-y 0.0 \
   --mesh-anchor-y origin \
   --align-major-axis x
@@ -653,8 +692,9 @@ Then apply the same placement to the live map:
 ```bash
 ros2 run mole_excavation_mapping mesh_to_excavation_grid_map.py apply \
   "$GEOM" \
-  --authoring-frame BASE \
-  --cabin-control-farthest-x-m 7.0 \
+  --authoring-frame CABIN_CONTROL \
+  --mesh-anchor-x max \
+  --mesh-x 7.0 \
   --mesh-y 0.0 \
   --mesh-anchor-y origin \
   --align-major-axis x \
@@ -671,8 +711,8 @@ ros2 run mole_excavation_mapping mesh_to_excavation_grid_map.py apply \
 Rules for this mesh workflow:
 
 - Use `--align-major-axis x` for beam/trench STLs whose long axis should match the arm pull direction.
-- Use `--cabin-control-farthest-x-m 7.0` when the farthest `+X` point of the imported target should land
-  7 m from the static `CABIN_CONTROL, J_TURN=0` origin.
+- Use `--authoring-frame CABIN_CONTROL --mesh-anchor-x max --mesh-x 7.0` when the farthest `+X` point
+  of the imported target should land 7 m from the live cabin-control origin.
 - Use `--mesh-y 0.0` to keep the target centerline on the cabin-control strip centerline.
 - Use `--reference-mode local_min --mesh-reference-z max` for local trench-like cut volumes so the target
   is anchored to one stable footprint height instead of following local soil noise.
@@ -919,7 +959,18 @@ ros2 launch mole_nav2_bringup bringup.launch.py \
   on_machine:=false \
   launch_rviz:=false \
   robot_namespace:=mole \
+  endeffector_type:=shovel_400mm_without_teeth \
+  publish_self_footprint:=true \
   publish_static_map_odom_tf:=true
+```
+
+For Terra/workspace-commit runs, verify the self footprint before executing a plan. `mole_nav2_bringup` now publishes it
+directly; if a split stack was started from an older command, start `mole_nav2_utils dynamic_footprint_publisher` in its
+own tmux pane before resuming.
+
+```bash
+ros2 topic info /mole/global_costmap/footprint --verbose
+timeout 12 ros2 topic echo /mole/global_costmap/footprint geometry_msgs/msg/Polygon --once
 ```
 
 ### golden
@@ -1033,8 +1084,9 @@ For Dig3D parity runs, keep the rollout order strict:
    - for analytic runtime profiles, mirror the profile to both `/mole/excavation_mapping/apply_runtime_profile`
      and `/mole/newton/apply_runtime_profile`
    - for premade STL geometry, apply the STL to `/excavation_mapping/load_excavation_map` with
-     `mesh_to_excavation_grid_map.py apply`. Use `--cabin-control-farthest-x-m <distance>` when the
-     target far edge is specified from the static cabin-control origin.
+     `mesh_to_excavation_grid_map.py apply`. Use
+     `--authoring-frame CABIN_CONTROL --mesh-anchor-x max --mesh-x <distance>` when the target far
+     edge is specified from the cabin-control origin.
 7. On Hong no-holes, if the user did not request a different spawn pose, call `/mole/reset_robot_pose` with
    `x=-0.001212`, `y=0.299973`, `yaw=180 deg` after the runtime-profile apply.
 8. Only then launch Dig3D and send `/run_dig_3d`.
@@ -1073,6 +1125,11 @@ If that does not recover the loop, escalate in this order:
 2. restart `dig`
 3. restart `ocs2`
 4. reset robot pose / workspace only if the failure is geometry-state related
+
+#### Packaged Foundation Execution
+
+For packaged flat-foundation plans, load `terra-foundation-execution`. This startup skill intentionally does not carry
+the full foundation launch/checklist so it can stay focused on generic Newton runtime bringup and failure recovery.
 
 ## 6) Failure Retry Checkpoint And Snapshot
 
@@ -1260,6 +1317,51 @@ cp "$RUN_DIR"/logs/*.log "$STATE_DIR"/ 2>/dev/null || true
 
 echo "$STATE_DIR"
 ```
+
+### Resume From A Checkpoint
+
+After the failure bundle is captured and the full Newton/Terra stack has been restarted, replay from the copied retry
+checkpoint. Keep the same `ROS_DOMAIN_ID`, run from the ROS workspace root, and source the same overlay first:
+
+```bash
+export ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-24}
+cd /workspace/moleworks/ros2_ws
+source install/setup.bash
+python3 src/moleworks_ros/scripts/resume_from_checkpoint.py \
+  "$CHECKPOINT_YAML_OR_DIR" \
+  --on_machine false \
+  --robot-namespace "${ROBOT_NAMESPACE:-mole}"
+```
+
+For the bundle created above, prefer the generated command:
+
+```bash
+cd /workspace/moleworks/ros2_ws
+bash "$STATE_DIR/retry_resume_command.txt"
+```
+
+`resume_from_checkpoint.py` accepts either the checkpoint directory or `checkpoint.yaml`. It waits for
+`/<robot_namespace>/terra_executor/resume` before mutating state, then in simulation mode calls
+`/<robot_namespace>/reset_robot_pose`, `/<robot_namespace>/load_soil_map`,
+`/<robot_namespace>/elevation_mapping_cupy/clear_map`, `/excavation_mapping/load_excavation_map`, and finally
+`/<robot_namespace>/terra_executor/resume` with `skip_navigation=true` for the resumed workspace.
+
+For multi-waypoint Terra plans in Newton with `skip_navigation:=true`, do not acknowledge the manual-navigation gate
+while the status log still reports a nonzero distance to the target. The plan waypoint `agent_state.pos_base` is the
+base pose expected for the next workspace; if Newton is not physically driving there, call `/mole/reset_robot_pose` to
+the displayed target pose first, then call `/mole/manual_navigation_done`. Acknowledging without moving leaves the live
+BASE pose at the old station, and the workspace planner will correctly reject dump targets against the wrong base
+keepaway.
+
+Checkpoint leaf directories use `<pair_index>_<completed_digging_loop_index>`. For example, `3_2` means resume the
+third Terra workspace pair after two completed dig/dump loops in that workspace. In `single_workspace_mode`, only
+`1_<loop>` is valid; pair indices above 1 require normal Terra plan mode with the matching `design_map_name` installed.
+
+Use `failure_state/.../retry_checkpoint/checkpoint.yaml` for controller retries. Only use
+`failure_state/.../current_snapshot/checkpoint.yaml` when the failure was at a clean BT boundary with an empty bucket, or
+when you explicitly want a diagnostic replay rather than an exact controller retry. The resume path restores the saved
+excavation map, Newton soil map, and base pose; it does not restore bucket contents or full joint/controller internal
+state.
 
 When adding the result to a validation note or replay manifest, record:
 

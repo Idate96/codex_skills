@@ -17,24 +17,43 @@ Use this as the default entry point for `moleworks_newton` work. Keep this skill
 
 - Read repo `AGENTS.md` before changing code or proposing commands.
 - Prefer repo docs and checked-in helper scripts over ad-hoc command reconstruction.
+- For Euler/Brev launches from a worktree, run the launcher from that
+  worktree's `cluster/` directory. `CLUSTER_ENV_FILE` may point at a shared env
+  file, but the code source should be the launcher checkout unless
+  `LOCAL_MOLEWORKS_DIR` is intentionally set in the command environment.
 - Do not run long noisy `uv run python ...` commands yourself unless the user explicitly wants live execution and the output is tightly bounded. Prefer preparing exact commands for the user or using narrow shell helpers.
 - Local smoke first. Real training runs use W&B. Quick local smoke and debug runs disable W&B.
+- For real Euler training, prefer longer walltimes. Default to `JOB_TIME=24h` when composing, reviewing, or launching training commands unless the user explicitly asks for a shorter run.
+- Use `4h` or shorter only for smoke gates, startup validation, queue/launcher probes, or intentionally bounded debugging runs. Do not use short walltimes for runs meant to judge learning quality.
+- PPO behavior judgments require real rollout scale. Treat tiny local PPO runs as startup/smoke only; do not use them to decide whether a reward, termination, or policy behavior is working. For Newton RL, expect meaningful PPO evidence to come from multi-hour runs with at least tens of thousands of environment rollouts/episodes, with `40000+` as the practical minimum target before judging learning quality, plus pinned checkpoint benchmarks.
+- When checking an active Newton training run, expect meaningful learning readouts to come from long runs, usually 24h-scale jobs, plus pinned checkpoint benchmarks rather than very early W&B curves.
 - For experiment status checks after a run has been live for a while:
   - use `sacct` first for scheduler truth
   - do not trust stale `RUNNING` notes in `docs/experiments/running.md` until you reconcile them against `sacct`
   - if the run used `logger=wandb`, prefer W&B API for learning-curve and end-state reads
   - use cluster log sync only when you need checkpoints, TensorBoard fallback, or missing metadata
 - For Euler single-GPU OOMs, first check the job stdout for `CUDA_VISIBLE_DEVICES` and `SLURM_JOB_GPUS`. Concurrent jobs on the same node must preserve Slurm's GPU assignment; forcing every job to `CUDA_VISIBLE_DEVICES=0` can make unrelated runs collide on one physical GPU.
+- For Daint/CSCS queue triage, a single-GPU GH job showing `72` CPUs is one GPU slice: current Daint GH nodes expose `288` CPUs and `4` GPUs. Current GPU partitions are `debug` max `00:30:00`, `normal` default/max `01:00:00`/`1-00:00:00`, and `low` default/max `01:00:00`/`1-00:00:00`; `xfer` has no GPU GRES.
 - For shared-turn excavation tasks:
   - use the analytic stack, not the MPM excavation env
   - keep empirical normalization disabled
   - use the torch soil path only
   - prefer Euler `1x4090`, then `3090` only if the run stays pending too long
 - Benchmark before drawing conclusions about a checkpoint or training recipe.
+- For FEE leaderboard/report work from a worktree, route to `rl-newton-benchmark`; use the current fast FEE benchmark contract there (`128` envs, `180` steps) unless the user explicitly asks for a high-confidence rerun. After local benchmark or video generation, archive the batch into `/home/lorenzo/moleworks/moleworks_newton/outputs/fee_benchmarks`, rebuild `global_latest`, and verify the new policy appears there before giving the user the full leaderboard URL.
 - For active sweep comparisons, sync the targeted run dirs first, then compare a common pinned `model_<N>.pt` across runs. Do not compare “latest available” checkpoints across different jobs.
-- Keep `docs/experiments/README.md`, `docs/experiments/running.md`, and `docs/experiments/done.md` current for real runs.
+- Keep `docs/experiments/README.md`, `docs/experiments/latest.md`, `docs/experiments/running.md`, and `docs/experiments/done.md` current for real runs.
+- When a pinned benchmark produces a new best-known checkpoint for a named condition, update `docs/experiments/latest.md` in the same turn instead of leaving the promotion buried only in `running.md`.
 - When updating `docs/experiments/running.md` after a few days have passed, prefer appending a dated audit section over rewriting the original launch note. Preserve the original launch context and add the corrected final read below it.
 - If runtime-sensitive shared-turn behavior changes, update `docs/SHARED_TURN_SPEED_BENCHMARKS.md`.
+- For live Newton/ROS/Terra execution issues, use a checkpoint-first loop:
+  save the current Terra checkpoint or excavation-map snapshot and relevant logs before changing code or config, apply the narrow fix, record the symptom/hypothesis/change/test/resume result in the experiment notebook, then resume from the saved checkpoint instead of restarting from scratch.
+- For live Terra excavation runs, keep a per-scoop notebook ledger. After every scoop or failed
+  scoop attempt, add a row before resuming that records the attempt id, target, predicted useful
+  soil, measured scooped/removed soil, remaining soil before/after, coverage, precision/error
+  notes, checkpoint/map artifact, and outcome. At the end of each workspace, save and record the
+  final surface/map artifact, remaining soil, precision against the target surface, and whether the
+  result is acceptable before moving on.
 
 ## Route To Narrower Skills
 
@@ -60,6 +79,7 @@ Read only the branch docs that match the current task:
 - Targeted run sync helper: `cluster/sync_logs.sh`
 - Generic train entrypoint: `scripts/rsl_rl/train.py`
 - Shared-turn benchmark entrypoint: `scripts/benchmark/benchmark_excavation_w_cabin_analytic.py`
+- FEE-specific benchmark entrypoint: `scripts/mole_environments/fee_excavation/benchmark/benchmark_fee_excavation.py`
 - Shared-turn sweep smoothness evaluator: `moleworks_newton/tasks/m445_excavation_shared_turn_w_cabin_no_aoa_actor/sim_to_real/measure_action_penalty_effect.py`
 - Terrain-bank verifier: `scripts/benchmark/verify_success_terrain_bank.py`
 - Play entrypoint: `scripts/rsl_rl/play.py`
@@ -80,16 +100,108 @@ Practical defaults:
 - Synced run dirs are the source of truth for pinned checkpoints, event files, and any run metadata not captured in the ledger.
 - W&B may label a wall-time-ended run as `crashed`; combine W&B with `sacct` instead of trusting that state string in isolation.
 
+## FEE W&B Termination History
+
+For FEE policy comparisons, use W&B `scan_history` before syncing logs when the
+question is about discovery order or live training curves. The key termination
+history scalars are:
+
+- positive finish history: `Episode Termination/last_full`, `Episode Termination/last_close`, `Episode Termination/last_partial`
+- total negative history: `Episode Termination/last_total_negative`
+- torque-limit negative history: `Episode Termination/last_negative_torque_limits`
+- bucket-velocity negative history: `Episode Termination/last_negative_bucket_velocity`
+- supporting counts: `Episode Count/full`, `Episode Count/close`, `Episode Count/partial`, `Episode Count/tot_negative`
+
+Minimal comparison script from the active Newton worktree:
+
+```bash
+uv run python - <<'PY'
+import math
+import wandb
+
+api = wandb.Api(timeout=60)
+runs = [
+    ("label_a", "wandb_run_id_a"),
+    ("label_b", "wandb_run_id_b"),
+]
+keys = [
+    "_step",
+    "Episode Termination/last_full",
+    "Episode Termination/last_close",
+    "Episode Termination/last_partial",
+    "Episode Termination/last_total_negative",
+    "Episode Termination/last_negative_torque_limits",
+    "Episode Termination/last_negative_bucket_velocity",
+    "Episode Count/full",
+    "Episode Count/close",
+    "Episode Count/partial",
+    "Episode Count/tot_negative",
+]
+
+def finite(value):
+    try:
+        value = float(value)
+        return value if math.isfinite(value) else None
+    except Exception:
+        return None
+
+for label, run_id in runs:
+    run = api.run(f"idate96/moleworks_newton/{run_id}")
+    latest = {}
+    first_close = first_full = first_partial = None
+    first_close_005 = None
+    for row in run.scan_history(keys=keys, page_size=1000):
+        step = int(row.get("_step", 0))
+        vals = {key: finite(row.get(key)) for key in keys if key != "_step"}
+        latest = {"_step": step, **vals}
+        close = vals.get("Episode Termination/last_close")
+        full = vals.get("Episode Termination/last_full")
+        partial = vals.get("Episode Termination/last_partial")
+        if first_close is None and close is not None and close > 0.0:
+            first_close = (step, close)
+        if first_close_005 is None and close is not None and close >= 0.05:
+            first_close_005 = (step, close)
+        if first_full is None and full is not None and full > 0.0:
+            first_full = (step, full)
+        if first_partial is None and partial is not None and partial > 0.0:
+            first_partial = (step, partial)
+    print(label, run_id, run.state)
+    print("  first_close_any:", first_close, "first_close>=0.05:", first_close_005)
+    print("  first_full:", first_full, "first_partial:", first_partial)
+    print("  latest:", latest)
+PY
+```
+
+Treat tiny nonzero `last_close` values near `1e-5` as logging/counting blips
+unless the user explicitly asks for first nonzero. For policy discovery order,
+prefer threshold crossings such as `last_close >= 0.05` plus latest/max close
+and full rates.
+
 ## FEE Hard-Soil Robustness
 
 - Before adding hard-soil-specific rewards, first add low-probability hard-soil contamination to the normal random mix and benchmark whether the policy still learns fast full-bucket behavior on normal soil.
+- When sweeping `fee_excavation` policy frequency or `simulation.decimation`, normalize true per-step dense reward terms by `policy_dt / reference_policy_dt` before interpreting results. Keep terminal rewards and delta/potential-style progress terms unchanged, and log `Task/policy_dt` plus `Task/reward_time_scale` so the sweep is auditable.
 - Keep the hard-soil mixture explicit in `docs/experiments/running.md`: list each fixed preset and probability, plus the remaining default random-soil probability.
+- When the user asks how a FEE checkpoint is doing, separate live training scalars from pinned benchmark results. Do not answer hard-soil robustness or tracking-precision questions from training ratios alone.
+- The default FEE benchmark bundle must include:
+  - termination outcome breakdown: `desired_full`, `desired_close`, `desired_partial`, and total negative
+  - target-depth precision from the benchmark report or JSON, not just raw success: in-soil target-depth dwell, best-from-above or closest approach, overshoot, and penetration
+  - hard-soil preset performance on the current suite: `default_hard_soil_mix`, `fixed_soil_random_hard_cap`, `fixed_soil_hard_interp_25`, `fixed_soil_hard_interp_50`, `fixed_soil_hard_interp_75`, and `asphalt_like`
+  - load usage under hard soil: global and per-joint torque saturation, torque-stage clipping (`preclip` vs `applied` over-limit fractions), plus resisting force or power
+- On fixed hard-soil presets, `desired_full` is often unattainable and should not be treated as the primary metric. Prefer target-depth precision, penetration, load usage, negative-termination breakdown, and whether the policy stays controlled under resistance.
 - For hard-soil policy diagnosis, benchmark finish gates and load together:
   - fill ratio versus sparse close threshold
   - close height and curl-angle gates
   - penetration depth
   - per-joint torque ratio/saturation
   - negative termination breakdown
+- For hard-soil failure analysis, derive failure phase from the per-episode benchmark JSON before proposing fixes:
+  - `pre_entry`: `in_soil_step_count == 0`
+  - `entry_instability`: negative `bucket_velocity` or `bucket_angle_of_attack` within the first few in-soil steps, with tiny fill
+  - `in_soil_pre_finish`: entered soil but never reached close/high/curl gates
+  - `late_finish_or_lift`: failed only after reaching close/high/curl gates
+- If the dominant hard-soil negatives are `pre_entry` or `entry_instability`, treat it as an entry-control or hardness-inference problem first. Do not jump straight to post-capture fill or closing rewards.
+- If `bucket_velocity` is the dominant hard-soil negative, verify whether the policy actually over-commanded speed before recommending a fix. Use the task-local hard-entry trace to compare `qd_desired` arm targets against measured `arm_joint_vel` over the last few steps before termination. If commanded fractions stay modest but measured arm velocity spikes or reverses sign after contact, treat it as contact/control instability under load rather than policy speed saturation.
 - If hard-soil runs mostly time out with real load and good target-depth tracking, treat it as a finish-discovery/gating problem first, not as evidence of catastrophic dynamics failure.
 
 ## Play Workflow
@@ -109,6 +221,8 @@ Practical defaults:
   - pin `--seed` to the benchmark seed before comparing behavior to benchmark numbers
   - treat `--no-reset-cache-enable` as a startup/debug convenience only, not as a performance or success-rate comparison mode
   - if the user says "play this FEE policy", default to the benchmark-faithful path first, then only suggest the cache-off fast path as an opt-in debugging shortcut
+- For GL FEE videos, use the real local display when available. If the Codex shell has `DISPLAY` unset, check `/tmp/.X11-unix/X*` and validate with `DISPLAY=:<n> xdpyinfo`; use `env DISPLAY=:<n> ... --viewer gl --headless` before falling back to `xvfb-run`. Do not silently switch to USD when the user asks for GL.
+- For torque-compensated FEE policies, always distinguish preclip policy/servo torque from applied torque including compensation. If the user says the machine must not go above `1.0`, treat applied torque saturation/over-limit as the hard safety check unless they explicitly mean policy preclip torque.
 
 ## Shared-Turn Sweep Comparison
 

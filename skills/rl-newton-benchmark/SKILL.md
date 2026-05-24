@@ -15,6 +15,9 @@ Read only what matches the task:
 - `docs/SHARED_TURN_DEFAULT_TRAINING.md`
 - `docs/benchmarks/README.md`
 - `docs/experiments/README.md`
+- `scripts/mole_environments/fee_excavation/README.md`
+- `scripts/mole_environments/fee_excavation/benchmark/README.md`
+- `scripts/mole_environments/fee_excavation/benchmark/benchmark_fee_excavation.py`
 - `scripts/benchmark/benchmark_excavation_w_cabin_analytic.py`
 - `scripts/benchmark/verify_success_terrain_bank.py`
 - `scripts/benchmark/analyze_benchmark.py`
@@ -22,6 +25,7 @@ Read only what matches the task:
 ## Hard Rules
 
 - Benchmark before promoting a checkpoint or recipe.
+- Run benchmark executions and noisy benchmark-log parsing in a worker agent by default. The parent thread should keep only the command contract, report paths, and compact metrics.
 - For shared-turn analytic tasks:
   - use the analytic env
   - keep empirical normalization disabled
@@ -33,9 +37,130 @@ Read only what matches the task:
 
 - Generic excavation benchmark: `scripts/benchmark/benchmark_excavation.py`
 - Shared-turn / analytic cabin benchmark: `scripts/benchmark/benchmark_excavation_w_cabin_analytic.py`
+- FEE excavation benchmark: `scripts/mole_environments/fee_excavation/benchmark/benchmark_fee_excavation.py`
+- FEE category leaderboard: `scripts/mole_environments/fee_excavation/benchmark/benchmark_fee_leaderboard.py`
 - Terrain-bank verifier: `scripts/benchmark/verify_success_terrain_bank.py`
 - Result summarizer: `scripts/benchmark/analyze_benchmark.py`
 - Visual sanity checks: `scripts/debug/capture_terra_snapshot.py`, `scripts/debug/capture_shared_turn_snapshot.py`
+
+## Delegated Benchmark Execution
+
+Use a worker subagent for benchmark runs, benchmark sweeps, large JSON/report comparisons, or any task likely to print long Newton/Warp/IsaacLab logs. This is Lorenzo's standing preference for this skill unless the active turn explicitly asks to keep execution in the parent thread or delegation tools are unavailable.
+
+Parent responsibilities:
+
+- choose the benchmark contract: checkpoint(s), seed, curriculum level, terrain source, env count, step budget, output directory, and any reset-cache namespace
+- pass only the exact commands and expected summary fields to the worker
+- keep the main context free of stdout/stderr; do not paste full benchmark logs into the parent conversation
+- after the worker returns, read only the final report JSON/Markdown if a specific number needs verification
+
+Worker instructions should include:
+
+```text
+You are the Newton benchmark worker. Run the provided benchmark commands sequentially on the local GPU; do not start concurrent benchmark processes. Keep raw stdout/stderr out of your final answer unless a command fails. Write outputs under the requested output dirs. Return only: command status, report paths, success rate, desired_full/close/partial counts, major negative terminations, key tracking precision, torque/load metrics when present, and any failure traceback summary.
+```
+
+If a benchmark fails, the worker should return the shortest useful failure diagnosis plus the command that failed. The parent can then decide whether to inspect logs or patch code.
+
+## FEE Benchmark Bundle
+
+Use this as the default contract for `fee_excavation` checkpoint evaluation, especially for hard-soil questions.
+
+- Do not treat live training ratios as a substitute for benchmark results. If the user asks about hard-soil robustness, tracking precision, or load behavior, read or run the pinned benchmark.
+- The default readout must include:
+  - overall success rate plus per-type counts or rates for `desired_full`, `desired_close`, `desired_partial`, and negative terminations
+  - target-depth precision from the benchmark report or JSON: in-soil target-depth dwell, closest approach or best-from-above, overshoot, and penetration
+  - hard-soil preset performance on the current suite: `default_hard_soil_mix`, `fixed_soil_random_hard_cap`, `fixed_soil_hard_interp_25`, `fixed_soil_hard_interp_50`, `fixed_soil_hard_interp_75`, and `asphalt_like`
+  - load usage under hard soil: `in_soil_tau_sat_step_mean`, per-joint torque saturation, torque-stage clipping (`preclip` vs `applied` over-limit fractions), and resisting force or power
+- For hard-soil failure diagnosis, use the episode JSON to cut negatives by phase, not just by reason:
+  - `in_soil_step_count == 0`
+  - `in_soil_step_count in [1, 3]`
+  - `in_soil_step_count in [4, 10]`
+  - `in_soil_step_count >= 11`
+  - cross-check those bins against `episode_ever_close_gate`, `episode_ever_high_gate`, `episode_ever_curl_gate`, and `episode_best_fill_ratio`
+- If most negatives happen before the fill thresholds used by finish shaping and before any high/curl/close gate, treat the problem as entry/contact handling, not as finish discovery.
+- If most negatives happen after the episode has already hit high/curl/close, treat the problem as lift-out / finish / spill control instead.
+- Negative attribution is ordered in the task runtime. `bucket_velocity` is currently attributed before `bucket_angle_of_attack`, so benchmark JSON alone does not tell you how often those two raw masks co-fired on the same step.
+- If `bucket_velocity` dominates and the user asks whether the policy is simply commanding too much speed, do one more check before proposing changes: compare the last few `qd_desired` arm targets against measured `arm_joint_vel` near failure. If commanded fractions are still modest but measured arm velocity spikes or reverses sign after contact, classify that as entry/contact-control instability under load, not simple policy over-commanding.
+- Use that phase split before recommending interventions:
+  - mostly early bins suggest entry control, near-soil speed/AoA shaping, or hardness inference
+  - mostly mid bins suggest in-soil progress / finish discovery
+  - mostly late bins suggest curl / lift / pullup gating or reward issues
+- When comparing checkpoints, keep the benchmark contract pinned: same checkpoint number, seed, curriculum level, env count, step budget, and hard-soil preset list.
+- When summarizing a hard-soil result, report both finish behavior and tracking behavior. A checkpoint that reaches `desired_close` with shallow penetration is not equivalent to one that reliably reaches `desired_full`.
+- On fixed hard-soil presets, `desired_full` is often impossible and is not the main score. Use it as a secondary signal only; the main score is whether the policy tracks the target depth, manages load, avoids unstable negatives, and stays productive under resistance.
+
+## FEE Category Leaderboard
+
+For FEE profile-v2 policy comparisons, prefer the checked-in wrapper instead of manually replaying ad hoc `/tmp/fee_geo14_latest_bench` commands:
+
+```bash
+export WANDB_MODE=disabled
+uv run python scripts/mole_environments/fee_excavation/benchmark/benchmark_fee_leaderboard.py \
+  --source-results-root /tmp/fee_geo14_latest_bench \
+  --output-root /tmp/fee_category_leaderboard_bench \
+  --num-envs 128 \
+  --benchmark-steps 180 \
+  --seed 0 \
+  --device cuda:0 \
+  --curriculum-level 100
+unset WANDB_MODE
+```
+
+Delegate this runner to a benchmark worker when possible. It runs child benchmarks serially, writes noisy logs to per-run files, reuses compatible reset caches across FEE namespaces, and emits `fee_category_leaderboard.html`. The fast default contract is `128` envs, `180` benchmark steps, and a shared reset cache of `10000` generated / `8000` required samples. Interpret the report by terrain category and tracking quality, not only aggregate success: RBF/profile, entry/exit/continuing, partial-state, 5 cm dwell, shallow fraction, overshoot fraction, best in-soil error, and torque over-limit are all part of the promotion decision.
+
+The default FEE leaderboard suite should stay small and in-distribution for the current training geometry: `default`, `hard_random_scrape_05cm`, `hard_scrape_50cm`, `precision_profile_10cm`, `precision_profile_entry45deg_10cm`, and `precision_profile_exit45deg_10cm`. The flat hard-soil scrape core case is 50 cm below the current soil and uses `fixed_soil_random_hard_cap`, which is in the random-mix soil support; `hard_scrape_05cm` remains an optional shallow stress probe. Benchmark-only soils such as interp-25/50/75/asphalt are OOD stress probes, not default promotion cases. Broader 5cm depth/profile or 30/45/60deg sweeps are optional follow-ups, with 60deg treated as an out-of-distribution stress case, not the default promotion view.
+
+Use the canonical aggregate latest page as the browser default:
+
+```text
+outputs/fee_benchmarks/fee_category_leaderboard_latest.html
+```
+
+Refresh it without running benchmarks:
+
+```bash
+uv run python scripts/mole_environments/fee_excavation/benchmark/benchmark_fee_leaderboard.py \
+  --global-latest-only
+```
+
+This page is the global view across saved `outputs/fee_benchmarks/**/benchmark_results_*.json` files and should include the current table tabs, sortable columns, policy-click filtering, and video links discovered under archived `videos*` folders. Per-batch leaderboards remain useful for provenance, but do not present them as the default "latest" view. Normal leaderboard runs refresh the global latest page unless `--skip-global-latest` is passed.
+
+When running benchmarks or videos from a worktree, treat the worktree `outputs/fee_benchmarks/<batch>` directory as staging only unless `--output-root` already points inside the canonical archive tree. The global builder scans the canonical repo root, not arbitrary worktree output roots. Before telling the user to open the full leaderboard:
+
+```bash
+CANONICAL_BENCH_ROOT=/home/lorenzo/moleworks/moleworks_newton/outputs/fee_benchmarks
+rsync -a outputs/fee_benchmarks/<BENCH_ROOT>/ "$CANONICAL_BENCH_ROOT/<BENCH_ROOT>/"
+uv run python scripts/mole_environments/fee_excavation/benchmark/benchmark_fee_leaderboard.py \
+  --global-latest-only
+rg -n "<POLICY_LABEL>|<RUN_ALIAS_OR_UNIQUE_TOKEN>" \
+  "$CANONICAL_BENCH_ROOT/global_latest/fee_category_leaderboard.html" | head
+```
+
+Only call the global leaderboard ready after the `rg` check finds the new policy rows in `global_latest/fee_category_leaderboard.html`. If videos were recorded, verify that the video links in the global HTML point under `$CANONICAL_BENCH_ROOT/<BENCH_ROOT>/videos*`, not the worktree staging path. Give the browser URL for the canonical global page by default; give the per-batch HTML only when the user explicitly asks for that batch.
+
+For qualitative FEE videos, use `record_fee_leaderboard_videos.py`. Default behavior should record all raw Newton MP4s first and then batch-transcode browser-safe `_h264.mp4` / `_vp9.webm` variants in parallel across CPU workers. Do not reintroduce per-rollout inline transcoding unless explicitly requested; it leaves the GPU idle while FFmpeg runs. Useful flags:
+
+```bash
+uv run python scripts/mole_environments/fee_excavation/benchmark/record_fee_leaderboard_videos.py \
+  --benchmark-output-root outputs/fee_benchmarks/<BENCH_ROOT> \
+  --policy-label <POLICY_LABEL> \
+  --episodes 1 \
+  --cases default,hard_random_scrape_05cm,hard_scrape_50cm,precision_profile_10cm,precision_profile_entry45deg_10cm,precision_profile_exit45deg_10cm \
+  --viewer gl \
+  --soil-wireframe-mode full \
+  --run
+```
+
+Use `--skip-browser-video-variants` for raw-only recording, `--transcode-workers <n>` to cap CPU parallelism, `--ffmpeg-threads-per-worker <n>` to control FFmpeg threading, and `--inline-browser-video-variants` only for the old slower inline transcode behavior. After videos finish, archive the whole batch into the canonical benchmark tree, rebuild the global latest leaderboard, and verify the policy/video links there before reporting the full leaderboard path.
+
+For GL recording on Lorenzo's workstation, prefer the real X display. The Codex shell may have `DISPLAY` unset even though a display exists; check `/tmp/.X11-unix/X*`, validate with `DISPLAY=:<n> xdpyinfo`, and run the recorder/play command as `env DISPLAY=:<n> ... --viewer gl --headless`. Use `xvfb-run` only when there is no usable real display, and do not switch to USD unless the user explicitly asks.
+
+For torque/load readouts, always report both torque stages when present:
+- `in_soil_tau_preclip_*`: policy/servo torque before applied compensation
+- `in_soil_tau_sat_*` and `in_soil_tau_applied_over_limit_*`: actual applied torque including compensation
+
+If the user says "do not go above 1", assume they mean applied torque until clarified. A policy can have near-zero preclip over-limit while still violating applied torque because compensation is added after clipping.
 
 ## Shared-Turn Terrain-Bank Contract
 
@@ -102,6 +227,8 @@ unset WANDB_MODE
 
 ## Context Hygiene
 
-- Prefer preparing exact benchmark commands for the user over running long Python jobs yourself.
-- If the task is mainly comparison or summarization, inspect the generated JSON or synced artifacts instead of re-running the benchmark.
-- If the task spans many result files or W&B runs, also use `moleworks-subagent-orchestrator`.
+- For existing small result files, the parent may inspect JSON directly.
+- For new benchmarks, repeated comparisons, or noisy log parsing, delegate to the benchmark worker and keep only compact result tables in the parent.
+- Prefer exact benchmark commands with pinned contracts over ad-hoc reruns.
+- If delegation tools are unavailable, run the minimum benchmark locally, keep output bounded, and summarize from the generated report files rather than from streamed logs.
+- If the task spans many result files, W&B runs, cluster syncs, or ledger updates, also use `moleworks-subagent-orchestrator`.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Terra RL"
+  short_description: "Run and debug Terra RL training"
+  default_prompt: "Use $terra-rl to validate and launch a Terra RL training job on Euler."

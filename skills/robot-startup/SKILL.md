@@ -195,7 +195,7 @@ If `--dig-controller` is requested, it also adds:
 
 - `dig`: split tmux window started via the `dig-controllers` script for the selected controller, with launch-driven auto-activation enabled. For `dig3d`, the default policy is now the non-AoA `fkfix_s203_3750` preset.
 
-The script prompts for `endeffector_type` when run interactively (defaults to `shovel` if omitted) and passes it into low_level, perception, and estimator launches.
+The script prompts for `endeffector_type` when run interactively (defaults to `shovel_calibrated` if omitted) and passes it into low_level, perception, and estimator launches.
 
 `foxglove` is started after the other managed windows are already running their intended launches, with a short delay to let the ROS graph settle first. On reruns, if one of the earlier managed windows is restarted, the script stops `foxglove` first and only brings it back after that gate passes. If the readiness gate times out, `foxglove` is left stopped so the bridge is not started in a bad state.
 

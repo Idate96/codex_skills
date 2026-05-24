@@ -24,6 +24,8 @@ Read the repo workflow/docs before improvising:
 
 - Local smoke first, with W&B disabled.
 - Real training runs use W&B.
+- Real Euler training runs should usually request `JOB_TIME=24h`. Use `30m`/`4h` only for smoke gates, startup validation, queue probes, or intentionally bounded debugging.
+- If a 24h run has not saturated by its last evaluated checkpoint, continue from the best/latest checkpoint with another long run instead of treating the partial curve as converged. On Euler, chained 24h continuations are preferred over one fragile oversized job.
 - Do not talk about "pulling a policy" unless the job actually trained one.
 - Keep experiment docs current in the same work session as submit/sync/closeout.
 - Prefer targeted live diagnostics and targeted sync before broad full-log sync.
@@ -47,7 +49,7 @@ unset WANDB_MODE
 Default cluster entrypoint:
 
 ```bash
-JOB_TIME=30m NUM_GPUS=2 GPU_TYPE=rtx_3090 \
+JOB_TIME=24h NUM_GPUS=2 GPU_TYPE=rtx_3090 \
 ./docker/cluster/cluster_interface.sh job \
   --task <TASK> \
   --num_envs 64000 \

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Workspace Planner Debug"
+  short_description: "Debug workspace planner ROS/Newton runs"
+  default_prompt: "Use $workspace-planner-debug to inspect a Newton/ROS workspace planner run, capture per-action planner GridMaps, match execution feedback to the selected scoop, and replay failed or high-discrepancy actions from Terra checkpoints."
