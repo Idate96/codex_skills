@@ -17,6 +17,8 @@ Start the simulation through the active Newton or Isaac/Terra runbook. Start the
 launch_terra:=false
 ```
 
+Beam6 still launches Terra for the generated workspaces. The base stack keeps generic Terra disabled so that `beam6_sequence_stage.launch.py` can own the stage-specific `workspace_planner_server` and `terra_executor` for the generated `<stage>_terra_plan.json`.
+
 For a stock-shovel Newton flange run, match analytical bucket geometry:
 
 ```bash
@@ -206,6 +208,8 @@ Zero-yaw smoke-test stage command shape:
 ros2 launch terra_planner beam6_sequence_stage.launch.py \
   stage:=bottom6 \
   sequence_output_root:=/tmp/beam6_flange_bottom_sequence \
+  terra_start_delay:=15.0 \
+  skip_navigation:=false \
   endeffector_type:=shovel_400mm_without_teeth \
   workspace_planner_blade_width_m:=0.4 \
   workspace_planner_mode:=1 \
@@ -221,6 +225,7 @@ ros2 launch terra_planner beam6_sequence_stage.launch.py \
   workspace_dig_boundary_margin_m:=0.3 \
   dig_start_soil_carving_service:=excavation_mapping/start_target_clamped_soil_carving \
   trench_axis_finish_mask_mode:=target_depth \
+  grading_completion_mode:=local_open \
   remaining_height_done_threshold_m_excavate:=0.05 \
   dig_3d_policy_id:=shovel400_r17_s4_tbar300_s214_3250
 ```

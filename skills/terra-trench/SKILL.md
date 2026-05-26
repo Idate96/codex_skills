@@ -40,6 +40,8 @@ Beam6 is a two-stage application-specific flow, not a generic Terra retarget:
 
 Do not use `resume_from_checkpoint.py` to switch from flange to bottom. Checkpoint resume continues the same target and planner state; it is not a target-change mechanism.
 
+Terminology: Beam6 "generated/manual workspaces" means the generator-created workspaces in `<stage>_terra_plan.json`. We still launch Terra, but through `beam6_sequence_stage.launch.py`, which wraps `terra_executor.launch.py` and runs `terra_execution.xml`. The generated plan provides the workspaces, and `LoadWorkspaceFromPlan` loads them at each waypoint. This is different from the ad hoc single-workspace YAML path (`single_workspace.launch.py`, `trench_workspace.launch.py`, or `single_workspace_executor.launch.py`).
+
 ## Frame And Geometry Registration
 
 The target STLs are authored in `CABIN_CONTROL`. Do not apply Beam6 trench targets with `--authoring-frame BASE`.
@@ -202,6 +204,9 @@ Bottom stage:
 - Use `workspace_dig_boundary_margin_m:=0.3`.
 - Use target-clamped soil carving service `excavation_mapping/start_target_clamped_soil_carving`.
 - Use policy `shovel400_r17_s4_tbar300_s214_3250`.
+- In simulation, do not skip navigation: use `skip_navigation:=false`.
+- For the open trench bottom pass, use `grading_completion_mode:=local_open`, not `dump`.
+- Until `beam6_sequence_stage.launch.py` has an explicit workspace-service readiness gate, use `terra_start_delay:=15.0` for full-navigation runs. Earlier skip-navigation runs implicitly delayed long enough for `LoadWorkspaceFromPlan`; full-navigation runs can reach `/mole/load_workspace` much sooner.
 
 Clear Nav2 costmaps after bottom target apply:
 
@@ -218,6 +223,7 @@ ros2 service call /mole/local_costmap/clear_entirely_local_costmap nav2_msgs/srv
 - It starts `workspace_planner_server` under the robot namespace.
 - It passes the generated stage plan to `terra_executor.launch.py`.
 - It forwards trench-axis metadata, blade width, finish-mask mode, remaining-height threshold, carving service, checkpoint root, tool type, bucket frame, and dig policy.
+- It should run after the base stack, Nav2, excavation mapping, and the workspace planner's map subscriptions have had enough time to settle. For now, pass `terra_start_delay:=15.0` on full-navigation Beam6 runs.
 
 The normal non-single Terra behavior tree is `terra_execution.xml`:
 
