@@ -36,7 +36,7 @@ python3 src/moleworks_ros/high_level_planning/terra_planner/scripts/generate_tre
   --live-first-base-frame BASE
 ```
 
-The generator uses `BASE` for first-station translation and `CABIN_CONTROL` for trench-axis yaw. It writes:
+The generator uses `BASE` for first-station translation and fixed `BASE_CONTROL` for trench-axis yaw. It writes:
 
 - `/tmp/beam6_flange_bottom_sequence/flange6_terra_plan.json`
 - `/tmp/beam6_flange_bottom_sequence/bottom6_terra_plan.json`
@@ -47,10 +47,10 @@ For the current recipe, live first-station anchoring shifts the target farthest 
 
 ## Shared Registration Contract
 
-Both targets are authored in `CABIN_CONTROL` and applied into `map` through the live `map -> CABIN_CONTROL` TF lookup:
+Both targets are authored in `BASE_CONTROL` and applied into `map` through the live `map -> BASE_CONTROL` TF lookup:
 
 ```bash
---authoring-frame CABIN_CONTROL \
+--authoring-frame BASE_CONTROL \
 --mesh-anchor-x max \
 --mesh-x 6.375 \
 --mesh-y 0.0 \
@@ -60,14 +60,14 @@ Both targets are authored in `CABIN_CONTROL` and applied into `map` through the 
 --mesh-reference-z max
 ```
 
-Do not use `--authoring-frame BASE` and do not use legacy `--cabin-control-farthest-x-m` for Beam6. The generator rejects that old convention.
+Do not use `--authoring-frame BASE`, live `CABIN_CONTROL`, or legacy `--cabin-control-farthest-x-m` for Beam6. The generator rejects those old conventions.
 
 Before bottom target application, compare the live transforms against `station_anchor.json`:
 
 ```bash
 cat /tmp/beam6_flange_bottom_sequence/station_anchor.json
 timeout 15 bash -lc 'ros2 run tf2_ros tf2_echo map BASE 2>&1' | head -40
-timeout 15 bash -lc 'ros2 run tf2_ros tf2_echo map CABIN_CONTROL 2>&1' | head -40
+timeout 15 bash -lc 'ros2 run tf2_ros tf2_echo map BASE_CONTROL 2>&1' | head -40
 ```
 
 ## Flange Stage
@@ -85,7 +85,7 @@ Apply target:
 ```bash
 ros2 run mole_excavation_mapping mesh_to_excavation_grid_map.py apply \
   /tmp/beam6_flange_bottom_sequence/flange6_target_width_1.300m.stl \
-  --authoring-frame CABIN_CONTROL \
+  --authoring-frame BASE_CONTROL \
   --mesh-anchor-x max \
   --mesh-x 6.375 \
   --mesh-y 0.0 \
@@ -117,7 +117,8 @@ ros2 launch terra_planner beam6_sequence_stage.launch.py \
   workspace_plan_trench_entry_margin_m:=0.25 \
   workspace_plan_trench_exit_margin_m:=0.25 \
   workspace_dig_boundary_margin_m:=0.8 \
-  dig_start_soil_carving_service:=excavation_mapping/start_soil_carving \
+  grading_only:=true \
+  dig_start_soil_carving_service:=excavation_mapping/start_target_clamped_soil_carving \
   trench_axis_finish_mask_mode:=target_depth \
   remaining_height_done_threshold_m_excavate:=0.05 \
   dig_3d_policy_id:=r14c_tbar200_net1024_s213_3750
@@ -180,7 +181,7 @@ Apply target from the station saved in `station_anchor.json`:
 ```bash
 ros2 run mole_excavation_mapping mesh_to_excavation_grid_map.py apply \
   "/home/lorenzo/Downloads/0505_trench test-20260515T123758Z-3-001/0505_trench test/Mesh/Bottom_6mLong.stl" \
-  --authoring-frame CABIN_CONTROL \
+  --authoring-frame BASE_CONTROL \
   --mesh-anchor-x max \
   --mesh-x 6.375 \
   --mesh-y 0.0 \
@@ -223,18 +224,19 @@ ros2 launch terra_planner beam6_sequence_stage.launch.py \
   workspace_plan_trench_entry_margin_m:=0.25 \
   workspace_plan_trench_exit_margin_m:=0.25 \
   workspace_dig_boundary_margin_m:=0.3 \
+  grading_only:=true \
   dig_start_soil_carving_service:=excavation_mapping/start_target_clamped_soil_carving \
   trench_axis_finish_mask_mode:=target_depth \
   grading_completion_mode:=local_open \
   remaining_height_done_threshold_m_excavate:=0.05 \
-  dig_3d_policy_id:=shovel400_r17_s4_tbar300_s214_3250
+  dig_3d_policy_id:=shovel400_r47_b6p60_toprbf_net256_s214_6000
 ```
 
 ## Failure Signs
 
 - `station_anchor.json` is missing after live plan generation.
-- Target apply uses `BASE` instead of `CABIN_CONTROL`.
-- `map -> BASE` translation or `map -> CABIN_CONTROL` yaw differs before bottom apply.
+- Target apply uses `BASE` or live `CABIN_CONTROL` instead of `BASE_CONTROL`.
+- `map -> BASE` translation or `map -> BASE_CONTROL` yaw differs before bottom apply.
 - Bottom starts with stock-shovel robot model, self-filter, OCS2, dig controller, or policy.
 - The live map no longer contains completed flange terrain.
 - `desired_elevation` or `dig_zone` does not show the current target footprint.

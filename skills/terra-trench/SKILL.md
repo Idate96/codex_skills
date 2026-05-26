@@ -1,6 +1,6 @@
 ---
 name: terra-trench
-description: Current Moleworks Terra trenching runbook for full autonomous Beam6-style trench execution in simulation or on the robot. Use when investigating or running the two-stage flange/bottom trench flow, generate_trench_sequence_plans.py, beam6_sequence_stage.launch.py, CABIN_CONTROL target registration, mesh_to_excavation_grid_map.py, workspace planner trench-axis metadata, Terra behavior-tree activation, Newton or Isaac/Terra simulation bringup, robot bringup, and 400 mm tool handoff.
+description: Current Moleworks Terra trenching runbook for full autonomous Beam6-style trench execution in simulation or on the robot. Use when investigating or running the two-stage flange/bottom trench flow, generate_trench_sequence_plans.py, beam6_sequence_stage.launch.py, BASE_CONTROL target registration, mesh_to_excavation_grid_map.py, workspace planner trench-axis metadata, Terra behavior-tree activation, Newton or Isaac/Terra simulation bringup, robot bringup, and 400 mm tool handoff.
 ---
 
 # Terra Trench
@@ -48,33 +48,33 @@ On the robot, keep the same Beam6 ownership model as simulation: the base stack 
 
 1. Pull/build the current `moleworks_ros` `main` on the robot.
 2. Start the normal robot/base stack with `launch_terra:=false` and `dig_3d_dig_zone_layer_name:=current_dig_workspace`.
-3. Park at the first trench station, verify `map -> BASE`, `map -> CABIN_CONTROL`, `/mole/state`, and `/excavation_mapping/grid_map`, then generate live-anchored plans with `generate_trench_sequence_plans.py --live-first-base-frame BASE`.
+3. Park at the first trench station, verify `map -> BASE`, `map -> BASE_CONTROL`, `/mole/state`, and `/excavation_mapping/grid_map`, then generate live-anchored plans with `generate_trench_sequence_plans.py --live-first-base-frame BASE`.
 4. Use the generator-printed `apply_target` and `run_stage` commands. Do not hand-edit trench-axis coordinates unless this is an intentional zero-yaw smoke run.
-5. For `flange6`, run the stock shovel stack: `endeffector_type:=shovel`, `workspace_planner_blade_width_m:=1.3`, `dig_3d_policy_id:=r14c_tbar200_net1024_s213_3750`, `dig_start_soil_carving_service:=excavation_mapping/start_soil_carving`.
+5. For `flange6`, run the stock shovel stack: `endeffector_type:=shovel`, `workspace_planner_blade_width_m:=1.3`, `dig_3d_policy_id:=r14c_tbar200_net1024_s213_3750`, `dig_start_soil_carving_service:=excavation_mapping/start_target_clamped_soil_carving`.
 6. After flange completes, save the live map with `/excavation_mapping/save_map` before stopping the flange stack.
 7. Stop every process that embeds stock-shovel geometry: robot state publisher, self-filter, OCS2, Dig3D, workspace planner, and Terra executor.
-8. Restart the robot/base stack with `shovel_400mm_without_teeth` everywhere: `workspace_planner_blade_width_m:=0.4`, `dig_3d_policy_id:=shovel400_r17_s4_tbar300_s214_3250`, `dig_3d_pullup_boundary_min_distance_m:=0.0`, `dig_3d_dig_zone_layer_name:=current_dig_workspace`, and `move_leg_explicit_target_z_trench_mode:=true`.
-9. Before bottom target application, compare live `map -> BASE` and `map -> CABIN_CONTROL` against `/tmp/beam6_flange_bottom_sequence/station_anchor.json`; do not continue if the station or yaw moved.
+8. Restart the robot/base stack with `shovel_400mm_without_teeth` everywhere: `workspace_planner_blade_width_m:=0.4`, `dig_3d_policy_id:=shovel400_r47_b6p60_toprbf_net256_s214_6000`, `dig_3d_pullup_boundary_min_distance_m:=0.0`, `dig_3d_dig_zone_layer_name:=current_dig_workspace`, and `move_leg_explicit_target_z_trench_mode:=true`.
+9. Before bottom target application, compare live `map -> BASE` and `map -> BASE_CONTROL` against `/tmp/beam6_flange_bottom_sequence/station_anchor.json`; do not continue if the station or yaw moved.
 10. Load the saved flange map into excavation mapping if needed, apply the generated bottom target, clear Nav2 costmaps, then run `bottom6`.
 
-Bottom stage must use `terra_start_delay:=15.0`, `skip_navigation:=false`, `grading_completion_mode:=local_open`, `use_dig_zone_if_nonempty:=false`, `dig_zone_boundary_margin_m:=0.000`, `workspace_dig_boundary_margin_m:=0.3`, `grading_workspace_extension_m:=0.500`, and `workspace_completion_profile:=completion_foundation_strict.yaml`.
+Bottom stage must use `terra_start_delay:=15.0`, `skip_navigation:=false`, `grading_only:=true`, `grading_completion_mode:=local_open`, `use_dig_zone_if_nonempty:=false`, `dig_zone_boundary_margin_m:=0.000`, `workspace_dig_boundary_margin_m:=0.3`, `grading_workspace_extension_m:=0.500`, and `workspace_completion_profile:=completion_foundation_strict.yaml`.
 
 Stop instead of patching live nodes if Foxglove shows the wrong bucket, the bottom `desired_elevation` or `dig_zone` is wrong, Nav2 costmaps still contain stale flange occupancy, or the planner reports completion while visible bottom material remains.
 
 ## Frame And Geometry Registration
 
-The target STLs are authored in `CABIN_CONTROL`. Do not apply Beam6 trench targets with `--authoring-frame BASE`.
+The target STLs are authored in `BASE_CONTROL`, a fixed child of `BASE` that coincides with `CABIN_CONTROL` when `J_TURN=0`. Do not apply Beam6 trench targets with live `CABIN_CONTROL` or raw `BASE`.
 
 The live anchored generator uses two frames:
 
 - `BASE` provides the first station translation in `map`.
-- `CABIN_CONTROL` provides the trench-axis yaw in `map`.
+- `BASE_CONTROL` provides the trench-axis yaw in `map`.
 
 The generator writes `/tmp/beam6_flange_bottom_sequence/station_anchor.json`. Treat that file as the bottom-stage registration contract. The bottom target must be applied only after the robot is back at that saved station pose, within the tolerances in the file.
 
 Current Beam6 placement rules:
 
-- `map_apply.authoring_frame: CABIN_CONTROL`
+- `map_apply.authoring_frame: BASE_CONTROL`
 - `--mesh-anchor-x max`
 - `--mesh-anchor-y origin`
 - `--align-major-axis x`
@@ -82,9 +82,11 @@ Current Beam6 placement rules:
 - `--mesh-reference-z max`
 - The nominal farthest X is `7.0 m`, but live first-station anchoring shifts the current recipe to `6.375 m`.
 - `plan.center_y_m` and `map_apply.mesh_y_m` must match.
-- The generated Terra stages use `workspace_center_y_m=-0.274`, matching the cabin-control target after live application.
+- The generated Terra stages use `workspace_center_y_m=-0.274`, matching the fixed zero-turn control offset after live application.
 
-`mesh_to_excavation_grid_map.py apply` freezes the target into `map` at apply time by looking up `map -> CABIN_CONTROL`. If the base or cabin yaw changes between generation and apply, the desired geometry and the precomputed Terra plan no longer match.
+`mesh_to_excavation_grid_map.py apply` freezes the target into `map` at apply time by looking up `map -> BASE_CONTROL`. If the base pose changes between generation and apply, the desired geometry and the precomputed Terra plan no longer match.
+
+To apply Beam6 to a different live or saved map, first load that map into `/excavation_mapping/grid_map`, park at the first trench station for that map, verify `map -> BASE` and `map -> BASE_CONTROL`, then rerun `generate_trench_sequence_plans.py --live-first-base-frame BASE`. Use the newly printed `apply_target` and `run_stage` lines; do not reuse commands from another map or station.
 
 ## Simulation Run Order
 
@@ -139,7 +141,7 @@ Flange stage:
 - Use `endeffector_type:=shovel`.
 - Use `workspace_planner_blade_width_m:=1.3`.
 - Use policy `r14c_tbar200_net1024_s213_3750`.
-- Use raw soil carving service `excavation_mapping/start_soil_carving`.
+- Use target-clamped soil carving service `excavation_mapping/start_target_clamped_soil_carving`.
 - Use `trench_axis_finish_mask_mode:=target_depth`.
 - Use `remaining_height_done_threshold_m_excavate:=0.05`.
 
@@ -177,7 +179,8 @@ Restart the bottom stack with the 400 mm tool propagated everywhere:
 ```bash
 endeffector_type:=shovel_400mm_without_teeth
 workspace_planner_blade_width_m:=0.4
-dig_3d_policy_id:=shovel400_r17_s4_tbar300_s214_3250
+dig_3d_policy_id:=shovel400_r47_b6p60_toprbf_net256_s214_6000
+grading_only:=true
 dig_3d_pullup_boundary_min_distance_m:=0.0
 dig_3d_dig_zone_layer_name:=current_dig_workspace
 move_leg_explicit_target_z_trench_mode:=true
@@ -200,7 +203,7 @@ Before bottom apply, verify the current station:
 ```bash
 cat /tmp/beam6_flange_bottom_sequence/station_anchor.json
 timeout 15 bash -lc 'ros2 run tf2_ros tf2_echo map BASE 2>&1' | head -40
-timeout 15 bash -lc 'ros2 run tf2_ros tf2_echo map CABIN_CONTROL 2>&1' | head -40
+timeout 15 bash -lc 'ros2 run tf2_ros tf2_echo map BASE_CONTROL 2>&1' | head -40
 ```
 
 Reload the saved flange map into ROS excavation mapping if needed:
@@ -221,8 +224,9 @@ Bottom stage:
 - Use `workspace_planner_profile:=stripwise_max_volume`.
 - Use target/legal half widths `0.2` and `0.3`.
 - Use `workspace_dig_boundary_margin_m:=0.3`.
+- Use `grading_only:=true`.
 - Use target-clamped soil carving service `excavation_mapping/start_target_clamped_soil_carving`.
-- Use policy `shovel400_r17_s4_tbar300_s214_3250`.
+- Use policy `shovel400_r47_b6p60_toprbf_net256_s214_6000`.
 - In simulation, do not skip navigation: use `skip_navigation:=false`.
 - For the open trench bottom pass, use `grading_completion_mode:=local_open`, not `dump`.
 - Until `beam6_sequence_stage.launch.py` has an explicit workspace-service readiness gate, use `terra_start_delay:=15.0` for full-navigation runs. Earlier skip-navigation runs implicitly delayed long enough for `LoadWorkspaceFromPlan`; full-navigation runs can reach `/mole/load_workspace` much sooner.
@@ -264,7 +268,7 @@ Before plan generation:
 
 - `/clock` advances in sim time.
 - `ros2 pkg prefix terra_planner` resolves to the expected overlay.
-- `map -> BASE` and `map -> CABIN_CONTROL` are available.
+- `map -> BASE` and `map -> BASE_CONTROL` are available.
 - The robot is at the intended first station.
 - `/excavation_mapping/grid_map` publishes finite `elevation`.
 
@@ -283,7 +287,7 @@ Before bottom:
 - Newton, if restarted with a desired-elevation clamp, uses the materialized bottom-target seed map, and ROS excavation mapping loads the same seed bag.
 - `station_anchor.json` exists.
 - `map -> BASE` matches the saved station within tolerance.
-- `map -> CABIN_CONTROL` yaw matches the generated axis yaw.
+- `map -> BASE_CONTROL` yaw matches the generated axis yaw.
 - No stock-shovel process remains alive.
 
 Stop instead of continuing if any of these fail:

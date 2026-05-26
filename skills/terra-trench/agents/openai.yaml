@@ -1,4 +1,4 @@
 interface:
   display_name: "Terra Trench"
   short_description: "Beam6 Terra autonomous trenching workflow"
-  default_prompt: "Use $terra-trench to run or inspect the Beam6 autonomous trench flow: generate live anchored plans, register CABIN_CONTROL STL targets, run flange, save terrain, switch to the 400 mm tool, and run bottom."
+  default_prompt: "Use $terra-trench to run or inspect the Beam6 autonomous trench flow: generate live anchored plans, register BASE_CONTROL STL targets, run flange, save terrain, switch to the 400 mm tool, and run bottom."
