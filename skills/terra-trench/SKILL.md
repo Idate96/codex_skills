@@ -1,6 +1,6 @@
 ---
 name: terra-trench
-description: Current Moleworks Terra trenching runbook for full autonomous Beam6-style trench execution in simulation. Use when investigating or running the two-stage flange/bottom trench flow, generate_trench_sequence_plans.py, beam6_sequence_stage.launch.py, CABIN_CONTROL target registration, mesh_to_excavation_grid_map.py, workspace planner trench-axis metadata, Terra behavior-tree activation, Newton or Isaac/Terra simulation bringup, and 400 mm tool handoff.
+description: Current Moleworks Terra trenching runbook for full autonomous Beam6-style trench execution in simulation or on the robot. Use when investigating or running the two-stage flange/bottom trench flow, generate_trench_sequence_plans.py, beam6_sequence_stage.launch.py, CABIN_CONTROL target registration, mesh_to_excavation_grid_map.py, workspace planner trench-axis metadata, Terra behavior-tree activation, Newton or Isaac/Terra simulation bringup, robot bringup, and 400 mm tool handoff.
 ---
 
 # Terra Trench
@@ -41,6 +41,25 @@ Beam6 is a two-stage application-specific flow, not a generic Terra retarget:
 Do not use `resume_from_checkpoint.py` to switch from flange to bottom. Checkpoint resume continues the same target and planner state; it is not a target-change mechanism.
 
 Terminology: Beam6 "generated/manual workspaces" means the generator-created workspaces in `<stage>_terra_plan.json`. We still launch Terra, but through `beam6_sequence_stage.launch.py`, which wraps `terra_executor.launch.py` and runs `terra_execution.xml`. The generated plan provides the workspaces, and `LoadWorkspaceFromPlan` loads them at each waypoint. This is different from the ad hoc single-workspace YAML path (`single_workspace.launch.py`, `trench_workspace.launch.py`, or `single_workspace_executor.launch.py`).
+
+## Robot Test Quick Path
+
+On the robot, keep the same Beam6 ownership model as simulation: the base stack runs without generic Terra, and `beam6_sequence_stage.launch.py` owns the stage-specific workspace planner plus Terra executor.
+
+1. Pull/build the current `moleworks_ros` `main` on the robot.
+2. Start the normal robot/base stack with `launch_terra:=false` and `dig_3d_dig_zone_layer_name:=current_dig_workspace`.
+3. Park at the first trench station, verify `map -> BASE`, `map -> CABIN_CONTROL`, `/mole/state`, and `/excavation_mapping/grid_map`, then generate live-anchored plans with `generate_trench_sequence_plans.py --live-first-base-frame BASE`.
+4. Use the generator-printed `apply_target` and `run_stage` commands. Do not hand-edit trench-axis coordinates unless this is an intentional zero-yaw smoke run.
+5. For `flange6`, run the stock shovel stack: `endeffector_type:=shovel`, `workspace_planner_blade_width_m:=1.3`, `dig_3d_policy_id:=r14c_tbar200_net1024_s213_3750`, `dig_start_soil_carving_service:=excavation_mapping/start_soil_carving`.
+6. After flange completes, save the live map with `/excavation_mapping/save_map` before stopping the flange stack.
+7. Stop every process that embeds stock-shovel geometry: robot state publisher, self-filter, OCS2, Dig3D, workspace planner, and Terra executor.
+8. Restart the robot/base stack with `shovel_400mm_without_teeth` everywhere: `workspace_planner_blade_width_m:=0.4`, `dig_3d_policy_id:=shovel400_r17_s4_tbar300_s214_3250`, `dig_3d_pullup_boundary_min_distance_m:=0.0`, `dig_3d_dig_zone_layer_name:=current_dig_workspace`, and `move_leg_explicit_target_z_trench_mode:=true`.
+9. Before bottom target application, compare live `map -> BASE` and `map -> CABIN_CONTROL` against `/tmp/beam6_flange_bottom_sequence/station_anchor.json`; do not continue if the station or yaw moved.
+10. Load the saved flange map into excavation mapping if needed, apply the generated bottom target, clear Nav2 costmaps, then run `bottom6`.
+
+Bottom stage must use `terra_start_delay:=15.0`, `skip_navigation:=false`, `grading_completion_mode:=local_open`, `use_dig_zone_if_nonempty:=false`, `dig_zone_boundary_margin_m:=0.000`, `workspace_dig_boundary_margin_m:=0.3`, `grading_workspace_extension_m:=0.500`, and `workspace_completion_profile:=completion_foundation_strict.yaml`.
+
+Stop instead of patching live nodes if Foxglove shows the wrong bucket, the bottom `desired_elevation` or `dig_zone` is wrong, Nav2 costmaps still contain stale flange occupancy, or the planner reports completion while visible bottom material remains.
 
 ## Frame And Geometry Registration
 
