@@ -1,6 +1,6 @@
 ---
 name: rl-newton-benchmark
-description: "Benchmark and analyze Moleworks Newton RL checkpoints. Use when benchmarking analytic cabin or shared-turn checkpoints, collecting or replaying terrain banks, verifying a saved bank, comparing fresh vs carved terrain, or summarizing benchmark JSON outputs."
+description: "Benchmark Newton RL checkpoints, FEE policies, analytic shared-turn runs, and fresh or replayed terrain banks."
 ---
 
 # Newton Benchmark Workflow
@@ -109,7 +109,7 @@ unset WANDB_MODE
 
 Delegate this runner to a benchmark worker when possible. It runs child benchmarks serially, writes noisy logs to per-run files, reuses compatible reset caches across FEE namespaces, and emits `fee_category_leaderboard.html`. The fast default contract is `128` envs, `180` benchmark steps, and a shared reset cache of `10000` generated / `8000` required samples. Interpret the report by terrain category and tracking quality, not only aggregate success: RBF/profile, entry/exit/continuing, partial-state, 5 cm dwell, shallow fraction, overshoot fraction, best in-soil error, and torque over-limit are all part of the promotion decision.
 
-The default FEE leaderboard suite should stay small and in-distribution for the current training geometry: `default`, `hard_random_scrape_05cm`, `hard_scrape_50cm`, `precision_profile_10cm`, `precision_profile_entry45deg_10cm`, and `precision_profile_exit45deg_10cm`. The flat hard-soil scrape core case is 50 cm below the current soil and uses `fixed_soil_random_hard_cap`, which is in the random-mix soil support; `hard_scrape_05cm` remains an optional shallow stress probe. Benchmark-only soils such as interp-25/50/75/asphalt are OOD stress probes, not default promotion cases. Broader 5cm depth/profile or 30/45/60deg sweeps are optional follow-ups, with 60deg treated as an out-of-distribution stress case, not the default promotion view.
+The default FEE leaderboard suite should stay small and in-distribution for the current training geometry: `default`, `hard_random_scrape_05cm`, `hard_scrape_50cm`, `precision_profile_10cm`, `precision_profile_entry45deg_10cm`, `precision_profile_exit45deg_10cm`, `frontier_largefront`, and `frontier_largefront45`. The flat hard-soil scrape core case is 50 cm below the current soil and uses `fixed_soil_random_hard_cap`, which is in the random-mix soil support; `hard_scrape_05cm` remains an optional shallow stress probe. The frontier cases use profile-v2 front-partial cleanup geometry with default-random soil; `frontier_largefront` uses a 35-65 deg smooth front and `frontier_largefront45` uses a 25-45 deg front. Benchmark-only soils such as interp-25/50/75/asphalt are OOD stress probes, not default promotion cases. Broader 5cm depth/profile or 30/45/60deg sweeps are optional follow-ups, with 60deg treated as an out-of-distribution stress case, not the default promotion view.
 
 Use the canonical aggregate latest page as the browser default:
 
@@ -126,6 +126,35 @@ uv run python scripts/mole_environments/fee_excavation/benchmark/benchmark_fee_l
 
 This page is the global view across saved `outputs/fee_benchmarks/**/benchmark_results_*.json` files and should include the current table tabs, sortable columns, policy-click filtering, and video links discovered under archived `videos*` folders. Per-batch leaderboards remain useful for provenance, but do not present them as the default "latest" view. Normal leaderboard runs refresh the global latest page unless `--skip-global-latest` is passed.
 
+When evaluating FEE specialists or experts, update the curated expert benchmark
+tracker in addition to the raw leaderboard:
+
+- `docs/experiments/fee_specialist_expert_benchmarks.md`
+- `docs/experiments/fee_specialist_expert_benchmarks.csv`
+- `docs/experiments/fee_specialist_expert_benchmarks.html`
+
+Do this in the active Newton worktree that produced the benchmark, and mirror to
+the canonical checkout if the user is looking at the canonical report. The HTML
+is the browser-facing dispatch view; do not leave it stale after adding new
+expert rows or changing the promotion interpretation. For hard-soil experts,
+state explicitly that full scoops may be physically unrealistic, but close
+success is only acceptable when depth tracking, stable pullup/lift-out, and
+load/torque evidence show productive scraping rather than a cheap shallow-close
+solution.
+
+Keep the curated HTML tracker compact. Put detailed interpretation in the
+Markdown tracker and use only short table-cell text or links in the HTML. After
+manual HTML edits, validate with an HTML parser, `git diff --check`, and a
+browser/render sanity check when possible; do not report the page ready if the
+dashboard layout is visually broken.
+
+For expert benchmark dashboards, do not expose intermediate checkpoint sweeps
+or per-checkpoint rows in the browser-facing HTML. Lorenzo tracks checkpoint
+progression in W&B and the raw/Markdown artifacts. The HTML should preserve the
+useful high-level view: current best decision per task and a compact
+generalist-vs-best-expert delta table showing success/full/close/negative
+differences.
+
 When running benchmarks or videos from a worktree, treat the worktree `outputs/fee_benchmarks/<batch>` directory as staging only unless `--output-root` already points inside the canonical archive tree. The global builder scans the canonical repo root, not arbitrary worktree output roots. Before telling the user to open the full leaderboard:
 
 ```bash
@@ -139,20 +168,38 @@ rg -n "<POLICY_LABEL>|<RUN_ALIAS_OR_UNIQUE_TOKEN>" \
 
 Only call the global leaderboard ready after the `rg` check finds the new policy rows in `global_latest/fee_category_leaderboard.html`. If videos were recorded, verify that the video links in the global HTML point under `$CANONICAL_BENCH_ROOT/<BENCH_ROOT>/videos*`, not the worktree staging path. Give the browser URL for the canonical global page by default; give the per-batch HTML only when the user explicitly asks for that batch.
 
-For qualitative FEE videos, use `record_fee_leaderboard_videos.py`. Default behavior should record all raw Newton MP4s first and then batch-transcode browser-safe `_h264.mp4` / `_vp9.webm` variants in parallel across CPU workers. Do not reintroduce per-rollout inline transcoding unless explicitly requested; it leaves the GPU idle while FFmpeg runs. Useful flags:
+For qualitative FEE videos, use `record_fee_leaderboard_videos.py`. Whenever a FEE specialist/leaderboard benchmark is run, or a checkpoint is promoted/pruned based on non-obvious behavior, generate short qualitative clips by default unless the user asks not to. Default behavior should record all raw Newton MP4s first and then batch-transcode browser-safe `_h264.mp4` / `_vp9.webm` variants in parallel across CPU workers. Do not reintroduce per-rollout inline transcoding unless explicitly requested; it leaves the GPU idle while FFmpeg runs. Useful flags:
 
 ```bash
 uv run python scripts/mole_environments/fee_excavation/benchmark/record_fee_leaderboard_videos.py \
   --benchmark-output-root outputs/fee_benchmarks/<BENCH_ROOT> \
   --policy-label <POLICY_LABEL> \
   --episodes 1 \
-  --cases default,hard_random_scrape_05cm,hard_scrape_50cm,precision_profile_10cm,precision_profile_entry45deg_10cm,precision_profile_exit45deg_10cm \
+  --cases default,hard_random_scrape_05cm,hard_scrape_50cm,precision_profile_10cm,precision_profile_entry45deg_10cm,precision_profile_exit45deg_10cm,frontier_largefront,frontier_largefront45 \
   --viewer gl \
   --soil-wireframe-mode full \
   --run
 ```
 
 Use `--skip-browser-video-variants` for raw-only recording, `--transcode-workers <n>` to cap CPU parallelism, `--ffmpeg-threads-per-worker <n>` to control FFmpeg threading, and `--inline-browser-video-variants` only for the old slower inline transcode behavior. After videos finish, archive the whole batch into the canonical benchmark tree, rebuild the global latest leaderboard, and verify the policy/video links there before reporting the full leaderboard path.
+
+If a benchmark batch has only a manifest or the result root is not available locally, use manifest-only recording instead of rerunning the benchmark:
+
+```bash
+uv run python scripts/mole_environments/fee_excavation/benchmark/record_fee_leaderboard_videos.py \
+  --manifest <manifest.json> \
+  --benchmark-output-root /tmp/missing-results-ok-with-manifest \
+  --top-policies <N> \
+  --episodes 1 \
+  --cases precision_profile_10cm \
+  --max-steps 160 \
+  --viewer gl \
+  --soil-wireframe-mode full \
+  --video-root /home/lorenzo/moleworks/moleworks_newton/outputs/fee_benchmarks/<CLIP_BATCH>/videos_wireframe_full_headless \
+  --run
+```
+
+For normal benchmark batches, prefer `--benchmark-output-root outputs/fee_benchmarks/<BENCH_ROOT>` and record at least one `precision_profile_10cm` clip per policy/checkpoint under the same archived batch. Validate the finished output with `ffprobe`, an HTML parser count of video/source tags, and one extracted or rendered representative frame when possible. Keep recorder logs out of the main answer unless a command fails.
 
 For GL recording on Lorenzo's workstation, prefer the real X display. The Codex shell may have `DISPLAY` unset even though a display exists; check `/tmp/.X11-unix/X*`, validate with `DISPLAY=:<n> xdpyinfo`, and run the recorder/play command as `env DISPLAY=:<n> ... --viewer gl --headless`. Use `xvfb-run` only when there is no usable real display, and do not switch to USD unless the user explicitly asks.
 

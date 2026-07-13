@@ -1,6 +1,6 @@
 ---
 name: newton-ros-parity
-description: "Validate or replay Moleworks Newton observations through `moleworks_ros`. Use when bringing up the ROS parity stack, checking `/clock` and TF, debugging controller-facing terrain topics, replaying Dig3D-style comparisons, or cleaning up stale ROS/Newton processes after parity work."
+description: Bring up, replay, validate, or clean up Newton-to-`moleworks_ros` parity stacks, including clock, TF, terrain, and Dig3D checks.
 ---
 
 # Newton ROS Parity
@@ -13,18 +13,15 @@ Start from the active branch docs and scripts:
 
 - `docs/ros/WORKTREE_SETUP.md`
 - `docs/ros/DOCKER_RUNBOOK.md`
-- `docs/ROS_PARITY_LOG.md`
 - `scripts/ros/AGENTS.md`
-- `scripts/ros/tests/run_compare_smoke_checks.sh`
-- `scripts/debug/compare_bucket_kinematics_to_pinocchio.py`
+- `scripts/ros/diagnostics/run_compare_smoke_checks.sh`
 
 Open narrower diagnostics only when needed:
 
 - `scripts/ros/diagnostics/check_base_pose_match.py`
 - `scripts/ros/diagnostics/dump_synced_ros_snapshot.py`
 - `scripts/ros/diagnostics/dump_newton_height_grid.py`
-- `scripts/ros/diagnostics/dump_gridmap_sampling.py`
-- `scripts/ros/diagnostics/dump_controller_grid_bounds.py`
+- `scripts/ros/diagnostics/dump_gridmap_stats.py`
 
 ## Bringup Preference
 

@@ -1,6 +1,6 @@
 ---
 name: google-chat-cdp
-description: Use Google Chat in the local Chrome session through chrome-cdp. Use when asked to open Google Chat, verify the active Google account, switch to an existing Google account manually if needed, find a DM or space, and send or inspect messages in the already logged-in browser.
+description: Use Google Chat through an approved live Chrome session. Use to verify the account, open a DM or space, and inspect or send messages in the browser.
 ---
 
 # Google Chat CDP
@@ -9,7 +9,7 @@ Use this skill together with `chrome-cdp` for Google Chat tasks in the user's li
 
 ## Preconditions
 
-- `chrome-cdp` is available in this repo at `skills/chrome-cdp/`.
+- `chrome-cdp` is available at `/home/lorenzo/codex_skills/skills/chrome-cdp/`.
 - Chrome remote debugging is already enabled in `chrome://inspect/#remote-debugging`.
 - The user has explicitly asked for a Google Chat action.
 
@@ -30,7 +30,7 @@ Do not fight this with repeated retries. If Chat just went through auth or accou
 Prefer an existing Chat target from:
 
 ```bash
-skills/chrome-cdp/scripts/cdp list
+/home/lorenzo/codex_skills/skills/chrome-cdp/scripts/cdp list
 ```
 
 Pick `https://chat.google.com/...` if present. Reuse the same target for the whole task instead of opening fresh tabs.
@@ -38,7 +38,7 @@ Pick `https://chat.google.com/...` if present. Reuse the same target for the who
 If no Chat tab exists, navigate one approved tab with:
 
 ```bash
-skills/chrome-cdp/scripts/cdp nav <target> https://chat.google.com
+/home/lorenzo/codex_skills/skills/chrome-cdp/scripts/cdp nav <target> https://chat.google.com
 ```
 
 ### 2. Verify the active account
@@ -46,7 +46,7 @@ skills/chrome-cdp/scripts/cdp nav <target> https://chat.google.com
 Check the page accessibility tree first:
 
 ```bash
-skills/chrome-cdp/scripts/cdp snap <target>
+/home/lorenzo/codex_skills/skills/chrome-cdp/scripts/cdp snap <target>
 ```
 
 Look for:
@@ -80,7 +80,7 @@ For example, after clicking a DM, the root title should become the contact name,
 In an open conversation:
 
 - focus the composer, usually the textbox with aria like `History is on`
-- use `scripts/cdp type <target> '<message>'`
+- use `/home/lorenzo/codex_skills/skills/chrome-cdp/scripts/cdp type <target> '<message>'`
 - click the button whose aria-label is `Send message`
 
 Verify completion:

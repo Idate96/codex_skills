@@ -1,11 +1,12 @@
 ---
 name: rviz-screenshot-loop
-description: Capture RViz/GUI screenshots via MCP to close the loop while debugging ROS. Use when you need visual verification in RViz or other windows.
+description: Capture and inspect RViz or ROS GUI screenshots while validating frames, display status, and visual artifacts.
 ---
 
 # RViz Screenshot Loop
 
-If the task is not RViz-specific, use `gui-screenshot-loop` instead.
+If the task is not RViz-specific, use `chrome-cdp` for approved Chrome capture
+or an available GUI screenshot tool directly.
 
 ## When To Use
 - You need to **see RViz** or other GUI state while debugging ROS.
@@ -13,7 +14,7 @@ If the task is not RViz-specific, use `gui-screenshot-loop` instead.
 
 ## Prereqs
 - X11 session.
-- MCP server `screenshot` is configured in `~/.codex/config.toml` and points to `~/.codex/mcp-servers/screenshot/server.py`.
+- An enabled screen-capture tool. The examples below use the optional MCP tool `screenshot.screenshot`; if it is unavailable, report that limitation.
 
 ## Quick Discovery
 - List monitors: `xrandr --listmonitors`
@@ -21,7 +22,7 @@ If the task is not RViz-specific, use `gui-screenshot-loop` instead.
 - Find RViz windows: `xdotool search --name '.*RViz.*'`
 
 ## Tool Calls (MCP)
-Use the MCP tool `screenshot.screenshot`:
+When available, use the MCP tool `screenshot.screenshot`:
 
 - Full screen:
   - `{"mode":"full"}`

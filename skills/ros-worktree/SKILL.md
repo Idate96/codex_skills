@@ -1,6 +1,6 @@
 ---
 name: ros-worktree
-description: Create a new isolated ROS 2 workspace ("ROS worktree") for safe builds/testing without touching the main ~/moleworks/ros2_ws. Use when you need a throwaway-but-PR-able workspace under ~/moleworks/ros2_ws_SUFFIX, typically by copying src/ and then replacing one or more repos (e.g. moleworks_ros) with git worktrees from ~/git/.worktrees and symlinks.
+description: Create an isolated ROS 2 workspace backed by Git worktrees for safe builds, tests, and PR-ready changes.
 ---
 
 # ROS Worktree (Isolated Workspace) Workflow
@@ -44,7 +44,7 @@ rm -rf "$DST_WS/src/moleworks_ros"
 # Create a dedicated branch and worktree checkout.
 cd "$MOLEWORKS_ROS_GIT"
 git fetch origin
-git worktree add -B MY_BRANCH "$MOLEWORKS_ROS_WT" origin/dev/integration_rebase3
+git worktree add -B MY_BRANCH "$MOLEWORKS_ROS_WT" origin/main
 
 # Symlink the worktree into the workspace.
 ln -s "$MOLEWORKS_ROS_WT" "$DST_WS/src/moleworks_ros"

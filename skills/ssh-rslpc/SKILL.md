@@ -1,6 +1,6 @@
 ---
 name: ssh-rslpc
-description: Connect to `lorenzo@rslpc` over Tailscale and verify SSH connectivity with strict checks. Use when the user asks to SSH into `rslpc` (or typo `rlspc`), confirm access from this workstation, or open an interactive session after validating host/user identity.
+description: Connect to `lorenzo@rslpc` over Tailscale and verify host/user identity. Use for `rslpc` or typo `rlspc` SSH requests.
 ---
 
 # SSH RSLPC

@@ -1,6 +1,6 @@
 ---
 name: robot-ros
-description: Moleworks ROS 2 (Jazzy) robot operations + runbook assistant for the Mole/Menzi M4 stack. Use for startup/shutdown, enabling autonomous mode, hydraulic unlock, running Nav2/MoveIt/dig controllers, checking topic health/rates, debugging lifecycle/action servers, and maintaining the robot-agent docs under src/moleworks_ros/docs/robot_agent/.
+description: Operate and debug the Mole/Menzi M4 ROS 2 stack, including bringup, interlocks, controllers, health checks, and runbook maintenance.
 ---
 
 # Robot ROS
@@ -34,8 +34,8 @@ Use the repo runbooks and scripts as the single source of truth for operating an
 - Verify readiness via `/machine_status` (fields like `is_autonomous_operation_unlocked`, `is_hydraulilock_unlocked`, etc.).
 - Discover services with `ros2 service list | grep -Ei "hydraul|lock|unlock|autonom|ignition|engine"`.
 - For the canonical Menzi docs and exact service names, consult:
-  - `~/git/menzi_docs/M4/Running code on rslpc.md`
-  - `~/git/menzi_docs/M4/M4 Startup and Shutdown.md`
+  - `~/git/menzi_docs/M4/M4_operation_workflow.md`
+  - `~/git/menzi_docs/M4/M4_Checklist.md`
 
 ### Health Checks / Debugging
 

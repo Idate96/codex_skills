@@ -1,6 +1,6 @@
 ---
 name: rl-newton-cluster-ops
-description: "Submit, monitor, sync, and ledger Moleworks Newton RL runs on Euler or Brev. Use when preparing a smoke test, launching shared-turn jobs, checking `squeue`/`sacct`/Slurm logs, syncing one run, or updating `docs/experiments`."
+description: "Operate Newton RL runs on Euler, Brev, or Vast.ai: smoke, submit, verify startup, monitor, sync, and update ledgers."
 ---
 
 # Newton Cluster Ops
@@ -12,6 +12,7 @@ Use this skill for cluster-side RL operations on the active `moleworks_newton` b
 - local smoke gate before cluster launch
 - choose the right submit helper
 - monitor `squeue`, `sacct`, and Slurm logs
+- monitor Vast `nohup` processes, GPU state, and remote logs
 - targeted sync of one run
 - keep `docs/experiments` accurate
 
@@ -26,6 +27,7 @@ Read the branch docs before improvising:
 - `docs/experiments/done.md`
 - `docs/SHARED_TURN_DEFAULT_TRAINING.md`
 - `cluster/README.md`
+- `cluster/docs/workflows.md`
 
 For the current shared-turn `dev/analytic` work, prefer the Euler helpers and ledgers over older generic Daint examples in legacy docs.
 
@@ -36,6 +38,9 @@ For the current shared-turn `dev/analytic` work, prefer the Euler helpers and le
 - Shared-turn no-AoA actor branch family: `cluster/submit_shared_turn_w_cabin_no_aoa_actor.sh`
 - Generic training: `cluster/submit_job.sh`
 - Brev only when explicitly requested: `cluster/submit_job_brev.sh`
+- Vast.ai: `cluster/sync_code_vast.sh`, `cluster/setup_vast_env.sh`,
+  `cluster/submit_job_vast.sh`, then `cluster/sync_logs.sh` with
+  `CLUSTER_TYPE=vast`
 
 ## Hard Rules
 
@@ -43,17 +48,28 @@ For the current shared-turn `dev/analytic` work, prefer the Euler helpers and le
 - Real cluster runs use W&B.
 - After submitting any real training run, verify that the run actually gets
   through startup before reporting it as successfully launched. `sbatch`
-  success, a Brev service pid, or a stale `RUNNING` ledger row is not enough.
-  Keep checking until the run either enters the training loop or fails with a
-  concrete reason.
+  success, a Brev service pid, a Vast `nohup` pid, or a stale `RUNNING` ledger
+  row is not enough. Keep checking until the run either enters the training
+  loop or fails with a concrete reason.
+- After startup is verified, stop tight polling. For long training, collection,
+  or convergence runs, wait long enough for meaningful evidence to change
+  before checking again. Short few-minute polling is only for startup,
+  suspected failure, imminent completion, or active debugging.
+- A completed process is not automatically a successful run. After completion,
+  sync the relevant artifacts and verify the expected outputs, summaries,
+  checkpoints, command manifests, and metrics before reporting success.
 - Worktree launches are source-sensitive. `cd` into the intended worktree's
   `cluster/` directory before `submit_job.sh`, `submit_job_brev.sh`,
-  `sync_code.sh`, or `sync_code_brev.sh`. A shared `CLUSTER_ENV_FILE` is fine;
-  do not set `LOCAL_MOLEWORKS_DIR` unless intentionally submitting a different
-  tree.
-- For Brev/Euler worktree smoke tests, verify the remote snapshot when code
-  identity matters: compare `sha256sum` for one or two changed source files
-  against the local worktree, then inspect the run log for the expected
+  `sync_code.sh`, or `sync_code_brev.sh`. For Vast, prefer the intended
+  worktree's `sync_code_vast.sh`/`submit_job_vast.sh`; if that worktree does
+  not yet contain the Vast helpers, run the helper from a checkout that does
+  and explicitly set `LOCAL_MOLEWORKS_DIR`, `LOCAL_NEWTON_DIR`,
+  `LOCAL_NEWTON_ACTUATORS_DIR`, and `LOCAL_RSL_RL_DIR` to the intended
+  worktree siblings. A shared `CLUSTER_ENV_FILE` is fine; do not set
+  `LOCAL_MOLEWORKS_DIR` unless intentionally submitting a different tree.
+- For Brev/Euler/Vast worktree smoke tests, verify the remote snapshot when
+  code identity matters: compare `sha256sum` for one or two changed source
+  files against the local worktree, then inspect the run log for the expected
   experiment alias and diagnostic scalars.
 - Real Euler training runs should usually request `JOB_TIME=24h`. When composing, reviewing, or launching a real training command, set `JOB_TIME=24h` explicitly by default unless the user asks for a shorter run.
 - Use `4h` or shorter only for smoke gates, startup validation, queue/launcher probes, or intentionally bounded debugging runs. Do not use short walltimes for runs meant to judge learning quality.
@@ -63,6 +79,27 @@ For the current shared-turn `dev/analytic` work, prefer the Euler helpers and le
 - Prefer Euler `1x4090`. Fall back to `3090` only if the run stays pending too long.
 - For Euler `fee_excavation`, use the normal `submit_job.sh` path: sync code and create a per-run snapshot. Do not set `MOLEWORKS_SKIP_CODE_SYNC=1` or `MOLEWORKS_SKIP_CODE_SNAPSHOT=1`.
 - For Euler `fee_excavation` on `rtx_3090`, cap runs at `40000` worlds. For profile sweeps, prefer a single `40000`-world contract across 3090 and 4090 plus a matching RBF control; use 4090 for larger runs.
+- For Vast, use the port mapped to container port 22 from the instance
+  terminal (`$VAST_TCP_PORT_22`), not the Jupyter/portal port. Vast instances
+  are already Docker containers, so use `uv` inside the instance rather than
+  Docker-in-Docker. Read `/etc/vast-agents-guide.md` before acting on a Vast
+  instance.
+- For real Vast W&B runs, set the W&B entity explicitly, normally
+  `WANDB_USERNAME=idate96` and `WANDB_ENTITY=idate96`, and verify those values
+  in the remote Python process before W&B initializes. Do not rely on the
+  rented container's default W&B login/entity.
+- For new real `fee_excavation` W&B launches, add the async video hook by
+  default when the code supports it and there is a spare GPU or known headroom:
+  `--wandb-video-interval 1000 --wandb-video-cases precision_profile_10cm
+  --wandb-video-max-steps 160 --wandb-video-episodes 1
+  --wandb-video-soil-wireframe-mode full`. Prefer isolating it with
+  `--wandb-video-cuda-visible-devices <spare_gpu_id> --wandb-video-device
+  cuda:0`. Do not add the hook when all GPUs are occupied, or on the same 24GB
+  GPU as a large 30k/40k-world FEE job, unless the user explicitly accepts the
+  slowdown/OOM risk. For active runs that lack the hook, do not restart solely
+  for video; sync checkpoints and generate post-hoc clips locally.
+- Vast instances with `workspace_is_volume=false` lose `/workspace` on destroy
+  or recycle. Sync logs/checkpoints before terminating the instance.
 - Do not launch new real runs without updating `docs/experiments/running.md`.
 - For exploratory reward/env sweeps, prefer diversity over duplicate seeds.
   Do not spend parallel GPUs on multiple seeds of the same config unless the
@@ -96,9 +133,17 @@ ssh euler 'sacct -j <jobid> --format=JobID,State,ExitCode,Elapsed,Start,End -P'
 ssh euler 'tail -n 200 /cluster/scratch/$USER/moleworks_logs/slurm-<jobid>.out'
 ```
 
+Useful Vast probe:
+
+```bash
+ssh -p <VAST_TCP_PORT_22> root@<VAST_PUBLIC_IP> 'ps -p <pid> -o pid,stat,etime,cmd; \
+  nvidia-smi --query-gpu=index,name,memory.used,utilization.gpu --format=csv,noheader; \
+  tail -n 220 /workspace/logs/vast-<run-id>.log'
+```
+
 ## Post-Submit Startup Gate
 
-For every real Euler/Brev training launch, run a startup gate before ending the
+For every real Euler/Brev/Vast training launch, run a startup gate before ending the
 turn or calling the run "launched":
 
 1. Confirm scheduler/process state:
@@ -106,11 +151,17 @@ turn or calling the run "launched":
      the queue.
    - Brev: confirm the service/python process is alive and tied to the expected
      GPU.
+   - Vast: confirm the `nohup`/`timeout` process and underlying Python process
+     are alive, tied to the expected GPU, and using the intended W&B env.
 2. Inspect stdout/stderr for the expected startup contract:
-   - expected GPU assignment (`CUDA_VISIBLE_DEVICES`, `SLURM_JOB_GPUS`, or Brev
-     GPU list)
+   - expected GPU assignment (`CUDA_VISIBLE_DEVICES`, `SLURM_JOB_GPUS`, Brev
+     GPU list, or Vast GPU list)
    - expected task, experiment alias, seed, world count, and diagnostic flags
-   - expected code snapshot path for worktree launches
+   - expected code snapshot path for worktree launches, or expected synced
+     Vast checkout/source hashes
+   - if the FEE W&B video hook is enabled, expected `[WANDB_VIDEO]` setup lines,
+     no recorder launched at iteration `0`, and a staging/publish location under
+     the run directory such as `wandb_video_jobs/` and `wandb_videos/`
 3. Keep watching past slow world/reset-cache construction until one of these
    terminal startup states is reached:
    - **startup verified**: W&B run id/URL exists, or the log reaches
@@ -141,10 +192,27 @@ before logger initialization.
 When waiting for long training runs to reach curriculum/checkpoint gates, sleep in long intervals by default:
 
 ```bash
-sleep 6000
+sleep 7200
 ```
 
-Use shorter sleeps only for startup validation, benchmark completion, debugging failures, or when the user explicitly asks for a tighter cadence. While sleeping, avoid repeated manual polling; resume with a compact status table sourced from W&B, Slurm, checkpoint files, and benchmark markers.
+For convergence-oriented runs, prefer multi-hour waits such as `sleep 7200` to
+`sleep 21600` unless a checkpoint/completion boundary is expected sooner. Use
+shorter sleeps only for startup validation, benchmark completion, debugging
+failures, imminent process completion, or when the user explicitly asks for a
+tighter cadence. While sleeping, avoid repeated manual polling; resume with a
+compact status table sourced from W&B, Slurm, checkpoint files, benchmark
+markers, and run artifacts.
+
+When a long run exits, do a completion gate before calling it successful:
+
+1. Confirm the scheduler/process reached a normal terminal state.
+2. Sync logs and run artifacts if they are on a non-persistent Vast instance or
+   remote scratch.
+3. Inspect expected outputs: checkpoints, train summaries, benchmark reports,
+   command manifests, and comparison artifacts.
+4. For convergence claims, inspect the final loss/metric window. If it is still
+   materially improving, continue with another long leg instead of calling the
+   run converged.
 
 If the run is pending too long, check the requested GPU type and decide whether to resubmit on `3090`.
 
@@ -184,6 +252,10 @@ Example:
 - canonical `run_name`: `2026-03-30_22-10-27_fee_excavation-prepr_runtime_cache_on_s201_4090`
 
 Use the broad `./sync_logs.sh` only when the user wants a full refresh.
+For Vast, `sync_logs.sh` mirrors `VAST_LOGS_DIR` and pulls top-level
+`vast-<run-id>.log` files plus `rsl_rl/`, `wandb/`, `submit_manifests/`, and
+`py_spy_recordings/`. Always sync before destroying a Vast instance that does
+not have a persistent workspace volume.
 
 ## Ledger Rules
 
@@ -196,6 +268,10 @@ Treat these as mandatory for real runs:
 5. When a run is no longer live, preserve the latest detailed state in `docs/experiments/archive/`.
 6. Then move the compact summary row to `docs/experiments/done.md`.
 7. A non-live job must not remain `RUNNING`; mark it with one terminal label such as `FAILED_INVALID`, `FAILED_RESOURCE`, `FAILED_RESET_PREFILTER`, `FAILED_SIGNAL`, `CANCELLED_PRUNED`, or `TIMEOUT_COMPLETE`.
+8. For Vast.ai work, also update `docs/experiments/vast_current_jobs.md`
+   whenever launching, stopping, syncing, or status-checking instances. Keep it
+   compact: instance id, endpoint, hardware, live job names, and whether the
+   instance is running, idle, exited, or needs sync before destroy.
 
 ## Reporting Format
 
@@ -205,4 +281,8 @@ Use one-line snapshots:
 <job_id> | <run_name> | <task> | wandb_run=<...> | wandb_url=<...> | timeout=<...> | full=<...> | close=<...>
 ```
 
-Keep the report compact and source every field from either the synced Slurm log, W&B, or the experiment ledger.
+For Vast, replace `<job_id>` with `vast pid=<pid>` or the Vast run id and
+include the remote top-level log path.
+
+Keep the report compact and source every field from either the synced Slurm/Vast
+log, W&B, or the experiment ledger.

@@ -1,6 +1,6 @@
 ---
 name: terra-foundation-execution
-description: Execute packaged Moleworks Terra flat-foundation plans in Newton simulation, especially flat_foundation_depth_0p5 end-to-end with Nav2 navigation, async checkpoints, workspace-planner target recomputation, post-dump stall measurement, checkpoint resume, and failure-state capture. Use after newton-sim-ros-startup has established the ROS/Newton runtime.
+description: "Execute packaged Terra foundation plans in Newton with Nav2, checkpoints, stall measurement, recovery, and failure capture."
 ---
 
 # Terra Foundation Execution

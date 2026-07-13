@@ -1,6 +1,6 @@
 ---
 name: chat-replies
-description: Read recent Google Chat context, draft or send a reply in the correct DM or space, download collaborator attachments such as timesheets or PDFs, and handle simple meeting coordination by creating or updating a Google Calendar invite and posting the Meet link back in Chat. Use when Lorenzo asks to read a collaborator's recent messages, understand chat context before replying, send a Google Chat reply through the Chat API, pull a PDF or timesheet out of Chat, or create a meeting from a chat exchange.
+description: Read or reply in Google Chat, download Chat attachments, or turn chat context into a Calendar invite. Use for DMs, spaces, PDFs, timesheets, and meeting links.
 ---
 
 # Chat Replies
@@ -67,21 +67,11 @@ Use this skill when Lorenzo asks to read or reply in Google Chat, or to pull fil
 
 ## Guardrails
 
-- Do not trust the raw order returned by Chat list calls.
-- For a simple "check chat" request, the default is the last 10 messages after sorting by `createTime`.
-- If a short recent fetch looks incomplete, increase the window before deciding what is "latest".
-- If you need older context before Lorenzo's most recent reply, widen the fetch and anchor on the recent sequence after sorting by `createTime`.
-- For file-handling tasks, treat a no-text message with `attachment[]` as content, not noise.
-- Use `attachment[].attachmentDataRef.resourceName` with the Chat media endpoint.
-- Do not use the human-readable `attachment[].name` with `/v1/media/...`; it can return `400`.
-- Do not rely on `downloadUri` for automation; it can return an HTML sign-in flow instead of the file bytes.
+- Sort by `createTime`; widen the default 10-message window only when context is incomplete.
+- Treat attachment-only messages as content. Download through `attachmentDataRef.resourceName`, never the human-readable attachment name or interactive `downloadUri`.
 - Do not guess collaborator email addresses for follow-up or CCs. Use a local mapping or ask Lorenzo.
-- For meeting creation, always use absolute date and time in the Calendar invite and in the Chat confirmation.
-- For meeting creation, do not assume the duration if Lorenzo did not specify it.
-- For meeting creation, inspect nearby calendar events first so you do not create duplicate overlapping invites for the same person.
-- Prefer patching an existing owned event over creating a new one.
-- If attendee email is missing, fail early and ask Lorenzo or update `references/collaborators.md`. Do not guess the email.
-- Verify the Calendar API response after mutation. The event is not done until the attendee and Meet link are present in the returned object.
+- For meetings, require an attendee, absolute time, and explicit duration; inspect nearby events and patch a matching owned event instead of duplicating it.
+- Verify Calendar mutations include the intended attendee and Meet link.
 - Prefer short, informal first-person wording unless Lorenzo asks for a different tone.
 - Prefer the Google Chat API over browser automation for read/send operations.
 - If `messages.list` still returns `403 insufficient authentication scopes` right after a re-auth, move `~/.config/gws/token_cache.json` aside and retry once.

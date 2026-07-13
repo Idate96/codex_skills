@@ -1,6 +1,6 @@
 ---
 name: dig-bag-recording
-description: Start fast split rosbag recording for Mole dig/newton runs using the canonical `rosbag_record.launch.py` workflow. Use when you want separate bags for sensors, state, commands, lidar, camera (compressed image topics), elevation_map, and Dig3D special observations during digging experiments.
+description: Record split Mole DIG/Newton rosbags for sensors, state, commands, LiDAR, camera, maps, and Dig3D observations.
 ---
 
 # Dig Bag Recording
@@ -51,7 +51,7 @@ tmux list-panes -t ros:record -F '#{pane_index} #{pane_pid} #{pane_current_comma
 List generated bags:
 
 ```bash
-find ~/rosbags/dig -maxdepth 3 -type f -name metadata.yaml | sort
+find ~/mcap/dig -maxdepth 3 -type f -name metadata.yaml | sort
 ```
 
 ## Resource

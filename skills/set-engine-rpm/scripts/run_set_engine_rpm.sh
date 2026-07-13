@@ -14,18 +14,51 @@ if [[ -f /opt/ros/jazzy/setup.bash ]]; then
   set -u
 fi
 
-set +u
-# shellcheck disable=SC1091
-source "$HOME/newton_ros2_ws/install/setup.bash"
-set -u
+workspace_candidates=()
+if [[ -n "${MOLEWORKS_ROS_WS:-}" ]]; then
+  workspace_candidates+=("$MOLEWORKS_ROS_WS")
+fi
+workspace_candidates+=(
+  "$HOME/ros2_ws"
+  "$HOME/moleworks/ros2_ws"
+  "$HOME/newton_ros2_ws"
+)
 
-SCRIPT_PATH="$HOME/newton_ros2_ws/src/moleworks_ros/high_level_controllers/mole_highlevel_controller/mole_highlevel_controller/utils/set_engine_rpm.py"
-if [[ ! -f "$SCRIPT_PATH" ]]; then
-  echo "Error: set_engine_rpm.py not found at $SCRIPT_PATH" >&2
-  exit 1
+ACTIVE_WS=""
+SCRIPT_PATH=""
+FALLBACK_WS=""
+for ws in "${workspace_candidates[@]}"; do
+  if [[ -z "$FALLBACK_WS" && -f "$ws/install/setup.bash" ]]; then
+    FALLBACK_WS="$ws"
+  fi
+  for relative_script in \
+    "high_level_controllers/mole_highlevel_controller_cpp/scripts/set_engine_rpm.py" \
+    "high_level_controllers/mole_highlevel_controller/mole_highlevel_controller/utils/set_engine_rpm.py"; do
+    candidate="$ws/src/moleworks_ros/$relative_script"
+    if [[ -f "$ws/install/setup.bash" && -f "$candidate" ]]; then
+      ACTIVE_WS="$ws"
+      SCRIPT_PATH="$candidate"
+      break 2
+    fi
+  done
+done
+
+if [[ -z "$ACTIVE_WS" ]]; then
+  ACTIVE_WS="$FALLBACK_WS"
+fi
+if [[ -n "$ACTIVE_WS" ]]; then
+  set +u
+  # shellcheck disable=SC1090
+  source "$ACTIVE_WS/install/setup.bash"
+  set -u
 fi
 
 if [[ "${1:-}" == "--current" ]]; then
+  if [[ -z "$SCRIPT_PATH" ]]; then
+    echo "Error: set_engine_rpm.py not found in any known Moleworks ROS workspace." >&2
+    echo "Set MOLEWORKS_ROS_WS to the workspace root and retry." >&2
+    exit 1
+  fi
   python3 "$SCRIPT_PATH" "$@"
   exit $?
 fi
@@ -48,6 +81,12 @@ if command -v ros2 >/dev/null 2>&1; then
       exit $?
     fi
   fi
+fi
+
+if [[ -z "$SCRIPT_PATH" ]]; then
+  echo "Error: set_engine_rpm.py not found in any known Moleworks ROS workspace." >&2
+  echo "Set MOLEWORKS_ROS_WS to the workspace root and retry." >&2
+  exit 1
 fi
 
 python3 "$SCRIPT_PATH" "$@"

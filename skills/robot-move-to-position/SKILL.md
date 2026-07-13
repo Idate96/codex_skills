@@ -1,6 +1,6 @@
 ---
 name: robot-move-to-position
-description: Move Mole/Menzi arm joints to explicit target positions using closed-loop velocity commands on /mole/actuator_commands with feedback from /mole/joint_states. Use when the user asks to place J_TURN/J_BOOM/J_STICK/J_TELE/J_EE_PITCH at specific values, preposition before sysid experiments, or recover to a safe mid pose.
+description: Move Mole/Menzi M4 arm joints to target positions with closed-loop velocity control and joint-state feedback.
 ---
 
 # Robot Move To Position

@@ -1,6 +1,6 @@
 ---
 name: ralpha-loop
-description: Implement-test-review loop for coding tasks with strict iteration until reviewer has zero findings. Use when asked to implement changes, run tests, request review, address findings, retest, and repeat. Optimize for reusing the same reviewer agent across iterations instead of spawning new reviewers each cycle.
+description: Run an implement-test-review loop until one persistent reviewer reports no findings. Use for strict iterative coding and review.
 ---
 
 # Ralpha Loop
@@ -73,12 +73,12 @@ Re-run affected checks after patches.
 - If reviewer reports findings: increment iteration and repeat.
 - If reviewer reports no findings: exit loop.
 
-## Agent Coordination Quirks
+## Agent Coordination
 
-- Prefer `send_input` to the existing reviewer agent over `spawn_agent`.
-- Use `interrupt=true` only to redirect stale reviewer work; otherwise queue normally.
-- Do not close reviewer agent between rounds; preserve context continuity.
-- If reviewer times out, use `wait` with longer timeout before deciding to respawn.
+- Use `followup_task` to give the existing reviewer another review turn; use `send_message` only to add context while it is already running.
+- Use `interrupt_agent` only to redirect stale work; otherwise queue normally.
+- Keep the reviewer available between rounds to preserve context continuity.
+- If the reviewer times out, use `wait_agent` before deciding to respawn.
 - Respawn reviewer only when agent is closed, unresponsive across retries, or context is corrupted.
 - When respawning is unavoidable, send a compact handoff:
   - latest objective

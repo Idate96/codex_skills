@@ -1,6 +1,6 @@
 ---
 name: powerpoint-presentation-editing
-description: Edit and restructure PowerPoint presentations (.pptx) with an iterative render-and-inspect loop. Use when you must preserve existing media (images, GIFs, embedded videos), update slide text/layout, reorder slides, or export slide previews (PDF/PNGs) for visual review.
+description: Edit or restructure PPTX decks with render-and-inspect verification. Use to preserve media, change text or layout, reorder slides, or export previews.
 ---
 
 # PowerPoint Presentation Editing

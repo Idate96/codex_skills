@@ -20,7 +20,7 @@ Options:
   --session NAME            tmux session (default: ros)
   --window NAME             tmux window (default: record)
   --ws PATH                 ROS2 workspace (default: ~/ros2_ws)
-  --output-root PATH        Output root (default: ~/rosbags/dig)
+  --output-root PATH        Output root (default: ~/mcap/dig)
   --timestamp TS            Fixed timestamp (default: now YYYYMMDD_HHMMSS)
   --elevation-topic TOPIC   Elevation map topic (default: /mole/elevation_map_filter)
   --use-sim-time BOOL       true|false (default: false)

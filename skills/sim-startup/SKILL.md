@@ -1,6 +1,6 @@
 ---
 name: sim-startup
-description: Start or restart the Moleworks IsaacLab simulation and ROS2 stack in a clean, repeatable tmux layout (sim, robot, perception). Use when you need a fresh sim + TF/robot visualization + perception (including excavation mapping) in RViz.
+description: Start or restart the split-container IsaacLab/Terra simulation and Moleworks ROS visualization/perception stack in tmux.
 ---
 
 # Sim Startup
@@ -69,44 +69,41 @@ ros2 launch mole_bringup robot.launch.py \
   use_sim_time:=true \
   on_machine:=false \
   launch_perception:=false \
-  launch_rviz:=true \
-  elevation_map_frame_mode:=map
+  launch_rviz:=true
 ```
-If `elevation_map_frame_mode` is not accepted on your branch, drop that argument.
 
 ### 4) Start perception + excavation mapping (window: `perception`)
-Run the perception bringup (it now includes excavation mapping).
+Run the perception bringup (it includes excavation mapping).
 - For sim, keep drivers off (no real lidar/camera drivers).
-- Use a map name if you want a design map, or `map_name:=none` to initialize from live elevation.
+- Use `mapping_profile:=local` for live elevation with an empty/local excavation map.
 ```bash
 export ROS_DOMAIN_ID=24
 source /opt/ros/jazzy/setup.bash
 source /home/lorenzo/moleworks/ros2_ws/install/setup.bash
 ros2 launch mole_perception_bringup bringup.launch.py \
   use_sim_time:=true \
+  on_machine:=false \
   enable_camera:=false \
   enable_lidar:=false \
   enable_elevation_mapping:=true \
   enable_robot_self_filter:=true \
   enable_excavation_mapping:=true \
-  map_name:=excavation_site \
-  use_local_mapping:=false
+  mapping_profile:=local
 ```
 
-If you use `map_name:=none`, the excavation mapping launch will **auto-wait** for `map -> CABIN_ANCHOR` (default 30s)
-when the desired-elevation override uses `profile` + `CABIN_ANCHOR`. You can override this behavior with:
+To load a saved design artifact explicitly, use the site contract instead:
+
 ```bash
 ros2 launch mole_perception_bringup bringup.launch.py \
   use_sim_time:=true \
+  on_machine:=false \
   enable_camera:=false \
   enable_lidar:=false \
   enable_elevation_mapping:=true \
   enable_robot_self_filter:=true \
   enable_excavation_mapping:=true \
-  map_name:=none \
-  use_local_mapping:=false \
-  wait_for_cabin_anchor_tf:=auto \
-  cabin_anchor_wait_timeout_s:=30.0
+  mapping_profile:=site \
+  design_map_name:=excavation_site
 ```
 Capture the pane output after the command starts.
 
@@ -144,6 +141,5 @@ If something looks wrong, run one or two of these (keep long timeouts for TF buf
 - Keep `sim`, `robot`, `perception` as the only three windows so output is easy to inspect.
 - For real hardware runs, set `on_machine:=true` and enable sensors in the perception launch.
 - TF is on `/tf` and `/tf_static` (not `/mole/tf`).
-- `CABIN_ANCHOR` is only required for the desired-elevation `profile` override; the dig controller uses `CABIN`/`BASE`.
 - If you explicitly opt into Cyclone for this mixed-container stack, expect some Humble/Jazzy DDS warning noise. Treat it as transport noise unless topics/TF are actually missing.
 - If the ROS container was previously connected to a robot discovery server, run `local_ros` before the sim startup so the tmux windows stay on local Fast DDS.

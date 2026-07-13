@@ -1,6 +1,6 @@
 ---
 name: mole-graph-msf-container
-description: Start or attach the Mole Graph-MSF Docker container on the host via the `moleworks_ros_graph_msf` alias and keep it running in tmux; optionally launch the `mole_estimator` inside the container. Use when the user asks to run/enter the graph_msf container, start the graph_msf Docker image, or run the state estimator inside that container.
+description: Start or attach to the Mole Graph-MSF container in tmux, optionally launching `mole_estimator`.
 ---
 
 # Mole Graph-MSF Container

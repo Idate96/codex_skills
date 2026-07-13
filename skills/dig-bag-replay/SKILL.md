@@ -1,6 +1,6 @@
 ---
 name: dig-bag-replay
-description: Replay split DIG bags in the `moleworks_ros` container with bag TF, live self-filter, live elevation mapping, live excavation mapping, and Foxglove. Use when reviewing DIG episodes from `sensors/`, `state/`, `commands/`, `lidar/`, and optional `elevation_map/` bags.
+description: Replay split or single-scoop DIG bags with TF, mapping, and Foxglove in the `moleworks_ros` container.
 ---
 
 # Dig Bag Replay

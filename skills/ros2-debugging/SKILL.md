@@ -1,6 +1,6 @@
 ---
 name: ros2-debugging
-description: ROS2 debugging with proper TF buffer timeouts. Use when checking transforms, topics, nodes, services, or tmux-managed ROS2 systems.
+description: Debug ROS 2 topics, nodes, services, TF, DDS domains, and tmux-managed stacks with reliable timeouts.
 ---
 
 # ROS2 Debugging Best Practices

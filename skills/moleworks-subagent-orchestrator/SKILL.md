@@ -1,6 +1,6 @@
 ---
 name: moleworks-subagent-orchestrator
-description: "Orchestrate sub-agents for long-horizon Moleworks code, RL, and ROS tasks. Use when the task needs many code/doc searches, Slurm or W&B inspection, benchmark comparisons, or ROS process inspection without polluting the parent context."
+description: Orchestrate sub-agents for context-heavy Moleworks code, RL, ROS, cluster, benchmark, or process investigations.
 ---
 
 # Moleworks Sub-Agent Orchestrator
@@ -41,11 +41,11 @@ Good sub-agent task shapes:
 - "Compare benchmark JSON `A` vs `B` and report success/full/close/timeout deltas."
 - "Inspect tmux panes and process list for the parity stack; return only stale PIDs, missing topics, and TF failures."
 
-## Role Suggestions In Codex
+## Delegation Suggestions
 
-- Use `explorer` for read-only codebase or doc questions.
-- Use `worker` only for bounded code changes with a disjoint write set.
-- Reuse the same agent for follow-up questions on the same narrow topic instead of respawning.
+- Assign read-only codebase or documentation questions to a narrowly scoped agent.
+- Delegate writes only for bounded changes with a disjoint file set.
+- Reuse the same agent for follow-up questions on one topic instead of respawning.
 
 ## Output Contract For Sub-Agents
 

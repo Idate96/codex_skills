@@ -1,6 +1,6 @@
 ---
 name: rl-isaaclab
-description: "Entry point for Moleworks IsaacLab RL work in `moleworks_ext`. Use when working on local smoke tests, Euler submits, run sync, policy playback, benchmark interpretation, or experiment tracking. Routes to narrower IsaacLab skills for cluster ops and benchmarking."
+description: "Route Moleworks IsaacLab RL work: smoke tests, cluster or Vast runs, sync, playback, benchmarks, and experiment tracking."
 ---
 
 # RL + IsaacLab Router
@@ -19,12 +19,16 @@ Use this as the default entry point for `moleworks_ext` RL work. Keep it thin an
 - Local smoke first, with W&B disabled.
 - Real training runs use W&B and should be tracked in the experiment docs.
 - Do not recommend checkpoints from sync alone. Require benchmark evidence.
+- For UGEP generated/randomized excavator training, benchmark against the
+  same-contract real-machine-trained baseline on `real_machines`; matching that
+  baseline is the critical evidence that generation is working.
 - Prefer repo scripts and checked-in helpers over ad-hoc command reconstruction.
 - Do not run long noisy training jobs yourself unless the user explicitly wants live execution and the output is tightly bounded.
 
 ## Route To Narrower Skills
 
 - For cluster submit, `squeue`/`sacct`, failed-job debugging, sync, and `docs/EXPERIMENTS_*` hygiene, also use `rl-isaaclab-cluster-ops`.
+- For billable Vast.ai instance lifecycle and IsaacLab runtime hydration, also use `vast-isaaclab-training`.
 - For checkpoint benchmarking, policy playback, TensorBoard temporal plots, and run-to-run comparisons, also use `rl-isaaclab-benchmark`.
 - If IsaacLab debugging also involves ROS parity stacks, TF, Dig3D replay, or controller-side checks, also use `newton-ros-parity` and `ros2-debugging`.
 - If the task needs many code/doc searches, W&B queries, log inspection, or benchmark diffs, also use `moleworks-subagent-orchestrator`.

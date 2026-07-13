@@ -1,6 +1,6 @@
 ---
 name: pdf-signing
-description: Sign a local PDF contract or form by placing an existing handwritten signature image onto one or more pages, then visually verify the result. Use when Lorenzo asks to sign a PDF in Downloads, adjust signature placement, or reuse an existing local signature image for a fast non-cryptographic signature workflow.
+description: Place Lorenzo's existing handwritten signature image in a local PDF and verify it visually. Use for non-cryptographic PDF signing or placement fixes.
 ---
 
 # PDF Signing

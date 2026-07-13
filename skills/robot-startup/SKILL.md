@@ -1,6 +1,6 @@
 ---
 name: robot-startup
-description: Set up the standard Moleworks ROS 2 tmux session for on-machine work with the base stack windows (low_level, perception, estimator, foxglove), and optionally launch a dig controller when the user asks for base stack plus dig. By default also unlock hydraulics and set engine RPM to 1600 unless the user asks otherwise.
+description: Start the real-robot Moleworks ROS tmux stack, optionally add a DIG controller, unlock hydraulics, and set engine RPM.
 ---
 
 # Robot Startup
@@ -69,14 +69,14 @@ if ros2 service list | grep -Eq '^/set_diesel_speed$'; then
 elif ros2 service list | grep -Eq '^/set_rpm$'; then
   ros2 service call /set_rpm mole_highlevel_msgs/srv/SetRPM "{target_rpm: 1600}"
 else
-  python3 ~/ros2_ws/src/moleworks_ros/high_level_controllers/mole_highlevel_controller/mole_highlevel_controller/utils/set_engine_rpm.py 1600
+  python3 ~/ros2_ws/src/moleworks_ros/high_level_controllers/mole_highlevel_controller_cpp/scripts/set_engine_rpm.py 1600
 fi
 status="$(ros2 topic echo --once /machine_status)"
 echo "$status" | grep -Fq 'is_hydraulilock_unlocked: true'
 echo "$status" | grep -Fq 'is_autonomous_operation_unlocked: true'
 rpm="$(echo "$status" | awk '/measured_engine_rpm:/ {print $2; exit}')"
 if ! awk -v rpm="$rpm" 'BEGIN { exit !(rpm >= 1550 && rpm <= 1650) }'; then
-  python3 ~/ros2_ws/src/moleworks_ros/high_level_controllers/mole_highlevel_controller/mole_highlevel_controller/utils/set_engine_rpm.py 1600
+  python3 ~/ros2_ws/src/moleworks_ros/high_level_controllers/mole_highlevel_controller_cpp/scripts/set_engine_rpm.py 1600
   status="$(ros2 topic echo --once /machine_status)"
   rpm="$(echo "$status" | awk '/measured_engine_rpm:/ {print $2; exit}')"
   awk -v rpm="$rpm" 'BEGIN { exit !(rpm >= 1550 && rpm <= 1650) }'
@@ -240,7 +240,7 @@ ros2 service call /set_diesel_speed mole_msgs/srv/SetRPM "{target_rpm: 1600}"
 ros2 service call /set_rpm mole_highlevel_msgs/srv/SetRPM "{target_rpm: 1600}"
 ```
 
-If the RPM service type is not available in `~/ros2_ws`, fall back to `~/ros2_ws/src/moleworks_ros/high_level_controllers/mole_highlevel_controller/mole_highlevel_controller/utils/set_engine_rpm.py 1600` instead of guessing.
+If the RPM service type is not available in `~/ros2_ws`, fall back to `~/ros2_ws/src/moleworks_ros/high_level_controllers/mole_highlevel_controller_cpp/scripts/set_engine_rpm.py 1600` instead of guessing.
 
 ## Resources
 
