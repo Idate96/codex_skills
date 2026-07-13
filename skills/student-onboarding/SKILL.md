@@ -1,6 +1,6 @@
 ---
 name: student-onboarding
-description: Onboard a new RSL student project across the student spreadsheet, shared Google Drive project folders, and follow-up access/admin requests. Use when Codex must add a new student entry, create the project folder from the template, place the grading sheet correctly, or follow the ETH/RSL student-start checklist.
+description: Onboard an RSL student project across Sheets, Drive, and admin follow-ups. Use for tracker rows, template folders, grading sheets, forms, and access requests.
 ---
 
 # Student Onboarding

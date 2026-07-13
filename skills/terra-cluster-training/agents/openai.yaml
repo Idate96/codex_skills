@@ -1,4 +1,4 @@
 interface:
   display_name: "Terra Cluster Training"
   short_description: "Launch and monitor Terra PPO training jobs on Euler."
-  default_prompt: "Use this skill to validate Terra changes, compare default PPO parameters, submit a Terra training job on Euler, and report the run status."
+  default_prompt: "Use this compatibility route with $terra-rl to validate, launch, monitor, and document Terra PPO training on Euler."

@@ -1,6 +1,6 @@
 ---
 name: moleworks-ext-container-workflow
-description: Launch and debug Moleworks IsaacLab commands inside the moleworks_ext Docker container with persistent tmux windows and captured output. Use when starting containerized training/play/eval scripts and when validating command startup.
+description: Run and debug IsaacLab train, play, or eval commands in the `moleworks_ext` container with persistent tmux logs.
 ---
 
 # Moleworks Ext Container Workflow

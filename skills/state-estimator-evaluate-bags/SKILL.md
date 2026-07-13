@@ -1,6 +1,6 @@
 ---
 name: state-estimator-evaluate-bags
-description: "Evaluate the Moleworks ROS2 `mole_estimator` on recorded MCAP/rosbag2 datasets: replay `*_sensors` bags through the estimator (use_sim_time), record a reprocessed eval bag with `/mole/state` + `/graph_msf/*`, run the offline analyzer, and generate a per-bag metrics markdown + summary table for tuning turn-joint filtering and base velocity smoothness."
+description: Reprocess and evaluate Mole estimator rosbags, generating Graph-MSF outputs, metrics, comparisons, and tuning reports.
 ---
 
 # State Estimator Evaluate Bags
@@ -12,7 +12,7 @@ description: "Evaluate the Moleworks ROS2 `mole_estimator` on recorded MCAP/rosb
 ```bash
 cd ~/ros2_ws
 source /opt/ros/jazzy/setup.bash
-colcon build --base-paths src --packages-up-to mole_estimator
+colcon build --base-paths src --packages-up-to mole_estimator mole_bag_tools
 source install/setup.bash
 ```
 
@@ -32,7 +32,7 @@ source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 
 # Important: pick a ROS domain id that is NOT already in use, otherwise you'll record mixed publishers.
-python3 src/moleworks_ros/mole_estimator/scripts/reprocess_mole_estimator_sensor_bags.py \
+ros2 run mole_bag_tools reprocess_mole_estimator_sensor_bags \
   --batch-dir ~/mcap/mole_estimator_batch_2026-02-08 \
   --ros-domain-id 80
 ```
@@ -48,7 +48,7 @@ Notes:
 Batch (writes JSON per bag + a Markdown report):
 
 ```bash
-python3 src/moleworks_ros/mole_estimator/scripts/evaluate_mole_estimator_eval_bags.py \
+ros2 run mole_bag_tools evaluate_mole_estimator_eval_bags \
   --reproc-dir ~/mcap/mole_estimator_batch_2026-02-08/reproc \
   --json-dir ~/mcap/mole_estimator_batch_2026-02-08/metrics_YYYYMMDD_HHMMSS \
   --md-out src/moleworks_ros/mole_estimator/docs/eval_batch_2026-02-08_metrics.md
@@ -57,7 +57,7 @@ python3 src/moleworks_ros/mole_estimator/scripts/evaluate_mole_estimator_eval_ba
 Single bag (after reprocessing):
 
 ```bash
-python3 src/moleworks_ros/mole_estimator/scripts/analyze_mole_estimator_eval_bag.py \
+ros2 run mole_bag_tools analyze_mole_estimator_eval_bag \
   "$OUT_BAG" \
   --config src/moleworks_ros/mole_estimator/config/mole_estimator.yaml
 ```
@@ -65,7 +65,7 @@ python3 src/moleworks_ros/mole_estimator/scripts/analyze_mole_estimator_eval_bag
 5) Compare two runs (diff helper).
 
 ```bash
-python3 src/moleworks_ros/mole_estimator/scripts/compare_mole_estimator_metrics_runs.py \
+ros2 run mole_bag_tools compare_mole_estimator_metrics_runs \
   --a-json-dir ~/mcap/mole_estimator_batch_2026-02-08/metrics_OLD \
   --b-json-dir ~/mcap/mole_estimator_batch_2026-02-08/metrics_NEW \
   --label-a OLD \
@@ -96,7 +96,7 @@ Recorder (writes the eval bag that the analyzer needs):
 ```bash
 export ROS_DOMAIN_ID=77
 export MOLE_EVAL_USE_SIM_TIME=1
-src/moleworks_ros/mole_estimator/scripts/record_mole_estimator_eval_bag.sh "$OUT_BAG"
+"$(ros2 pkg prefix mole_bag_tools)/lib/mole_bag_tools/record_mole_estimator_eval_bag.sh" "$OUT_BAG"
 ```
 
 Player (exclude `/tf` and `/tf_static` from the sensors bag so the output bag has a single TF publisher):

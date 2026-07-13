@@ -1,6 +1,6 @@
 ---
 name: dig-controllers
-description: "Start Moleworks dig controllers (dig_3d, dig_newton, dig_ee, etc.) in a split tmux window: one pane runs the controller launch, the other pane runs lifecycle helpers and shows the `ros2 action send_goal` command. Use when the base stack is already running and you want to add or restart only a dig controller."
+description: Start or restart a Mole DIG controller in tmux when the base stack is already running.
 ---
 
 # Dig Controllers

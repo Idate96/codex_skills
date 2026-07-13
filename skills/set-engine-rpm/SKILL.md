@@ -1,6 +1,6 @@
 ---
 name: set-engine-rpm
-description: Set or read the Mole/Menzi M4 engine RPM on the robot machine. Use when a user asks to increase/decrease/check engine RPM (e.g., "set engine rpm", "increase rpm to 1500", "check current rpm"), or when the `set_engine_rpm` console script fails and you need a direct on-machine workflow.
+description: Read or set Mole/Menzi M4 engine RPM using the available ROS service or legacy fallback.
 ---
 
 # Set Engine RPM
@@ -37,20 +37,19 @@ ros2 service call /set_rpm mole_highlevel_msgs/srv/SetRPM "{target_rpm: 1500}"
 /home/lorenzo/.codex/skills/set-engine-rpm/scripts/run_set_engine_rpm.sh 1500
 /home/lorenzo/.codex/skills/set-engine-rpm/scripts/run_set_engine_rpm.sh --current
 
-# Direct fallback (no wrapper)
-source /opt/ros/jazzy/setup.bash
-source ~/newton_ros2_ws/install/setup.bash
-python3 ~/newton_ros2_ws/src/moleworks_ros/high_level_controllers/mole_highlevel_controller/mole_highlevel_controller/utils/set_engine_rpm.py 1500
+# Explicit workspace override when auto-discovery is ambiguous
+MOLEWORKS_ROS_WS=~/moleworks/ros2_ws \
+  /home/lorenzo/.codex/skills/set-engine-rpm/scripts/run_set_engine_rpm.sh 1500
 ```
 
 ## Troubleshooting
 
 - If `/set_diesel_speed` is missing, verify `gravis_bridge` is running and check `ros2 node list | grep -i gravis`.
 - If `/set_rpm` is missing, verify the high-level controller node is running.
-- If `set_engine_rpm` (console script) fails with pinocchio import errors, use the wrapper or direct Python path above.
+- If `set_engine_rpm` (console script) fails with pinocchio import errors, use the wrapper. It checks `~/ros2_ws`, `~/moleworks/ros2_ws`, and legacy `~/newton_ros2_ws`; set `MOLEWORKS_ROS_WS` to override discovery.
 - If `/engine_speed` is missing, start the low-level controller/bringup so the service exists before retrying.
 
 ## Resources
 
 ### scripts/
-- `run_set_engine_rpm.sh`: Sources ROS + workspace and runs the Python RPM setter reliably.
+- `run_set_engine_rpm.sh`: Sources ROS plus the first available Moleworks workspace, prefers live RPM services, and falls back to the Python setter.

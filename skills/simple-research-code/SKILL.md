@@ -1,6 +1,6 @@
 ---
 name: simple-research-code
-description: Write and review short-lived research code with an aggressively simple, skimmable style. Use when the user asks for simpler code, fewer states, narrower APIs, discriminated unions, exhaustive handling, assertions instead of defensive code, or pre-PR cleanup that removes non-essential changes and complexity.
+description: Write or review simple, skimmable research code. Use for narrower APIs, fewer states, exhaustive variants, assertions, or pre-PR complexity cleanup.
 ---
 
 # Simple Research Code

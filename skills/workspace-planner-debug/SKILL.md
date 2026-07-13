@@ -1,6 +1,6 @@
 ---
 name: workspace-planner-debug
-description: Debug Moleworks workspace planner Newton/ROS runs with per-action planner GridMaps, predicted-vs-executed scoop analysis, Terra checkpoint replay of failed or high-discrepancy scoops, and live-run inspection artifacts.
+description: "Debug Newton/ROS workspace planning with action GridMaps, prediction-vs-execution analysis, checkpoint replay, and run artifacts."
 ---
 
 # Workspace Planner Debug

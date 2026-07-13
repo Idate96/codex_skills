@@ -1,6 +1,6 @@
 ---
 name: open3d-mapping
-description: Record or generate dense 1 cm Open3D/Foxglove-style camera-colored 3D maps from Moleworks ROS 2 LiDAR and camera streams. Use when asked for Open3D mapping, colored maps, dense site maps, survey clouds, camera-colored LiDAR maps, or syncing generated map artifacts.
+description: Capture, generate, or sync dense 1 cm camera-colored Moleworks LiDAR maps and Open3D/Foxglove point-cloud artifacts.
 ---
 
 # Open3D Mapping

@@ -1,6 +1,6 @@
 ---
 name: rl-isaaclab-cluster-ops
-description: "Submit, monitor, sync, and ledger Moleworks IsaacLab RL runs in `moleworks_ext`. Use when preparing a smoke test, launching Euler jobs, debugging failed Slurm runs, syncing experiments, comparing run configs, or updating `docs/EXPERIMENTS_ONGOING.md` and `docs/EXPERIMENTS_RUN.md`."
+description: "Operate Moleworks IsaacLab runs on Euler: smoke, submit, monitor Slurm, debug, sync, compare configs, and update experiment ledgers."
 ---
 
 # IsaacLab Cluster Ops

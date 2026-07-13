@@ -1,6 +1,6 @@
 ---
 name: kleinkram-upload
-description: Stage and upload files to Kleinkram with mission creation and verification, or manage project/user access for Kleinkram datasets. Use when asked to upload datasets, run bags, or sysid artifacts to Kleinkram, or when asked to add users, inspect project access, or update Moleworks project permissions.
+description: Upload and verify Kleinkram missions or manage project access. Use for datasets, rosbags, sysid artifacts, users, groups, and Moleworks permissions.
 ---
 
 # Kleinkram Upload And Access
@@ -129,7 +129,6 @@ If Kleinkram skipped a known-corrupt remote file during download, rerun reconstr
 - On some deployments, the older `/access/*` management routes are absent even though `/projects/:uuid/access` works.
 - When `/access/addUserToProject` is missing, the script first tries the automatic custom-group fallback; use `--primary-group-uuid` only when you explicitly want the direct `/projects/:uuid/access` rewrite path.
 - Primary access groups are hidden from normal access-group search on this deployment, so the primary-group UUID is not always easy to resolve quickly.
-- Practical fallback: if `--primary-group-uuid` is absent, the script first checks whether the project already has a matching custom group containing that user, then falls back to a generated dedicated custom access group name from the project and user identifiers.
 - Use `--fallback-group-name` only when you want to force a specific custom group name.
 - Use `create` when you want the same collaborator level that the `Leggedrobotics` affiliation group has on the canonical Moleworks projects.
 
@@ -145,7 +144,6 @@ If Kleinkram skipped a known-corrupt remote file during download, rerun reconstr
 - Primary-group UUID:
   - not reliably searchable on this deployment because primary groups are hidden
   - use it only if you already have it from a trusted source
-- If you do not have the primary-group UUID, just run `grant-user` without it and let the script fall back automatically.
 
 ## Fast Path: Diego + `moleworks_arm_control`
 
@@ -173,7 +171,7 @@ If needed, recreate the same pattern with the API:
 
 If this machine cannot reach Kleinkram (network/endpoint issue), hand off to an agent in the same network as the server with this runbook:
 
-- `/home/lorenzo/ros2_ws/src/moleworks_ros/mole_utils/docs/KLEINKRAM_ON_NETWORK_AGENT_RUNBOOK.md`
+- `/home/lorenzo/moleworks/ros2_ws/src/moleworks_ros/mole_utils/docs/KLEINKRAM_ON_NETWORK_AGENT_RUNBOOK.md`
 
 ## Constraints Enforced
 

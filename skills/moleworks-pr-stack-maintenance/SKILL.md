@@ -1,6 +1,6 @@
 ---
 name: moleworks-pr-stack-maintenance
-description: Restack, verify, and merge stacked Moleworks `moleworks_ros` PRs, including worktree setup, rebases onto `main`, local Docker CI on this machine, GitHub check monitoring, and final merge/cleanup. Use when a user asks to update a stack after `main` changed, split a monolithic PR across follow-up PRs, fix CI on several related branches, or merge the remaining open Moleworks ROS PRs.
+description: Restack, verify, and merge `moleworks_ros` PR stacks. Use for rebases, PR splitting, shared CI fixes, GitHub checks, dependency-order merges, and cleanup.
 ---
 
 # Moleworks PR Stack Maintenance

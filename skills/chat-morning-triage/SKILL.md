@@ -1,6 +1,6 @@
 ---
 name: chat-morning-triage
-description: Scan Lorenzo's recent Google Chat activity at the start of the day and turn it into a concise todo list. Use when Lorenzo asks for a morning chat scan, chat triage, "what do I need to do from chat", "scan my chat and make a todo list", or similar. Reads recent collaborator DMs from the collaborator note and recent active smaller spaces via the Google Chat API, then extracts action items, reply obligations, and deadlines.
+description: Triage Lorenzo's recent Google Chat into urgent actions, replies, follow-ups, and FYIs. Use for morning chat scans or chat-derived todo lists.
 ---
 
 # Chat Morning Triage

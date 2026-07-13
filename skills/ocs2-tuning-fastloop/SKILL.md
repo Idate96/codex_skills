@@ -1,6 +1,6 @@
 ---
 name: ocs2-tuning-fastloop
-description: Run fast, repeatable Mole M4 OCS2 tuning loops with clean tmux bringup, benchmark CSV capture, single-case matrix execution, and segment-level analysis/reporting. Use when users ask to start or restart MPC tuning, iterate one case at a time (forward/backward), compare parameter sets, or verify that updated velocity/acceleration limits are actually active in diagnostics.
+description: Iterate Mole M4 OCS2 tuning with clean tmux bringup, one-case runs, benchmark artifacts, and runtime-limit checks.
 ---
 
 # OCS2 Tuning Fast Loop

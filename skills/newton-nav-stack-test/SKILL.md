@@ -1,6 +1,6 @@
 ---
 name: newton-nav-stack-test
-description: Validate the Newton + ROS Nav2 driving stack in a clean tmux session after bringup. Use when the user wants a repeatable navigation check in Newton sim, including health checks for the bridge/model/drive path and the lateral-shift golden test.
+description: Validate Newton Nav2 bringup, drive-path health, Foxglove visibility, and the side-target tracking benchmark.
 ---
 
 # Newton Nav Stack Test
@@ -11,7 +11,7 @@ Use this after `newton-sim-ros-startup` has brought up a clean `newton_sim` sess
 
 - Standardizing Newton Nav2 validation after a restart
 - Verifying the drive path before blaming the planner
-- Running the lateral-shift "parking maneuver" golden test
+- Running the side-target parking/cusp tracking benchmark
 - Checking that Foxglove has the robot, path, and drive diagnostics
 
 ## Assumptions
@@ -60,21 +60,22 @@ Use Foxglove to confirm:
 
 If the robot is missing in Foxglove, the likely cause is missing `robot_description` or `joint_states`, not the bridge itself.
 
-## 3) Golden Test
+## 3) Side-Target Benchmark
 
-Run the standardized lateral-shift golden test:
+Run the standardized lateral and cusp tracking benchmark without randomized targets:
 
 ```bash
 export ROS_DOMAIN_ID=24
 source /opt/ros/jazzy/setup.bash
 source /workspace/moleworks/ros2_ws/install/local_setup.bash
-python3 /workspace/moleworks/ros2_ws/src/moleworks_ros/mole_bringup/scripts/nav2_lateral_shift_golden.py \
+python3 /workspace/moleworks/ros2_ws/src/moleworks_ros/mole_bringup/scripts/nav2_side_target_benchmark.py \
   --robot-ns mole \
   --lateral-m 1.0 \
-  --timeout-sec 180.0
+  --random-targets 0 \
+  --goal-timeout-sec 180.0
 ```
 
-This sends a goal offset in `+y` in the robot base frame so the excavator must execute a parking-style maneuver instead of a trivial straight segment.
+This runs left/right lateral and forward/reverse cusp targets so the excavator must execute parking-style maneuvers rather than only straight segments.
 
 ## 4) What To Watch During The Test
 
@@ -109,6 +110,6 @@ The test passes when:
 
 - Newton stays alive for the full run
 - the robot is visible in Foxglove
-- the lateral-shift goal produces a valid path
+- the side and cusp targets produce valid paths
 - `/mole/cmd_vel_smoothed` and `/mole/actuator_commands` remain single-instance
 - the excavator completes the maneuver without planner flip-flopping or bridge resets

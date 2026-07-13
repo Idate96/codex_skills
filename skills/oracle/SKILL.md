@@ -1,6 +1,6 @@
 ---
 name: oracle
-description: Use the @steipete/oracle CLI to bundle a prompt plus the right files and get a second-model review (API or browser) for debugging, refactors, design checks, or cross-validation.
+description: Use the Oracle CLI for a second-model review with repo context. Use for debugging, refactors, design checks, research, or cross-validation.
 ---
 
 # Oracle (CLI) — best use
@@ -19,27 +19,39 @@ Oracle bundles your prompt + selected files into one “one-shot” request so a
   - Replace `--help` with any normal Oracle command, for example a dry run:
   - `npx -y -p node@22 -p @steipete/oracle -c 'node $(readlink -f $(which oracle)) --dry-run summary --files-report -p "<task>" --file .'`
 
-## Main use case (browser, GPT-5.5 Pro with exact picker selection)
+## Main use case (browser with exact picker selection)
 
-Default workflow here: use Lorenzo's local Oracle fork at `/home/lorenzo/oracle` in browser mode. It reuses Oracle's persistent browser profile, selects the exact ChatGPT picker label `Pro`, sets `--browser-thinking-time extended`, and uploads resolved source files as a real ZIP archive for larger reviews. `Extended` is the thinking-time option, not a model-picker label.
-
-Important tested behavior as of April 23, 2026:
-
-- OpenAI officially released `GPT-5.5` and `GPT-5.5 Pro` on April 23, 2026.
-- Upstream `@steipete/oracle@0.9.0` does not currently map `GPT-5.5 Pro` correctly in browser mode.
-- Upstream local tests on this machine:
-  - `--model "5.5 Pro"` resolved to `gpt-5.4-pro`
-  - `--model gpt-5.5-pro` resolved to `gpt-5-pro`
-- The local fork adds `--browser-model-label <label>` and `--browser-thinking-time <level>` for GPT browser runs.
-- Do **not** rely on old Pro aliases for browser mode. Use the current GPT-5.5 Pro browser target explicitly.
+Default workflow here: use Lorenzo's local Oracle fork at `/home/lorenzo/oracle` in browser mode. It reuses the verified signed-in Chrome profile, selects the exact ChatGPT picker label `Pro`, and uploads resolved source files as a real ZIP archive for larger reviews.
 
 Recommended defaults:
 
 - Engine: browser (`--engine browser`)
 - CLI: `node /home/lorenzo/oracle/dist/bin/oracle-cli.js`
-- Model target: `--browser-model-label "Pro" --browser-thinking-time extended`
-- Browser flags: `--browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome --browser-model-strategy select`
+- Model target: `--browser-model-label "Pro"`
+- Browser flags on this machine: `--browser-manual-login --browser-manual-login-profile-dir /home/lorenzo/.oracle/browser-profile-real-google-profile1-current-experts --browser-port 9222 --browser-chrome-path /opt/google/chrome/chrome --browser-model-strategy select`
+- Per-user defaults: `~/.oracle/config.json` pins the same Chrome path, port, manual-login mode, model strategy, and canonical profile for raw CLI calls. Keep explicit flags in documented commands for auditability.
 - Attachments: always include the current git root repo by default; add sibling repos only when needed; avoid secrets.
+
+Authentication invariant for this machine:
+
+- Use `/home/lorenzo/.oracle/browser-profile-real-google-profile1-current-experts` as the canonical Oracle browser profile. It is the verified copy seeded from Chrome `Profile 1` (`lterenzi@leggedrobotics.com`). Do not try `~/.oracle/browser-profile` first; it is logged out as of 2026-07-13.
+- A `ChatGPT` title or `https://chatgpt.com/` tab is not enough. Run `scripts/browser_preflight.js`; it fails unless the exact profile is active, the DOM is signed in, and the composer is available.
+- Hard rule: for any high-value browser Oracle run, do **not** let Oracle be the first process that opens Chrome. First start or attach to the verified signed-in Chrome session yourself, verify DevTools on port `9222` can see a signed-in `chatgpt.com` page, and only then run Oracle against that existing session.
+- Do not copy, rsync, or invent a new Chrome profile to isolate a run unless the user explicitly asks or the default persistent profile is not signed in and the real permanent Chrome profile must be copied because of Chrome's default-profile remote-debugging restriction. In all cases, verify that exact copied profile is logged into ChatGPT before sending. Copied profiles can silently lose usable ChatGPT credentials.
+- If another Oracle browser run is active on the persistent profile, prefer reattaching, waiting, or using a unique slug on the same signed-in profile over launching an unverified copied profile.
+- Before every browser run, execute the deterministic preflight. Do not send unless it prints `ORACLE_BROWSER_PREFLIGHT_OK`.
+- If `curl -s http://127.0.0.1:9222/json/list` is empty, invalid, or has no ChatGPT page, stop. Launch a login-check Chrome manually with the persistent profile and wait for login verification:
+  - `/opt/google/chrome/chrome --remote-debugging-port=9222 --user-data-dir=/home/lorenzo/.oracle/browser-profile-real-google-profile1-current-experts https://chatgpt.com`
+  - Run `node /home/lorenzo/codex_skills/skills/oracle/scripts/browser_preflight.js`. If it fails, ask Lorenzo to sign in in that exact Chrome window; do not fall back to another or temporary profile.
+
+Mandatory preflight commands before browser-mode Oracle:
+
+```bash
+node /home/lorenzo/oracle/dist/bin/oracle-cli.js status --hours 6 --limit 20
+node /home/lorenzo/codex_skills/skills/oracle/scripts/browser_preflight.js
+```
+
+Reject the run and do not press/send if any Chrome process uses `/tmp/oracle-browser-*`, `/tmp/oracle-reattach-*`, or an unverified copied profile for the ChatGPT tab. Also reject if the DOM contains `Log in`, `Sign up`, or `Welcome back`.
 
 ## Golden path (fast + reliable)
 
@@ -64,8 +76,8 @@ Recommended defaults:
   - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --dry-run summary --files-report -p "<task>" --file .`
 
 - Browser run (main path; long-running is normal):
-  - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome --browser-model-strategy select --browser-model-label "Pro" --browser-thinking-time extended --browser-attachments always --browser-bundle-files -p "<task>" --file .`
-  - Cross-repo example: `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome --browser-model-strategy select --browser-model-label "Pro" --browser-thinking-time extended --browser-attachments always --browser-bundle-files -p "<task>" --file /path/to/root-repo --file /path/to/sibling-repo --file /path/to/evidence.log`
+  - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-manual-login-profile-dir /home/lorenzo/.oracle/browser-profile-real-google-profile1-current-experts --browser-port 9222 --browser-chrome-path /opt/google/chrome/chrome --browser-model-strategy select --browser-model-label "Pro" --browser-attachments always --browser-bundle-files -p "<task>" --file .`
+  - Cross-repo example: `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-manual-login-profile-dir /home/lorenzo/.oracle/browser-profile-real-google-profile1-current-experts --browser-port 9222 --browser-chrome-path /opt/google/chrome/chrome --browser-model-strategy select --browser-model-label "Pro" --browser-attachments always --browser-bundle-files -p "<task>" --file /path/to/root-repo --file /path/to/sibling-repo --file /path/to/evidence.log`
   - If the saved run reports only generic `ui=ChatGPT` after a Pro selection, treat the run as unverified and rerun after checking model selection.
 
 - Deep Research API run (only after explicit user consent because it uses paid API tokens):
@@ -74,8 +86,8 @@ Recommended defaults:
   - API Deep Research uses OpenAI model ids `o3-deep-research` / `o4-mini-deep-research`, uses web search by default, and will reject `--search off` because Oracle does not yet expose file-search/vector-store or remote-MCP data sources.
 
 - ChatGPT browser Deep research run (uses the Plus/tools menu, not API tokens):
-  - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome --browser-deep-research -p "<research question>"`
-  - Shorthand: `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --model deepresearch --browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome -p "<research question>"`
+  - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-manual-login-profile-dir /home/lorenzo/.oracle/browser-profile-real-google-profile1-current-experts --browser-port 9222 --browser-chrome-path /opt/google/chrome/chrome --browser-deep-research -p "<research question>"`
+  - Shorthand: `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --model deepresearch --browser-manual-login --browser-manual-login-profile-dir /home/lorenzo/.oracle/browser-profile-real-google-profile1-current-experts --browser-port 9222 --browser-chrome-path /opt/google/chrome/chrome -p "<research question>"`
   - Important status rule: ChatGPT Deep Research often renders its progress card only visually inside the ChatGPT page/sandbox frame. `document.body.innerText` may still show only the user prompt, and the `connector_openai_deep_research` target can have an empty DOM while the report is actively running. Before calling a browser Deep Research run stuck, failed, or safe to rerun/kill, take a viewport screenshot or accessibility/visual check of the ChatGPT conversation and look for the Deep Research checklist/progress card. If the Oracle session status is `running` and Chrome is alive, do not start a duplicate run.
 
 ## Attaching files (`--file`)
@@ -156,31 +168,32 @@ Practical pattern for cross-repo investigations:
 - Browser engine supports GPT + Gemini only; use `--engine api` for Claude/Grok/Codex, API Deep Research, or multi-model runs. Use `--browser-deep-research` for ChatGPT's browser Deep research composer mode.
 - **API runs require explicit user consent** before starting because they incur usage costs.
 - Browser model-selection warning for this machine:
-  - With Lorenzo's local fork, use `--browser-model-strategy select --browser-model-label "Pro" --browser-thinking-time extended`.
-  - With upstream `npx -y @steipete/oracle@0.9.0`, treat `--model "5.5 Pro"` and `--model gpt-5.5-pro` as unsafe in browser mode.
+  - With Lorenzo's local fork, use `--browser-model-strategy select --browser-model-label "Pro"`.
+  - Do not pass `--browser-thinking-time extended` by default. The ChatGPT UI did not expose the dropdown on 2026-07-13, while the same Pro run succeeded without the flag.
   - Upstream fallback only: use `--browser-model-strategy current` and verify `Pro` with extended thinking directly in the ChatGPT UI.
+  - If a run fails with `Unable to find the Thinking time dropdown menu`, keep the same signed-in persistent profile and rerun without `--browser-thinking-time extended`; do not switch profiles to solve that UI issue. Record that the fallback omitted explicit thinking-time selection.
 - Browser auth fallback for ChatGPT:
   - Symptom: `No ChatGPT cookies were applied from your Chrome profile`.
   - First retry with `--browser-cookie-wait 5s`.
   - If cookie sync still fails, switch to manual login and reuse Oracle's own browser profile:
-    - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome --browser-model-strategy select --browser-model-label "Pro" --browser-thinking-time extended --browser-attachments always --browser-bundle-files -p "<task>" --file .`
-  - Sign into ChatGPT in the Oracle-launched Chrome window, which uses `~/.oracle/browser-profile`.
+    - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-manual-login-profile-dir /home/lorenzo/.oracle/browser-profile-real-google-profile1-current-experts --browser-port 9222 --browser-chrome-path /opt/google/chrome/chrome --browser-model-strategy select --browser-model-label "Pro" --browser-attachments always --browser-bundle-files -p "<task>" --file .`
+  - Sign into ChatGPT in the manually launched Chrome window using the canonical verified profile.
   - Keep that Chrome window open until the run finishes; closing it early leaves the session in a `chrome-disconnected` state.
   - After the first successful manual login, future browser runs can reuse that Oracle profile with `--browser-manual-login`.
-  - Important on this machine: do not expect auth to persist from temporary Oracle browser profiles such as `/tmp/oracle-browser-*` or `/tmp/oracle-reattach-*`. Those are throwaway by design. If you need reusable ChatGPT auth across runs, always use `--browser-manual-login` and verify the live Chrome process is using `--user-data-dir=/home/lorenzo/.oracle/browser-profile`.
+  - Important on this machine: do not expect auth to persist from temporary Oracle browser profiles such as `/tmp/oracle-browser-*` or `/tmp/oracle-reattach-*`. Those are throwaway by design. Always use `--browser-manual-login` with the canonical verified profile and run the preflight.
   - If Oracle browser auth looks inconsistent, first check the actual Chrome process rather than guessing from the window title:
     - `ps -ef | rg '/opt/google/chrome/chrome .*user-data-dir='`
-    - good persistent profile: `--user-data-dir=/home/lorenzo/.oracle/browser-profile`
+    - good persistent profile: `--user-data-dir=/home/lorenzo/.oracle/browser-profile-real-google-profile1-current-experts`
     - bad throwaway profiles: `--user-data-dir=/tmp/oracle-browser-*` or `/tmp/oracle-reattach-*`
   - If stale throwaway Oracle windows are still around, kill them before asking the user to log in again. Otherwise they will log into the wrong window and nothing will persist.
   - When bringing up a fresh persistent session, prefer a fixed DevTools port so reattach/debugging is deterministic:
-    - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-port 9222 --browser-chrome-path /usr/bin/google-chrome --browser-model-strategy select --browser-model-label "Pro" --browser-thinking-time extended ...`
+    - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-manual-login-profile-dir /home/lorenzo/.oracle/browser-profile-real-google-profile1-current-experts --browser-port 9222 --browser-chrome-path /opt/google/chrome/chrome --browser-model-strategy select --browser-model-label "Pro" ...`
 - Browser attachments:
   - `--browser-attachments auto|never|always` (auto pastes inline up to ~60k chars then uploads).
   - `--browser-bundle-files` packages resolved text attachments into a real `attachments-bundle.zip` upload.
   - For repo-scale reviews, prefer `--browser-attachments always --browser-bundle-files`.
   - Validate with `--dry-run summary --files-report --browser-attachments always --browser-bundle-files --file .` and inspect the printed `.zip` path if needed.
-  - When the active work is inside a container but browser upload is needed, run the browser-mode Oracle command from the host side where `/usr/bin/google-chrome` and the persistent `~/.oracle/browser-profile` are available, then attach the archive path from the shared filesystem.
+  - When the active work is inside a container but browser upload is needed, run the browser-mode Oracle command from the host side where `/opt/google/chrome/chrome` and the canonical verified profile are available, then attach the archive path from the shared filesystem.
   - For high-value reviews, do not click send unless the live composer shows all three required facts: the exact model picker label (`Pro` here), the prompt/sentinel text, and the attachment chip or file-count UI with no upload/dedup/error message.
   - If ChatGPT says the file was already uploaded, use a fresh archive name and add a tiny unique marker file to the archive before retrying.
   - If driving Chrome through CDP, prefer archive paths under `~/Downloads` or another host-readable directory. `/tmp` can resolve to a zero-size upload in some Chrome sessions.
@@ -193,21 +206,24 @@ Practical pattern for cross-repo investigations:
 ## Sessions + slugs (don’t lose work)
 
 - Stored under `~/.oracle/sessions` (override with `ORACLE_HOME_DIR`).
-- Runs may detach or take a long time (browser + GPT‑5.5 Pro work often does). If the CLI times out: don’t re-run; reattach.
+- Runs may detach or take a long time in browser mode. If the CLI times out: don’t re-run; reattach.
   - List: `oracle status --hours 72`
   - Attach: `oracle session <id> --render`
 - For browser Deep Research specifically, a quiet `output.log`, blank sandbox iframe DOM, or prompt-only `innerText` is not evidence of failure. Verify with a screenshot of the ChatGPT conversation first; the visible page can show an active checklist and search count even when the DOM text APIs are uninformative.
 - If a browser session is marked completed but the captured answer is only a stub such as “I’ll inspect…” or “I’ll review…”, treat it as a failed review, not as Oracle feedback. Reopen the conversation tab or rerun with an explicit instruction to return the final review directly and not a plan to inspect files.
-- When the user has other browser/Oracle queries running, treat isolation as part of the run:
+- When the user has other browser/Oracle queries running, treat session identity as part of the run:
   - Use a unique `--slug` for the new request.
   - Check active runs first: `node /home/lorenzo/oracle/dist/bin/oracle-cli.js status --hours 6 --limit 20`.
   - After launch, verify Chrome has a separate ChatGPT page/tab for the new slug or title:
     - `curl -s http://127.0.0.1:9222/json/list | rg -n '"title"|"url"'`
   - Do not assume the selected/visible Chrome tab is the one Oracle is driving; trust the DevTools page list and the Oracle session slug.
   - Browser-mode reattach/capture can still pick up an existing ChatGPT tab if several Oracle runs are active. For high-value reviews, add a short sentinel requirement to the prompt, such as `Start the final answer with ORACLE_REVIEW_SENTINEL_<slug>`. After completion, reject the saved answer if the sentinel is missing or the content obviously belongs to another request, inspect `~/.oracle/sessions/<slug>/output.log`, and rerun only after the competing browser runs have completed or been detached.
-  - If the user explicitly needs concurrent browser runs, isolate the new run with a copied Chrome profile and a different DevTools port instead of sharing `~/.oracle/browser-profile` on port `9222`. Example:
-    - `rsync -a --delete --exclude='Singleton*' --exclude='DevToolsActivePort' ~/.oracle/browser-profile/ ~/.oracle/browser-profile-<slug>/`
-    - `ORACLE_BROWSER_PROFILE_DIR=$HOME/.oracle/browser-profile-<slug> node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-port 9333 ...`
+  - Do not isolate by copying the Chrome profile as a default fix for concurrency. A copied profile can start without usable ChatGPT credentials, even if it came from the signed-in profile.
+  - If the user explicitly needs a concurrent isolated browser run, copy the Chrome profile only after confirming this tradeoff, then verify the copied profile is actually signed in before sending the prompt. The verification must use the copied profile's DevTools port and must show a signed-in ChatGPT page, not just `https://chatgpt.com/`.
+  - Isolated-profile example, only after the checks above:
+    - `rsync -a --delete --exclude='Singleton*' --exclude='DevToolsActivePort' /home/lorenzo/.oracle/browser-profile-real-google-profile1-current-experts/ ~/.oracle/browser-profile-<slug>/`
+    - `node /home/lorenzo/oracle/dist/bin/oracle-cli.js --engine browser --browser-manual-login --browser-manual-login-profile-dir ~/.oracle/browser-profile-<slug> --browser-port 9333 ...`
+  - Prefer `--browser-manual-login-profile-dir` over `ORACLE_BROWSER_PROFILE_DIR` in tmux/detached runs. Existing tmux servers can keep stale environment variables and silently launch the wrong browser profile.
 - If a browser run gets stuck in `chrome-disconnected`, kill the stale Oracle/Chrome processes and start a fresh run instead of piling on more reattach commands.
 - Use `--slug "<3-5 words>"` to keep session IDs readable.
 - Duplicate prompt guard exists; use `--force` only when you truly want a fresh run.

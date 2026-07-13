@@ -213,16 +213,16 @@ Required Chrome / CDP prerequisites:
 - Chrome remote debugging must be enabled in the live browser:
   - open `chrome://inspect/#remote-debugging`
   - turn the toggle on
-- local CDP tool repo:
-  - `/home/lorenzo/git/chrome-cdp-skill`
+- local CDP skill directory:
+  - `/home/lorenzo/codex_skills/skills/chrome-cdp`
 - local CDP wrapper:
-  - `/home/lorenzo/git/chrome-cdp-skill/skills/chrome-cdp/scripts/cdp`
+  - `/home/lorenzo/codex_skills/skills/chrome-cdp/scripts/cdp`
 
 Recommended submission path:
 
 1. Open the form in the already logged-in Chrome session.
 2. Use CDP to find the tab:
-   - `/home/lorenzo/git/chrome-cdp-skill/skills/chrome-cdp/scripts/cdp list`
+   - `/home/lorenzo/codex_skills/skills/chrome-cdp/scripts/cdp list`
 3. Inspect the page structure if needed:
    - `.../scripts/cdp snap <target>`
 4. Fill the form through the live page context.

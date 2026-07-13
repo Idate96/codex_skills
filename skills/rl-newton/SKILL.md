@@ -1,6 +1,6 @@
 ---
 name: rl-newton
-description: "Entry point for Moleworks Newton RL work. Use when working on Newton training, shared-turn experiments, local smoke tests, cluster launches, benchmark interpretation, or experiment ledgers. Routes to narrower Newton skills for cluster ops, benchmarking, ROS parity, and long-horizon orchestration."
+description: "Route Moleworks Newton RL work: training, shared-turn experiments, smoke tests, cluster runs, benchmarks, and ledgers."
 ---
 
 # RL + Newton Router
@@ -22,11 +22,15 @@ Use this as the default entry point for `moleworks_newton` work. Keep this skill
   file, but the code source should be the launcher checkout unless
   `LOCAL_MOLEWORKS_DIR` is intentionally set in the command environment.
 - Do not run long noisy `uv run python ...` commands yourself unless the user explicitly wants live execution and the output is tightly bounded. Prefer preparing exact commands for the user or using narrow shell helpers.
+- Do not run full transformer/RL training locally on Lorenzo's workstation; keep local execution to smoke tests,
+  static checks, dry-run manifests, and bounded diagnostics so the PC stays responsive. Use Euler for real training
+  runs when training is needed.
 - Local smoke first. Real training runs use W&B. Quick local smoke and debug runs disable W&B.
 - For real Euler training, prefer longer walltimes. Default to `JOB_TIME=24h` when composing, reviewing, or launching training commands unless the user explicitly asks for a shorter run.
 - Use `4h` or shorter only for smoke gates, startup validation, queue/launcher probes, or intentionally bounded debugging runs. Do not use short walltimes for runs meant to judge learning quality.
 - PPO behavior judgments require real rollout scale. Treat tiny local PPO runs as startup/smoke only; do not use them to decide whether a reward, termination, or policy behavior is working. For Newton RL, expect meaningful PPO evidence to come from multi-hour runs with at least tens of thousands of environment rollouts/episodes, with `40000+` as the practical minimum target before judging learning quality, plus pinned checkpoint benchmarks.
 - When checking an active Newton training run, expect meaningful learning readouts to come from long runs, usually 24h-scale jobs, plus pinned checkpoint benchmarks rather than very early W&B curves.
+- For `fee_workspace_planner` PPO macro budgets, compute the ideal full-bucket lower bound before picking a cap: `ceil(target_volume_m3 / deployed_bucket_volume_m3)`. Treat `3x` that value as the minimum efficient-planner lower bound, not as proof the cap is high enough for early PPO. If online or benchmark rollouts hit the macro cap without completing, estimate the empirical need from `cap / final_completion_ratio` and relaunch with slack, normally the larger of `3x ideal` and `~1.3-1.5x` that empirical estimate. For the 30 cm shallow fan with the teeth600 bucket, `2.264 / 0.250661 -> 10` ideal scoops, but `H=32` only reached about `0.36` final completion, implying `32 / 0.36 ~= 90`; use about `128` macros for initial training.
 - For experiment status checks after a run has been live for a while:
   - use `sacct` first for scheduler truth
   - do not trust stale `RUNNING` notes in `docs/experiments/running.md` until you reconcile them against `sacct`
@@ -41,6 +45,8 @@ Use this as the default entry point for `moleworks_newton` work. Keep this skill
   - prefer Euler `1x4090`, then `3090` only if the run stays pending too long
 - Benchmark before drawing conclusions about a checkpoint or training recipe.
 - For FEE leaderboard/report work from a worktree, route to `rl-newton-benchmark`; use the current fast FEE benchmark contract there (`128` envs, `180` steps) unless the user explicitly asks for a high-confidence rerun. After local benchmark or video generation, archive the batch into `/home/lorenzo/moleworks/moleworks_newton/outputs/fee_benchmarks`, rebuild `global_latest`, and verify the new policy appears there before giving the user the full leaderboard URL.
+- For FEE specialist, leaderboard, or confusing checkpoint work, generate at least one short qualitative GL clip by default after the pinned benchmark unless the user asks not to. Use `record_fee_leaderboard_videos.py`, normally one `precision_profile_10cm` episode at `160` steps with `--soil-wireframe-mode full`, archive it under the canonical FEE benchmark tree, rebuild `global_latest`, and give the browser `index.html` or global latest link.
+- For new real `fee_excavation` W&B training launches, include the async W&B video hook by default when the code supports it and a spare GPU or clear training headroom is available. Baseline flags: `--wandb-video-interval 1000 --wandb-video-cases precision_profile_10cm --wandb-video-max-steps 160 --wandb-video-episodes 1 --wandb-video-soil-wireframe-mode full`. If using a spare GPU, add `--wandb-video-cuda-visible-devices <spare_gpu_id> --wandb-video-device cuda:0`. Do not enable this on the same 24GB GPU as a large 30k/40k-world FEE job unless the user explicitly accepts the slowdown/OOM risk; for fully occupied Vast/Euler machines, leave it disabled and generate post-hoc clips after sync.
 - For active sweep comparisons, sync the targeted run dirs first, then compare a common pinned `model_<N>.pt` across runs. Do not compare “latest available” checkpoints across different jobs.
 - Keep `docs/experiments/README.md`, `docs/experiments/latest.md`, `docs/experiments/running.md`, and `docs/experiments/done.md` current for real runs.
 - When a pinned benchmark produces a new best-known checkpoint for a named condition, update `docs/experiments/latest.md` in the same turn instead of leaving the promotion buried only in `running.md`.
@@ -80,6 +86,7 @@ Read only the branch docs that match the current task:
 - Generic train entrypoint: `scripts/rsl_rl/train.py`
 - Shared-turn benchmark entrypoint: `scripts/benchmark/benchmark_excavation_w_cabin_analytic.py`
 - FEE-specific benchmark entrypoint: `scripts/mole_environments/fee_excavation/benchmark/benchmark_fee_excavation.py`
+- FEE qualitative video recorder: `scripts/mole_environments/fee_excavation/benchmark/record_fee_leaderboard_videos.py`
 - Shared-turn sweep smoothness evaluator: `moleworks_newton/tasks/m445_excavation_shared_turn_w_cabin_no_aoa_actor/sim_to_real/measure_action_penalty_effect.py`
 - Terrain-bank verifier: `scripts/benchmark/verify_success_terrain_bank.py`
 - Play entrypoint: `scripts/rsl_rl/play.py`

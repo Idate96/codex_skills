@@ -1,6 +1,6 @@
 ---
 name: workspace-planner-benchmark
-description: Benchmark Moleworks workspace planner heuristics using the standardized HTML bundle generator. Use when regenerating workspace planner benchmark bundles, leaderboards, manifest/progress CSVs, trench and fan visualizations, or comparing free-lane pointwise_score and max_strip_volume planners.
+description: "Benchmark workspace-planner heuristics with standard HTML bundles, leaderboards, CSVs, trench/fan visuals, and selector comparisons."
 ---
 
 # Workspace Planner Benchmark

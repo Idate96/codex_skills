@@ -1,6 +1,6 @@
 ---
 name: grading-student
-description: Finalize RSL student grading and offboarding. Use when Lorenzo asks to find a student's grading sheet, extract or submit a grade, update the RSL student-project tracker like the onboarding workflow, request eDoz grade entry from admin staff, mark offboarding fields such as completed/report/grading/source/access-revoked only with evidence, or send a short Google Chat status reply after the handoff.
+description: Finalize RSL student grading and offboarding. Use for grading sheets, grade handoffs, tracker evidence, eDoz requests, access revocation, or status replies.
 ---
 
 # Grading Student

@@ -1,6 +1,6 @@
 ---
 name: ssh-starship
-description: Connect to `lorenzo@starship` over Tailscale and verify that this machine is on the `lorenzoterenzi96@gmail.com` tailnet. Use when the user asks to SSH into `starship`, `starship one`, or the previous `starship-1` name, confirm access from this workstation, or open an interactive shell after Tailscale browser approval.
+description: Connect to `lorenzo@starship` over its Tailscale profile and verify identity. Use for `starship`, `starship one`, or legacy `starship-1` SSH requests.
 ---
 
 # SSH Starship

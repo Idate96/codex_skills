@@ -1,6 +1,6 @@
 ---
 name: open-loop-lut-recollection
-description: Recollect bounded-joint open-loop current LUT data on the robot machine using one bag per amplitude, asymmetric start poses, dense low-speed knee filling, and immediate per-point analysis. Use when recollecting or repairing `J_TELE` / `J_EE_PITCH` LUT points or when `mole_sysid_tune_lut` rejects edge amplitudes.
+description: Recollect or repair bounded-joint open-loop current LUT points on the robot, especially `J_TELE` and `J_EE_PITCH`.
 ---
 
 # Open-Loop LUT Recollection
@@ -98,4 +98,3 @@ Read:
 
 - Repo note:
   - `/home/lorenzo/ros2_ws/src/moleworks_ros/low_level/mole_sysid/OPEN_LOOP_LUT_TUNING.md`
-

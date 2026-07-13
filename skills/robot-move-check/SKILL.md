@@ -1,6 +1,6 @@
 ---
 name: robot-move-check
-description: Immediately send joint velocity commands for Mole/Menzi M4 via /mole/actuator_commands (MoleActuatorCommands). Use when the user asks to move boom/stick/tele/turn joints or run a quick motion check and wants minimal startup time.
+description: Quickly command Mole/Menzi M4 joint velocities on `/mole/actuator_commands` for direct motion checks.
 ---
 
 # Robot Move Check

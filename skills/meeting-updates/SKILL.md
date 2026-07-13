@@ -1,6 +1,6 @@
 ---
 name: meeting-updates
-description: Update recurring team meeting notes and standup documents, especially Google Docs, while matching the surrounding style, nesting, and level of abstraction. Use when Codex must add a new dated entry, rewrite update bullets, summarize recent work into meeting-note form, or clean up meeting-note formatting after edits.
+description: Add or revise recurring meeting and standup notes while matching the document's style, hierarchy, and abstraction level.
 ---
 
 # Meeting Updates

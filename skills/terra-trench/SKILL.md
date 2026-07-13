@@ -1,6 +1,6 @@
 ---
 name: terra-trench
-description: Current Moleworks Terra trenching runbook for full autonomous Beam6-style trench execution in simulation or on the robot. Use when investigating or running the two-stage flange/bottom trench flow, generate_trench_sequence_plans.py, beam6_sequence_stage.launch.py, BASE_CONTROL target registration, mesh_to_excavation_grid_map.py, workspace planner trench-axis metadata, Terra behavior-tree activation, Newton or Isaac/Terra simulation bringup, robot bringup, and 400 mm tool handoff.
+description: "Run or debug autonomous Beam6 Terra trenching: flange/bottom stages, target registration, planning, simulation or robot bringup, and tool handoff."
 ---
 
 # Terra Trench
@@ -11,10 +11,13 @@ Use this skill for Beam6-style autonomous trench runs where target geometry, liv
 
 Pair it with:
 
-- `moleworks-terra-stack` for the split Isaac/Terra simulation stack.
 - `newton-sim-ros-startup` for the single-container Newton workflow.
 - `ros2-debugging` when checking TF, topics, services, or action servers.
 - `dig-bag-recording` if the run needs a rosbag artifact.
+
+For the split Isaac/Terra stack, use the active repository runbook. The former
+`moleworks-terra-stack` skill is not present in this workspace, so do not route
+through it.
 
 The current application is:
 
@@ -57,7 +60,13 @@ On the robot, keep the same Beam6 ownership model as simulation: the base stack 
 9. Before bottom target application, compare live `map -> BASE` and `map -> BASE_CONTROL` against `/tmp/beam6_flange_bottom_sequence/station_anchor.json`; do not continue if the station or yaw moved.
 10. Load the saved flange map into excavation mapping if needed, apply the generated bottom target, clear Nav2 costmaps, then run `bottom6`.
 
-Bottom stage must use `terra_start_delay:=15.0`, `skip_navigation:=false`, `grading_only:=true`, `grading_completion_mode:=local_open`, `use_dig_zone_if_nonempty:=false`, `dig_zone_boundary_margin_m:=0.000`, `workspace_dig_boundary_margin_m:=0.3`, `grading_workspace_extension_m:=0.500`, and `workspace_completion_profile:=completion_foundation_strict.yaml`.
+Bottom stage must use `terra_start_delay:=15.0`, `skip_navigation:=false`, `grading_only:=false`, `enable_grading_pass:=true`, `grading_completion_mode:=local_open`, `use_dig_zone_if_nonempty:=false`, `dig_zone_boundary_margin_m:=0.000`, `workspace_dig_boundary_margin_m:=0.3`, `grading_workspace_extension_m:=0.500`, and `workspace_completion_profile:=completion_foundation_strict.yaml`.
+
+For Beam6 bottom Dig3D calibration, use the application config field
+`dig_3d_desired_elevation_offset_m`; the generator copies it into
+`bottom6_terra_plan.json` and Terra applies it to Dig3D before excavation
+passes. This is an observation bias only. It must not change the
+`desired_elevation` map used for completion or precision validation.
 
 Stop instead of patching live nodes if Foxglove shows the wrong bucket, the bottom `desired_elevation` or `dig_zone` is wrong, Nav2 costmaps still contain stale flange occupancy, or the planner reports completion while visible bottom material remains.
 
@@ -180,7 +189,8 @@ Restart the bottom stack with the 400 mm tool propagated everywhere:
 endeffector_type:=shovel_400mm_without_teeth
 workspace_planner_blade_width_m:=0.4
 dig_3d_policy_id:=shovel400_r47_b6p60_toprbf_net256_s214_6000
-grading_only:=true
+grading_only:=false
+enable_grading_pass:=true
 dig_3d_pullup_boundary_min_distance_m:=0.0
 dig_3d_dig_zone_layer_name:=current_dig_workspace
 move_leg_explicit_target_z_trench_mode:=true
@@ -224,7 +234,7 @@ Bottom stage:
 - Use `workspace_planner_profile:=stripwise_max_volume`.
 - Use target/legal half widths `0.2` and `0.3`.
 - Use `workspace_dig_boundary_margin_m:=0.3`.
-- Use `grading_only:=true`.
+- Use `grading_only:=false` and leave `enable_grading_pass:=true` so the 400 mm stage performs normal Dig3D excavation first, then a grading cleanup pass.
 - Use target-clamped soil carving service `excavation_mapping/start_target_clamped_soil_carving`.
 - Use policy `shovel400_r47_b6p60_toprbf_net256_s214_6000`.
 - In simulation, do not skip navigation: use `skip_navigation:=false`.
