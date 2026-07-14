@@ -1,0 +1,4 @@
+interface:
+  display_name: "Open-Loop LUT Recollection"
+  short_description: "Recollect bounded-joint current LUT points"
+  default_prompt: "Use $open-loop-lut-recollection to collect or repair bounded-joint open-loop current LUT points safely."

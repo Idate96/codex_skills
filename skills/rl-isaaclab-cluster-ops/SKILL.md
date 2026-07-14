@@ -1,6 +1,6 @@
 ---
 name: rl-isaaclab-cluster-ops
-description: "Operate Moleworks IsaacLab runs on Euler: smoke, submit, monitor Slurm, debug, sync, compare configs, and update experiment ledgers."
+description: "Operate Moleworks IsaacLab runs on Euler. Use for local smoke gates, Slurm submission and monitoring, failed-job diagnosis, targeted sync, config comparison, and experiment ledgers."
 ---
 
 # IsaacLab Cluster Ops
@@ -92,8 +92,9 @@ Full sync when needed:
 
 ```bash
 ./docker/cluster/sync_experiments.sh
-./docker/cluster/sync_experiments.sh --remove
 ```
+
+Use `--remove` only after inspecting the helper's current semantics and obtaining explicit intent to delete remote artifacts; prefer a dry run or targeted sync first.
 
 Targeted-first workflow:
 
@@ -122,8 +123,8 @@ For every new real run, record:
 Before each monitoring report:
 
 - reconcile `EXPERIMENTS_ONGOING.md` against live `squeue`
-- if a listed job is no longer live, treat it as finished by default
-- benchmark/archive it, then move it to `EXPERIMENTS_RUN.md`
+- if a listed job is no longer in `squeue`, query `sacct` and record its actual terminal state (`COMPLETED`, `FAILED`, `TIMEOUT`, or `CANCELLED`)
+- benchmark/archive usable artifacts only after that classification, then update the experiment ledger
 
 ## Reporting Format
 

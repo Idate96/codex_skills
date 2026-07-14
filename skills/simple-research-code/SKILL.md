@@ -1,6 +1,6 @@
 ---
 name: simple-research-code
-description: Write or review simple, skimmable research code. Use for narrower APIs, fewer states, exhaustive variants, assertions, or pre-PR complexity cleanup.
+description: "Write or review simple, skimmable research code. Use for narrower APIs, fewer states, explicit variants, strong assertions, and pre-PR complexity cleanup."
 ---
 
 # Simple Research Code
@@ -14,13 +14,14 @@ Keep the code easy to skim. Prefer the smallest design that clearly solves the c
 - Keep code local and direct. Do not split simple logic into many helpers.
 - Use early returns to flatten control flow.
 - Minimize state. Reduce argument count, remove fake flexibility, and narrow objects to the smallest useful shape.
-- Prefer discriminated unions over loose bags of fields when a value can be one of several cases.
-- Exhaustively handle unions or tagged objects. Fail on unknown variants.
+- In typed languages, prefer discriminated/tagged unions over loose bags of fields when a value has several real cases.
+- Exhaustively handle tagged variants when the language and API make that reliable.
 - Do not add defensive code for states that the types already rule out.
-- Use `assert` when loading data or when a value must exist. Do not hide missing values behind defaults or fallbacks.
+- Use `assert` for programmer and dataset invariants. Handle recoverable external input, I/O, and user errors explicitly; do not turn them into process crashes.
 - Do not add backwards compatibility, override plumbing, or optional parameters unless the task strictly needs them.
 - Be opinionated about parameter values. Hardcode choices when there is only one real mode.
 - If a mathematical step is non-obvious, add a short explanation next to the code.
+- Simplicity must not remove correctness checks, numerical safeguards, reproducibility, safety gates, or required public API compatibility.
 
 ## While Implementing
 

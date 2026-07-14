@@ -19,7 +19,7 @@ Options:
   --scenario NAME           Required scenario/tag (e.g. dig_newton)
   --session NAME            tmux session (default: ros)
   --window NAME             tmux window (default: record)
-  --ws PATH                 ROS2 workspace (default: ~/ros2_ws)
+  --ws PATH                 ROS2 workspace (default: auto-detect a built local workspace)
   --output-root PATH        Output root (default: ~/mcap/dig)
   --timestamp TS            Fixed timestamp (default: now YYYYMMDD_HHMMSS)
   --elevation-topic TOPIC   Elevation map topic (default: /mole/elevation_map_filter)
@@ -36,7 +36,13 @@ is_bool() {
 
 SESSION="ros"
 WINDOW="record"
-WS="${HOME}/ros2_ws"
+if [[ -f "${HOME}/ros2_ws/install/setup.bash" ]]; then
+  WS="${HOME}/ros2_ws"
+elif [[ -f "${HOME}/moleworks/ros2_ws/install/setup.bash" ]]; then
+  WS="${HOME}/moleworks/ros2_ws"
+else
+  WS="${HOME}/ros2_ws"
+fi
 OUTPUT_ROOT="${HOME}/mcap/dig"
 ELEVATION_TOPIC="/mole/elevation_map_filter"
 USE_SIM_TIME="false"
@@ -100,6 +106,8 @@ if [[ ! -f "$WS/install/setup.bash" ]]; then
 fi
 
 mkdir -p "$OUTPUT_ROOT"
+echo "Output filesystem free space:"
+df -h "$OUTPUT_ROOT"
 
 TMUX_HAS_SESSION="false"
 if tmux has-session -t "$SESSION" 2>/dev/null; then

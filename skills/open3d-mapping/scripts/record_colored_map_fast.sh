@@ -58,7 +58,20 @@ esac
 
 set +u
 source /opt/ros/jazzy/setup.bash
-source /home/lorenzo/ros2_ws/install/setup.bash
+workspace="${MOLEWORKS_ROS_WS:-}"
+if [[ -z "$workspace" ]]; then
+  for candidate in "$HOME/ros2_ws" "$HOME/moleworks/ros2_ws"; do
+    if [[ -f "$candidate/install/setup.bash" ]]; then
+      workspace="$candidate"
+      break
+    fi
+  done
+fi
+if [[ -z "$workspace" || ! -f "$workspace/install/setup.bash" ]]; then
+  echo "Could not find a built ROS workspace; set MOLEWORKS_ROS_WS." >&2
+  exit 2
+fi
+source "$workspace/install/setup.bash"
 set -u
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -83,7 +96,7 @@ done
 
 ros2 pkg executables mole_lidar_backprojection >/dev/null
 
-config_src=/home/lorenzo/ros2_ws/src/open3d_slam/ros/open3d_slam_ros/param/param_robosense_rs16.yaml
+config_src="$workspace/src/open3d_slam/ros/open3d_slam_ros/param/param_robosense_rs16.yaml"
 config_dst="$out/param_livox_dense_static.yaml"
 if [[ -f "$config_src" ]]; then
   cp "$config_src" "$config_dst"
@@ -107,20 +120,26 @@ path.write_text(text)
 PY
 fi
 
-backprojection_log="$out/backprojection.log"
-setsid ros2 launch mole_lidar_backprojection mole_lidar_backprojection.launch.py \
-  use_sim_time:=false \
-  robot_namespace:=mole \
-  mode:=color \
-  camera_topic:=/camMainView/image_raw \
-  camera_info_topic:=/camMainView/camera_info \
-  lidar_topic:=livox_lidar_publisher/lidar_front_left \
-  keep_uncolored_points:=true \
-  > "$backprojection_log" 2>&1 &
-backprojection_pid=$!
+backprojection_pid=""
+existing_publishers="$(ros2 topic info /mole/colored_point_cloud 2>/dev/null | awk '/Publisher count:/ {print $3; exit}')"
+if [[ "${existing_publishers:-0}" -gt 0 ]]; then
+  echo "Reusing existing /mole/colored_point_cloud publisher." > "$out/backprojection.log"
+else
+  backprojection_log="$out/backprojection.log"
+  setsid ros2 launch mole_lidar_backprojection mole_lidar_backprojection.launch.py \
+    use_sim_time:=false \
+    robot_namespace:=mole \
+    mode:=color \
+    camera_topic:=/camMainView/image_raw \
+    camera_info_topic:=/camMainView/camera_info \
+    lidar_topic:=livox_lidar_publisher/lidar_front_left \
+    keep_uncolored_points:=true \
+    > "$backprojection_log" 2>&1 &
+  backprojection_pid=$!
+fi
 
 cleanup() {
-  if kill -0 "$backprojection_pid" 2>/dev/null; then
+  if [[ -n "$backprojection_pid" ]] && kill -0 "$backprojection_pid" 2>/dev/null; then
     kill -INT "-$backprojection_pid" 2>/dev/null || kill -INT "$backprojection_pid" 2>/dev/null || true
     for _ in $(seq 1 20); do
       if ! kill -0 "$backprojection_pid" 2>/dev/null; then
@@ -200,7 +219,7 @@ notes="$out/RUN_NOTES.md"
   done < "$out/accumulator.log"
 } > "$notes"
 
-(cd "$out" && sha256sum * > SHA256SUMS)
+(cd "$out" && find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 -r sha256sum > SHA256SUMS)
 
 if [[ -n "$sync_host" ]]; then
   remote_dir="${sync_root%/}/$(basename "$out")"

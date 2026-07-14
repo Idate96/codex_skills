@@ -1,6 +1,6 @@
 ---
 name: ros2-debugging
-description: Debug ROS 2 topics, nodes, services, TF, DDS domains, and tmux-managed stacks with reliable timeouts.
+description: "Debug ROS 2 topics, nodes, services, TF, DDS domains, and tmux-managed stacks. Use for bounded health checks, publisher conflicts, transform failures, and reliable timeout-based diagnosis."
 ---
 
 # ROS2 Debugging Best Practices
@@ -45,10 +45,10 @@ publisher ownership before restarting anything.
 
 ```bash
 echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset}"
-ros2 topic list
+timeout 10 ros2 topic list
 timeout 10 ros2 topic hz /your_topic
 timeout 10 ros2 topic echo /your_topic --once
-ros2 topic info /your_topic --verbose
+timeout 10 ros2 topic info /your_topic --verbose
 ```
 
 If you are running multiple ROS stacks on different domains:
@@ -61,16 +61,16 @@ If you are running multiple ROS stacks on different domains:
 ## Common ROS2 Debugging Commands
 
 ```bash
-ros2 node list
-ros2 node info /your_node
+timeout 10 ros2 node list
+timeout 10 ros2 node info /your_node
 
-ros2 service list
-ros2 service call /service_name std_srvs/srv/Empty "{}"
+timeout 10 ros2 service list
+timeout 10 ros2 service call /service_name std_srvs/srv/Empty "{}"
 
-ros2 param list /your_node
-ros2 param get /your_node parameter_name
+timeout 10 ros2 param list /your_node
+timeout 10 ros2 param get /your_node parameter_name
 
-ros2 run tf2_tools view_frames
+timeout 20 ros2 run tf2_tools view_frames
 ```
 
 ## tmux Integration

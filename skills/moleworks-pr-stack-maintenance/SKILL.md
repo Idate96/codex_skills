@@ -1,11 +1,15 @@
 ---
 name: moleworks-pr-stack-maintenance
-description: Restack, verify, and merge `moleworks_ros` PR stacks. Use for rebases, PR splitting, shared CI fixes, GitHub checks, dependency-order merges, and cleanup.
+description: "Restack, verify, and merge `moleworks_ros` PR stacks. Use for rebases, PR splitting, shared CI fixes, review resolution, dependency-order merges, and worktree cleanup."
 ---
 
 # Moleworks PR Stack Maintenance
 
 Use this skill for stacked `moleworks_ros` PR maintenance where correctness matters more than speed alone: rebasing dependent branches, preserving split history from an older monolithic PR, re-running local CI in Docker on this workstation, and merging only after GitHub is green.
+
+Match actions to the request. Inventory, review, and status requests are read-only. Rebasing or
+editing authorizes local branch changes only. Force-pushing, merging, closing PRs, and deleting
+worktrees are separate external/destructive actions and require the user to request that stage.
 
 ## Quick Workflow
 
@@ -16,9 +20,9 @@ Use this skill for stacked `moleworks_ros` PR maintenance where correctness matt
 5. Apply shared CI or code fixes across the affected branches.
 6. Verify locally in Docker on this machine.
 7. Run one persistent reviewer loop until it reports `no findings`.
-8. Force-push rebased branches with lease.
+8. When explicitly authorized, force-push rebased branches with lease.
 9. Wait for GitHub checks to finish on the pushed heads.
-10. Merge in dependency order with the GitHub API, then close superseded PRs.
+10. When explicitly authorized, merge in dependency order, then close only confirmed superseded PRs.
 
 ## Inventory
 
@@ -129,7 +133,7 @@ Do not merge until the reviewer loop is closed.
 
 ## Push And GitHub Checks
 
-After a rebase, push with lease:
+After a rebase, and only when the requested scope includes publishing, push with lease:
 
 ```bash
 git -C <worktree> push --force-with-lease origin HEAD:<remote-branch>
@@ -146,7 +150,8 @@ Wait for `statusCheckRollup` to finish. Do not rely on stale local results alone
 
 ## Merge
 
-Use the GitHub API directly, not `gh pr merge`.
+Merging changes shared repository state. Do it only when the user requested the merge stage. Use the
+GitHub API directly, not `gh pr merge`.
 
 ```bash
 gh api --method PUT repos/leggedrobotics/moleworks_ros/pulls/<PR>/merge \
@@ -159,8 +164,10 @@ Only merge when:
 - `isDraft` is `false`
 - `mergeStateStatus` is clean/mergeable
 - required checks are green for the current head SHA
+- the user-authorized PR number and head SHA still match the final pre-merge readback
 
-After merging, re-run `gh pr list --state open` to confirm the remaining stack state. If an older monolithic PR is obsolete, close it explicitly.
+After merging, re-run `gh pr list --state open` to confirm the remaining stack state. Close an older
+monolithic PR only when its supersession is confirmed and closing was included in the requested scope.
 
 ## Practical Reminders
 

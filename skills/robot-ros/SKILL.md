@@ -1,6 +1,6 @@
 ---
 name: robot-ros
-description: Operate and debug the Mole/Menzi M4 ROS 2 stack, including bringup, interlocks, controllers, health checks, and runbook maintenance.
+description: "Operate and debug the Mole/Menzi M4 ROS 2 stack. Use for bringup routing, interlocks, controllers, health checks, command-latch recovery, and robot runbook maintenance."
 ---
 
 # Robot ROS
@@ -11,10 +11,11 @@ Use the repo runbooks and scripts as the single source of truth for operating an
 
 ## Workflow (Always Do This First)
 
-1. Treat `src/moleworks_ros/docs/robot_agent/ROBOT_OPERATIONS_GUIDE.md` as the single source of truth for operator commands.
-2. For Menzi M4 machine-specific interlocks (autonomy/hydraulics/ignition), cross-check `~/git/menzi_docs/M4/`.
-3. Prefer running the health/monitor scripts in `src/moleworks_ros/mole_utils/scripts/` over ad-hoc commands.
-4. If giving ROS CLI commands, verify they exist for Jazzy (`ros2 <verb> -h`) and match message definitions in `src/*_msgs/msg/`.
+1. Resolve the active robot workspace and repo root; prefer `$HOME/ros2_ws` on-machine and fall back to `$HOME/moleworks/ros2_ws` when present.
+2. Treat `<workspace>/src/moleworks_ros/docs/robot_agent/ROBOT_OPERATIONS_GUIDE.md` as the single source of truth for operator commands.
+3. For Menzi M4 machine-specific interlocks (autonomy/hydraulics/ignition), cross-check `~/git/menzi_docs/M4/`.
+4. Prefer the health/monitor scripts under `<workspace>/src/moleworks_ros/mole_utils/scripts/` over ad-hoc commands.
+5. If giving ROS CLI commands, verify they exist for Jazzy (`ros2 <verb> -h`) and match the installed message definitions.
 
 ## Common Tasks
 
@@ -53,15 +54,16 @@ Use the repo runbooks and scripts as the single source of truth for operating an
 Use this when `/machine_status` shows `is_using_gravis_commands: false` during testing.
 
 1. Stop/interrupt the active command publisher (for example a matrix runner).
-2. Publish zero velocity commands on `/mole/actuator_commands` for 2 seconds.
+2. Publish zero velocity commands on `/mole/actuator_commands` at 20 Hz for 2 seconds.
 3. Re-check `/machine_status` and only continue when `is_using_gravis_commands: true`.
 4. Restart the interrupted test and skip already-completed cases when possible.
 
 Reference command:
 
 ```bash
-ros2 topic pub -r 20 -t 2 /mole/actuator_commands mole_msgs/msg/MoleActuatorCommands \
-  "{actuators: [{joint_name: 'J_TURN', mode: 2, velocity: 0.0}, {joint_name: 'J_BOOM', mode: 2, velocity: 0.0}, {joint_name: 'J_STICK', mode: 2, velocity: 0.0}, {joint_name: 'J_TELE', mode: 2, velocity: 0.0}, {joint_name: 'J_EE_PITCH', mode: 2, velocity: 0.0}]}"
+timeout --signal=INT 2s ros2 topic pub -r 20 /mole/actuator_commands \
+  mole_msgs/msg/MoleActuatorCommands \
+  "{actuators: [{joint_name: 'J_TURN', mode: 2, velocity: 0.0}, {joint_name: 'J_BOOM', mode: 2, velocity: 0.0}, {joint_name: 'J_STICK', mode: 2, velocity: 0.0}, {joint_name: 'J_TELE', mode: 2, velocity: 0.0}, {joint_name: 'J_EE_PITCH', mode: 2, velocity: 0.0}]}" || [[ $? -eq 124 || $? -eq 130 ]]
 ```
 
 ## Maintaining Robot-Agent Docs (Avoid Duplication)

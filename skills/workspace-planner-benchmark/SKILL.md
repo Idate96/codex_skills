@@ -1,6 +1,6 @@
 ---
 name: workspace-planner-benchmark
-description: "Benchmark workspace-planner heuristics with standard HTML bundles, leaderboards, CSVs, trench/fan visuals, and selector comparisons."
+description: "Benchmark workspace-planner heuristics. Use for standard HTML bundles, leaderboards, CSVs, trench/fan visuals, selector comparisons, and heuristic regression analysis."
 ---
 
 # Workspace Planner Benchmark

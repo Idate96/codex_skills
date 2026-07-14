@@ -1,6 +1,6 @@
 ---
 name: sim-startup
-description: Start or restart the split-container IsaacLab/Terra simulation and Moleworks ROS visualization/perception stack in tmux.
+description: "Start or restart the split-container IsaacLab/Terra simulation and Moleworks ROS visualization/perception stack in tmux. Use for split-simulator bringup and controller rollout."
 ---
 
 # Sim Startup

@@ -1,6 +1,6 @@
 ---
 name: newton-ros-parity
-description: Bring up, replay, validate, or clean up Newton-to-`moleworks_ros` parity stacks, including clock, TF, terrain, and Dig3D checks.
+description: "Bring up, replay, validate, or clean up Newton-to-`moleworks_ros` parity stacks. Use for clock, TF, terrain, Dig3D, mapping, and simulator-to-ROS consistency checks."
 ---
 
 # Newton ROS Parity
@@ -9,7 +9,9 @@ Use this skill for Newton <-> `moleworks_ros` parity and replay workflows. Pair 
 
 ## Source Of Truth
 
-Start from the active branch docs and scripts:
+Resolve the task-specific Newton checkout first and confirm its branch/worktree before running any
+script; do not assume whichever checkout is easiest to find is the intended one. From that root, start
+with the active branch docs and scripts:
 
 - `docs/ros/WORKTREE_SETUP.md`
 - `docs/ros/DOCKER_RUNBOOK.md`
@@ -57,10 +59,11 @@ Do not start the compare path until `/clock`, the controller-facing terrain topi
 
 After parity, Dig3D replay, or TorchScript comparison:
 
-1. Kill the tmux session that launched the stack.
-2. Scan for orphaned `ros2 launch`, controller, state-publisher, and helper processes.
-3. Kill the exact PIDs that remain.
-4. Re-check process lists and host/container resource usage.
+1. Record the tmux session and helper PIDs when launching the task.
+2. Kill only that recorded tmux session.
+3. Scan for orphaned `ros2 launch`, controller, state-publisher, and helper processes.
+4. Kill only exact PIDs attributable to this task; report ambiguous pre-existing processes instead.
+5. Re-check process lists and host/container resource usage.
 
 Useful checks:
 
@@ -70,7 +73,8 @@ docker stats --no-stream --format '{{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}' <cont
 nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits
 ```
 
-Do not leave a stale parity stack running while starting a new one.
+Do not leave a task-owned parity stack running while starting a new one, and do not use broad `pkill`
+patterns that could stop an unrelated ROS stack.
 
 ## Kinematics Contract Notes
 

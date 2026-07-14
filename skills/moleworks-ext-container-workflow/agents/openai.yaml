@@ -1,3 +1,4 @@
 interface:
   display_name: "Moleworks Ext Container Run"
   short_description: "Launch/debug moleworks_ext commands in Docker + tmux"
+  default_prompt: "Use $moleworks-ext-container-workflow to run and diagnose this bounded IsaacLab command in the Moleworks container with persistent tmux logs."

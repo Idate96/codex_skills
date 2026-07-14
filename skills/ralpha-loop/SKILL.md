@@ -1,6 +1,6 @@
 ---
 name: ralpha-loop
-description: Run an implement-test-review loop until one persistent reviewer reports no findings. Use for strict iterative coding and review.
+description: "Run an implement-test-review loop until one persistent reviewer reports no findings. Use when the user requests strict iterative coding, repeated review, or a clean-review completion gate."
 ---
 
 # Ralpha Loop
@@ -8,7 +8,7 @@ description: Run an implement-test-review loop until one persistent reviewer rep
 Execute a deterministic loop:
 1. Implement or patch.
 2. Run targeted tests/checks.
-3. Send the same reviewer agent the updated diff and evidence.
+3. Send the same reviewer agent the actual updated diff/files and evidence.
 4. Address findings.
 5. Retest.
 6. Repeat until reviewer reports no findings.
@@ -56,6 +56,7 @@ Send reviewer a delta-focused prompt:
 - Previous findings status (fixed/pending).
 
 Ask for severity-ordered findings with file:line and explicit “no findings” when clean.
+Require the reviewer to inspect the repository artifacts directly; a worker summary alone is not review evidence.
 
 ### 4) Triage
 
@@ -71,7 +72,7 @@ Re-run affected checks after patches.
 ### 6) Loop Gate
 
 - If reviewer reports findings: increment iteration and repeat.
-- If reviewer reports no findings: exit loop.
+- If a delta review reports no findings: run one final holistic review of the complete diff and current test evidence. Exit only when that review also reports no findings.
 
 ## Agent Coordination
 
@@ -102,6 +103,7 @@ Reuse the same IDs when reporting progress to reviewer.
 
 Exit only when all are true:
 - Reviewer explicitly reports no findings.
+- The final no-findings result covers the complete integrated diff, not only the last iteration.
 - Latest checks for touched behavior pass (or remaining gaps are documented).
 - Final summary includes:
   - what changed

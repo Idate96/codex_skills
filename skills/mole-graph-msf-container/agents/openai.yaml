@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mole Graph-MSF Container"
+  short_description: "Start and inspect the Graph-MSF container"
+  default_prompt: "Use $mole-graph-msf-container to start or attach to the Graph-MSF container and verify estimator health."

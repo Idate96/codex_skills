@@ -1,0 +1,4 @@
+interface:
+  display_name: "RL IsaacLab"
+  short_description: "Route Moleworks IsaacLab RL workflows"
+  default_prompt: "Use $rl-isaaclab to route and carry out this Moleworks IsaacLab training, playback, benchmark, or tracking task."

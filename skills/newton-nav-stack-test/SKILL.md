@@ -1,6 +1,6 @@
 ---
 name: newton-nav-stack-test
-description: Validate Newton Nav2 bringup, drive-path health, Foxglove visibility, and the side-target tracking benchmark.
+description: "Validate Newton Nav2 bringup, drive-path health, Foxglove visibility, and the side-target tracking benchmark. Use for post-bringup navigation acceptance and failure triage."
 ---
 
 # Newton Nav Stack Test
@@ -17,25 +17,30 @@ Use this after `newton-sim-ros-startup` has brought up a clean `newton_sim` sess
 ## Assumptions
 
 - Canonical in-container workspace: `/workspace/moleworks/ros2_ws`
-- Default ROS domain: `24`
+- `ROS_DOMAIN_ID` is the domain of the intended Newton simulation (commonly `24`)
 - Newton is already running in tmux
 - Foxglove is already connected to the matching bridge
+
+This workflow sends navigation commands. Before the benchmark, prove that the selected domain is the
+intended Newton simulation: confirm a live `/clock`, the expected Newton tmux/container, and no bridge
+from that domain to physical-machine command hardware. If identity is ambiguous, stop before motion.
 
 ## 1) Health Checks First
 
 Before sending a goal, verify the sim stack is complete:
 
 ```bash
-export ROS_DOMAIN_ID=24
+: "${ROS_DOMAIN_ID:?Set ROS_DOMAIN_ID to the intended Newton simulation domain}"
 source /opt/ros/jazzy/setup.bash
 source /workspace/moleworks/ros2_ws/install/local_setup.bash
 
 timeout 10 bash -lc 'ros2 topic hz /clock'
 timeout 15 bash -lc 'ros2 run tf2_ros tf2_echo map BASE_GRAV 2>&1' | head -20
-ros2 topic list | rg '^/mole/(state|measurements|robot_description|joint_states|plan|cmd_vel_smoothed|actuator_commands)$'
-ros2 node list | sort | uniq -d
-ros2 topic info /mole/cmd_vel_smoothed -v
-ros2 topic info /mole/actuator_commands -v
+timeout 10 ros2 topic info /clock -v
+timeout 10 ros2 topic list | rg '^/mole/(state|measurements|robot_description|joint_states|plan|cmd_vel_smoothed|actuator_commands)$'
+timeout 10 ros2 node list | sort | uniq -d
+timeout 10 ros2 topic info /mole/cmd_vel_smoothed -v
+timeout 10 ros2 topic info /mole/actuator_commands -v
 ```
 
 Expected result:
@@ -65,7 +70,7 @@ If the robot is missing in Foxglove, the likely cause is missing `robot_descript
 Run the standardized lateral and cusp tracking benchmark without randomized targets:
 
 ```bash
-export ROS_DOMAIN_ID=24
+: "${ROS_DOMAIN_ID:?Set ROS_DOMAIN_ID to the verified Newton simulation domain}"
 source /opt/ros/jazzy/setup.bash
 source /workspace/moleworks/ros2_ws/install/local_setup.bash
 python3 /workspace/moleworks/ros2_ws/src/moleworks_ros/mole_bringup/scripts/nav2_side_target_benchmark.py \
@@ -82,9 +87,9 @@ This runs left/right lateral and forward/reverse cusp targets so the excavator m
 Watch these topics together:
 
 ```bash
-ros2 topic echo /mole/plan --once
-ros2 topic info /mole/cmd_vel_smoothed -v
-ros2 topic info /mole/actuator_commands -v
+timeout 10 ros2 topic echo /mole/plan --once
+timeout 10 ros2 topic info /mole/cmd_vel_smoothed -v
+timeout 10 ros2 topic info /mole/actuator_commands -v
 ```
 
 In Foxglove, watch:

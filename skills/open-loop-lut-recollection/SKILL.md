@@ -1,6 +1,6 @@
 ---
 name: open-loop-lut-recollection
-description: Recollect or repair bounded-joint open-loop current LUT points on the robot, especially `J_TELE` and `J_EE_PITCH`.
+description: "Recollect or repair bounded-joint open-loop current LUT points on the robot, especially `J_TELE` and `J_EE_PITCH`. Use for sparse, noisy, or missing current-to-velocity calibration points."
 ---
 
 # Open-Loop LUT Recollection
@@ -8,6 +8,10 @@ description: Recollect or repair bounded-joint open-loop current LUT points on t
 ## Overview
 
 Use this for robot-side `MODE_CURRENT` LUT recollection on bounded joints.
+
+This actuates the real robot. Run it only when Lorenzo explicitly requests LUT motion, an operator is
+present, hydraulics/interlocks are understood, the workspace is clear, and no competing controller or
+publisher owns the command path. A diagnostic or planning request does not authorize motion.
 
 Default rules:
 - one bag per amplitude,
@@ -21,15 +25,16 @@ Default rules:
 
 1. In tmux, source:
    - `source /opt/ros/jazzy/setup.bash`
-   - `source ~/ros2_ws/install/setup.bash`
+   - the active built workspace (`~/ros2_ws` or `~/moleworks/ros2_ws`)
 2. Stop `mole_pid_joint_controller`.
 3. Set engine RPM separately.
-4. Preposition manually with direct current pulses.
-5. Run one amplitude:
+4. Confirm fresh state/measurements, command ownership, the correct start side, and clearance from the
+   hard stop. Do not use unbounded manual pulses; use an approved bounded positioning method.
+5. Run one amplitude with both explicit confirmations:
 
 ```bash
-/home/lorenzo/.codex/skills/open-loop-lut-recollection/scripts/run_open_loop_lut_step.sh \
-  J_TELE pos 0.25 4.0 1.0 1.0
+/home/lorenzo/codex_skills/skills/open-loop-lut-recollection/scripts/run_open_loop_lut_step.sh \
+  --confirm-hardware --confirm-safe-start J_TELE pos 0.25 4.0 1.0 1.0
 ```
 
 ## Collection Rules
@@ -71,17 +76,21 @@ The wrapper records one MCAP bag, runs the current step, stops recording
 cleanly, and runs `mole_sysid_tune_lut`.
 
 ```bash
-/home/lorenzo/.codex/skills/open-loop-lut-recollection/scripts/run_open_loop_lut_step.sh \
+/home/lorenzo/codex_skills/skills/open-loop-lut-recollection/scripts/run_open_loop_lut_step.sh \
+  --confirm-hardware --confirm-safe-start \
   <joint> <pos|neg> <abs_current> <step_phase_s> [settle_s] [steady_window_s]
 ```
 
 Defaults:
-- bag root: `/home/lorenzo/rosbags_from_diego_20260304`
+- bag root: `~/mcap/open_loop_lut` (override with `LUT_BAG_ROOT` for an existing campaign)
 - baseline: `1.0 s`
 - final hold: `1.0 s`
 - no return leg
 - `--max-abs-current 1.0`
 - fastwrite MCAP
+
+The wrapper rejects currents outside `(0, 1.0] A`, refuses a running PID controller, checks fresh
+state topics, finalizes the bag through an EXIT trap, and validates the bag before analysis.
 
 ## Outputs
 
@@ -97,4 +106,4 @@ Read:
 ## References
 
 - Repo note:
-  - `/home/lorenzo/ros2_ws/src/moleworks_ros/low_level/mole_sysid/OPEN_LOOP_LUT_TUNING.md`
+  - `$ROS_WS/src/moleworks_ros/low_level/mole_sysid/OPEN_LOOP_LUT_TUNING.md`

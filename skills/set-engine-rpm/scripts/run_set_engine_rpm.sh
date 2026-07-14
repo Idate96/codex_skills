@@ -7,6 +7,13 @@ if [[ $# -eq 0 ]]; then
   exit 1
 fi
 
+if [[ "${1:-}" != "--current" ]]; then
+  if ! awk -v rpm="${1:-}" 'BEGIN { exit !(rpm ~ /^[0-9]+([.][0-9]+)?$/ && rpm >= 900 && rpm <= 2000) }'; then
+    echo "Error: target RPM must be numeric and within the service-defined 900-2000 range." >&2
+    exit 2
+  fi
+fi
+
 if [[ -f /opt/ros/jazzy/setup.bash ]]; then
   set +u
   # shellcheck disable=SC1091
@@ -63,21 +70,40 @@ if [[ "${1:-}" == "--current" ]]; then
   exit $?
 fi
 
+verify_machine_status_rpm() {
+  local target="$1"
+  local status measured deadline=$((SECONDS + 30))
+  while (( SECONDS < deadline )); do
+    status="$(timeout 3 ros2 topic echo --once /machine_status 2>/dev/null || true)"
+    measured="$(awk '/measured_engine_rpm:/ {print $2; exit}' <<<"$status")"
+    if [[ -n "$measured" ]] && awk -v rpm="$measured" -v target="$target" 'BEGIN { exit !(rpm >= target - 50 && rpm <= target + 50) }'; then
+      echo "Verified measured engine RPM: $measured (target: $target)"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "Error: measured RPM did not reach within 50 RPM of target $target in 30 seconds (last: ${measured:-unavailable})." >&2
+  return 1
+}
+
 if command -v ros2 >/dev/null 2>&1; then
-  diesel_srv="$(ros2 service list 2>/dev/null | grep -E "/set_diesel_speed$" | head -n1 || true)"
+  timeout 10 ros2 topic echo --once /machine_status >/dev/null
+  diesel_srv="$(timeout 10 ros2 service list 2>/dev/null | rg "/set_diesel_speed$" | head -n1 || true)"
   if [[ -n "$diesel_srv" ]]; then
-    diesel_type="$(ros2 service type "$diesel_srv" 2>/dev/null || true)"
+    diesel_type="$(timeout 10 ros2 service type "$diesel_srv" 2>/dev/null || true)"
     if [[ -n "$diesel_type" ]]; then
-      ros2 service call "$diesel_srv" "$diesel_type" "{target_rpm: $1}"
+      timeout 20 ros2 service call "$diesel_srv" "$diesel_type" "{target_rpm: $1}"
+      verify_machine_status_rpm "$1"
       exit $?
     fi
   fi
 
-  rpm_srv="$(ros2 service list 2>/dev/null | grep -E "/set_rpm$" | head -n1 || true)"
+  rpm_srv="$(timeout 10 ros2 service list 2>/dev/null | rg "/set_rpm$" | head -n1 || true)"
   if [[ -n "$rpm_srv" ]]; then
-    rpm_type="$(ros2 service type "$rpm_srv" 2>/dev/null || true)"
+    rpm_type="$(timeout 10 ros2 service type "$rpm_srv" 2>/dev/null || true)"
     if [[ -n "$rpm_type" ]]; then
-      ros2 service call "$rpm_srv" "$rpm_type" "{target_rpm: $1}"
+      timeout 20 ros2 service call "$rpm_srv" "$rpm_type" "{target_rpm: $1}"
+      verify_machine_status_rpm "$1"
       exit $?
     fi
   fi
@@ -90,3 +116,4 @@ if [[ -z "$SCRIPT_PATH" ]]; then
 fi
 
 python3 "$SCRIPT_PATH" "$@"
+verify_machine_status_rpm "$1"

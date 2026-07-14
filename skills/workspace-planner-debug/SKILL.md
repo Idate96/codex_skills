@@ -1,6 +1,6 @@
 ---
 name: workspace-planner-debug
-description: "Debug Newton/ROS workspace planning with action GridMaps, prediction-vs-execution analysis, checkpoint replay, and run artifacts."
+description: "Debug Newton/ROS workspace planning. Use for action GridMaps, prediction-versus-execution analysis, checkpoint replay, residual rendering, and failure bundles."
 ---
 
 # Workspace Planner Debug
@@ -26,12 +26,13 @@ Put run artifacts under:
 ```bash
 RUN_DIR=/workspace/moleworks/ros2_ws/failure_state/$(date -u +%Y%m%d_%H%M%S)_real_ros_workspace_planner_debug
 mkdir -p "$RUN_DIR"
+: "${ROS_DOMAIN_ID:?Set ROS_DOMAIN_ID to the running Newton stack domain}"
+SESSION="${NEWTON_TMUX_SESSION:-newton_${ROS_DOMAIN_ID}}"
 ```
 
 Start the recorder before launching or resuming Terra:
 
 ```bash
-export ROS_DOMAIN_ID=24
 source /workspace/moleworks/ros2_ws/install/setup.bash
 ros2 run workspace_planner workspace-planner-capture-action-debug \
   --output-dir "$RUN_DIR/action_debug" \
@@ -62,17 +63,19 @@ If `predicted_completion_delta_m3`, `bucket_fill_ratio`, or `pull_length_m` are 
 Before restarting after a failure or timeout, preserve:
 
 ```bash
-tmux capture-pane -pt newton_24:newton -S -2000 > "$RUN_DIR/tmux_newton_after_failure.log"
-tmux capture-pane -pt newton_24:stack -S -6000 > "$RUN_DIR/tmux_stack_after_failure.log"
-tmux capture-pane -pt newton_24:action_debug -S -1000 > "$RUN_DIR/tmux_action_debug_after_failure.log"
+tmux capture-pane -pt "${SESSION}:newton" -S -2000 > "$RUN_DIR/tmux_newton_after_failure.log"
+tmux capture-pane -pt "${SESSION}:stack" -S -6000 > "$RUN_DIR/tmux_stack_after_failure.log"
+tmux capture-pane -pt "${SESSION}:action_debug" -S -1000 > "$RUN_DIR/tmux_action_debug_after_failure.log"
 ps -eo pid,ppid,etime,cmd > "$RUN_DIR/processes_after_failure.txt"
 ```
+
+Capture only panes that exist; a missing optional pane should not prevent the rest of the bundle.
 
 Also save the excavation map if the service exists:
 
 ```bash
 ros2 service call /mole/excavation_mapping/save_map mole_excavation_mapping/srv/SaveGridMap \
-  "{uri: $RUN_DIR/excavation_map_after_failure, topic: grid_map, storage_id: mcap, overwrite: false, include_layers: []}" \
+  "{uri: '$RUN_DIR/excavation_map_after_failure', topic: 'grid_map', storage_id: 'mcap', overwrite: false, include_layers: []}" \
   > "$RUN_DIR/save_map_after_failure_response.txt" 2>&1
 ```
 
@@ -91,7 +94,6 @@ For failed or high-discrepancy scoops, copy or record the checkpoint path in the
 Replay in Newton sim:
 
 ```bash
-export ROS_DOMAIN_ID=24
 source /workspace/moleworks/ros2_ws/install/setup.bash
 python3 /workspace/moleworks/ros2_ws/src/moleworks_ros/scripts/resume_from_checkpoint.py \
   <checkpoint-or-checkpoint.yaml> \
@@ -135,3 +137,7 @@ High discrepancy means the planner predicted a useful action but execution did n
 Planner-not-selecting means residual hot spots exist but candidates covering them are absent, rejected, or below the selector floor. Use the debug grid layers plus residual-candidate diagnostics before tuning the policy model.
 
 Policy-not-scooping means a high-delta candidate was selected, but execution feedback is low, timed out, or terminates in a regime the policy is not trained for. Replay from the matched checkpoint and compare only one changed parameter at a time.
+
+For a quick residual image from a saved checkpoint, use the bundled
+`scripts/render_checkpoint_residual.py`; run `--help` first and write its output into the run's
+inspection directory.

@@ -1,11 +1,17 @@
 ---
 name: student-onboarding
-description: Onboard an RSL student project across Sheets, Drive, and admin follow-ups. Use for tracker rows, template folders, grading sheets, forms, and access requests.
+description: "Onboard an RSL student project across Sheets, Drive, and admin follow-ups. Use for tracker rows, template folders, grading sheets, forms, access requests, and onboarding status."
 ---
 
 # Student Onboarding
 
 Use this skill for new student-project setup in the RSL shared Drive and spreadsheet.
+
+First route the request by intent:
+
+- Status, audit, or planning requests are read-only: inspect and report without creating folders, editing Sheets, submitting forms, changing access, or contacting people.
+- An explicit onboarding/setup request authorizes the corresponding tracker and Drive setup below.
+- Form submissions, access requests, and outbound Chat/email messages require explicit user intent for that external action; draft-only requests do not authorize sending.
 
 ## Workflow
 
@@ -21,7 +27,7 @@ Use this skill for new student-project setup in the RSL shared Drive and spreads
    - create the nested `<outer folder name> Student Folder`
    - copy the template tree into that nested folder
 6. If an earlier run was interrupted, inspect the partial state and resume idempotently instead of recreating the whole tree.
-7. After the Drive and sheet steps, continue with the remaining admin steps from the reference.
+7. After the Drive and sheet steps, continue only with admin steps the user requested or explicitly approved.
 8. Distinguish Google Form types before automating:
    - anonymous or non-account-bound forms can use direct `viewform` / `formResponse` submission
    - signed-in forms that record the supervisor email must use the live Chrome session through local CDP tooling
@@ -43,6 +49,7 @@ Use this skill for new student-project setup in the RSL shared Drive and spreads
 - When sending a message as the assistant, use first-person wording and keep the tone short and informal unless the user asks otherwise.
 - If needed, send the same Fang Nan request by email as a fallback or visibility duplicate.
 - For lab Chat messages, prefer short, informal wording. Avoid stiff language unless the situation actually requires it.
+- Before each external write, state the target and make the smallest mutation needed; verify the resulting row, folder, submission, access state, or sent message.
 
 ## Reference
 

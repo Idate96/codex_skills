@@ -1,4 +1,4 @@
 interface:
   display_name: "Terra Cluster Training"
   short_description: "Launch and monitor Terra PPO training jobs on Euler."
-  default_prompt: "Use this compatibility route with $terra-rl to validate, launch, monitor, and document Terra PPO training on Euler."
+  default_prompt: "Use $terra-cluster-training as the compatibility route with $terra-rl to validate, launch, monitor, and document Terra PPO training on Euler."

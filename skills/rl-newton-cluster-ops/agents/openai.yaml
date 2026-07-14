@@ -1,0 +1,4 @@
+interface:
+  display_name: "Newton RL Cluster Ops"
+  short_description: "Operate Newton runs on Euler, Brev, or Vast"
+  default_prompt: "Use $rl-newton-cluster-ops to smoke-test, launch, monitor, sync, or document this Newton RL cluster run."

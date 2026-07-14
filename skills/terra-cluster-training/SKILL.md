@@ -1,6 +1,6 @@
 ---
 name: terra-cluster-training
-description: "Compatibility route for Terra PPO on Euler: validation, Slurm launch/monitoring, W&B comparison, and training documentation."
+description: "Route older 'Terra cluster training' requests to the current Terra RL workflow. Use for compatibility with prompts about Euler validation, Slurm jobs, W&B comparison, and training documentation."
 ---
 
 # Terra Cluster Training Compatibility Route

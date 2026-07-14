@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE="${HOME}/ros2_ws"
+WORKSPACE=""
 OUT_ROOT="${HOME}/mpc_tuning/current"
 MATRIX=""
 CSV=""
-ENABLE_HARD_GATES=0
+ENABLE_HARD_GATES=1
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -29,6 +29,10 @@ while [[ $# -gt 0 ]]; do
       ENABLE_HARD_GATES=1
       shift
       ;;
+    --disable-hard-gates)
+      ENABLE_HARD_GATES=0
+      shift
+      ;;
     *)
       echo "Unknown arg: $1" >&2
       exit 2
@@ -39,6 +43,15 @@ done
 if [[ -z "${MATRIX}" ]]; then
   echo "--matrix is required" >&2
   exit 2
+fi
+
+if [[ -z "${WORKSPACE}" ]]; then
+  for candidate in "${HOME}/ros2_ws" "${HOME}/moleworks/ros2_ws"; do
+    if [[ -f "${candidate}/install/setup.bash" ]]; then
+      WORKSPACE="${candidate}"
+      break
+    fi
+  done
 fi
 
 if [[ ! -f "${MATRIX}" ]]; then

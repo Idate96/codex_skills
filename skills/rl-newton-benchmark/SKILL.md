@@ -1,6 +1,6 @@
 ---
 name: rl-newton-benchmark
-description: "Benchmark Newton RL checkpoints, FEE policies, analytic shared-turn runs, and fresh or replayed terrain banks."
+description: "Benchmark Newton RL checkpoints. Use for FEE policies, analytic shared-turn runs, pinned comparisons, category leaderboards, qualitative clips, and fresh or replayed terrain banks."
 ---
 
 # Newton Benchmark Workflow

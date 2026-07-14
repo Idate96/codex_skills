@@ -1,6 +1,6 @@
 ---
 name: ssh-starship
-description: Connect to `lorenzo@starship` over its Tailscale profile and verify identity. Use for `starship`, `starship one`, or legacy `starship-1` SSH requests.
+description: "Connect to `lorenzo@starship` over its Tailscale profile and verify host/user identity. Use for SSH requests naming `starship`, `starship one`, or legacy `starship-1`."
 ---
 
 # SSH Starship
@@ -15,16 +15,16 @@ Use this skill to make SSH access to `starship` deterministic. Verify that the p
 ```bash
 tailscale status | grep -E "[[:space:]](starship|starship-1)[[:space:]]"
 ```
-2. If the peer is missing, switch to the `lorenzoterenzi96@gmail.com` tailnet profile:
+2. If the peer is missing, record the current Tailscale profile, disclose that switching is host-global state, then switch to the `lorenzoterenzi96@gmail.com` profile:
 ```bash
 profile_id="$(sudo tailscale switch --list | awk '$2=="lorenzoterenzi96@gmail.com" {print $1; exit}')"
 sudo tailscale switch "$profile_id"
 ```
 3. Run the strict connectivity check:
 ```bash
-bash scripts/check_starship_ssh.sh
+/home/lorenzo/codex_skills/skills/ssh-starship/scripts/check_starship_ssh.sh
 ```
-4. Start the interactive shell if needed:
+4. Start the interactive shell only when the user explicitly asked for one:
 ```bash
 ssh starship
 ```
@@ -43,4 +43,4 @@ ssh starship
 
 ## Script
 
-- `scripts/check_starship_ssh.sh`: Verify peer visibility, switch to `lorenzoterenzi96@gmail.com` if needed, then verify SSH access end-to-end.
+- `/home/lorenzo/codex_skills/skills/ssh-starship/scripts/check_starship_ssh.sh`: Verify peer visibility, switch to `lorenzoterenzi96@gmail.com` if needed, then verify SSH access end-to-end.

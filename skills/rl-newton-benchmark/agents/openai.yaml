@@ -1,0 +1,4 @@
+interface:
+  display_name: "Newton RL Benchmark"
+  short_description: "Benchmark FEE and shared-turn Newton policies"
+  default_prompt: "Use $rl-newton-benchmark to benchmark these Newton checkpoints under a pinned contract and update the relevant evidence bundle."

@@ -1,3 +1,4 @@
 interface:
   display_name: "Open3D Mapping"
-  short_description: "Record and sync dense 1 cm camera-colored maps from Moleworks LiDAR and camera streams."
+  short_description: "Capture dense camera-colored LiDAR maps"
+  default_prompt: "Use $open3d-mapping to capture, inspect, export, or sync a dense 1 cm camera-colored LiDAR map."

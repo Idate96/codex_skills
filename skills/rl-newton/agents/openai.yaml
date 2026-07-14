@@ -1,0 +1,4 @@
+interface:
+  display_name: "RL Newton"
+  short_description: "Route Moleworks Newton RL workflows"
+  default_prompt: "Use $rl-newton to route and carry out this Moleworks Newton training, benchmark, cluster, or experiment-ledger task."

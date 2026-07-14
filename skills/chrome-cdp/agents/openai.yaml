@@ -1,0 +1,4 @@
+interface:
+  display_name: "Chrome CDP"
+  short_description: "Control an approved live Chrome session"
+  default_prompt: "Use $chrome-cdp to inspect or interact with the user's approved live Chrome session."

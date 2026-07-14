@@ -1,15 +1,20 @@
 ---
 name: meeting-updates
-description: Add or revise recurring meeting and standup notes while matching the document's style, hierarchy, and abstraction level.
+description: "Add or revise recurring meeting and standup notes while matching the document's style, hierarchy, and abstraction level. Use for weekly notes, standups, and recurring project updates."
 ---
 
 # Meeting Updates
 
 Use this skill to add or revise updates in recurring meeting notes without turning the document into a commit dump.
 
+Use the native Google Docs connector first when available; fall back to authenticated `gws` Docs
+commands only when needed. A request to summarize or draft is read-only. Edit the document only when
+the user asks to add, revise, or update notes.
+
 ## Primary Document
 
-Use this team meeting doc by default unless the user points to another one:
+Use this canonical team meeting document when the user means the usual team notes; otherwise resolve
+the document from the request rather than guessing:
 
 - `https://docs.google.com/document/d/1NnnKeuBg6DJZtpL5gxA5A6kkEhDlZXGiFEkZpbGcAUw/edit?usp=drive_web&ouid=108547263280155251152`
 - Document id: `1NnnKeuBg6DJZtpL5gxA5A6kkEhDlZXGiFEkZpbGcAUw`

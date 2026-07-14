@@ -2,12 +2,21 @@
 
 Use this reference for exact command shapes. The live run should still use the `apply_target` and `run_stage` commands printed by `generate_trench_sequence_plans.py`, because those commands include the current map-frame trench-axis values.
 
+## Contents
+
+- Runtime setup
+- Live anchored plan generation and registration
+- Flange stage
+- Flange-to-bottom map handoff
+- Bottom stage
+- Failure signs
+
 ## Runtime Setup
 
 ```bash
 cd /workspace/moleworks/ros2_ws
 source install/setup.bash
-export ROS_DOMAIN_ID=24
+: "${ROS_DOMAIN_ID:?Set ROS_DOMAIN_ID to the verified Newton simulation domain}"
 export MW_EXPECTED_ROS_PREFIX=/workspace/moleworks/ros2_ws/install
 ```
 
@@ -132,13 +141,12 @@ Save the live flange map before stopping the flange stack:
 BEAM6_CHECKPOINT_ROOT=/tmp/beam6_flange_bottom_sequence/checkpoints
 BEAM6_FLANGE_BAG="$BEAM6_CHECKPOINT_ROOT/after_flange_$(date -u +%Y%m%d_%H%M%S)"
 
-ros2 service call /excavation_mapping/save_map mole_excavation_mapping/srv/SaveGridMap \
+timeout 20 ros2 service call /excavation_mapping/save_map mole_excavation_mapping/srv/SaveGridMap \
   "{uri: '$BEAM6_FLANGE_BAG', topic: 'grid_map', storage_id: 'mcap', overwrite: false}"
 ```
 
-Stop every process that embeds stock-shovel geometry: robot state publisher, self-filter, OCS2, dig controller, workspace planner, and Terra executor.
-
-Find the latest saved map:
+Require a successful service response, then resolve and validate the latest saved map while the
+flange stack is still available:
 
 ```bash
 eval "$(
@@ -151,17 +159,29 @@ test -n "$BEAM6_LATEST_MAP_BAG"
 test -n "$BEAM6_LATEST_MAP_MCAP"
 ```
 
-If Newton is restarted, pass `$BEAM6_LATEST_MAP_MCAP` as its elevation map and use the 400 mm robot:
+Only then stop every process that embeds stock-shovel geometry: robot state publisher, self-filter,
+OCS2, dig controller, workspace planner, and Terra executor. Use the scoped teardown from
+`newton-sim-ros-startup`; do not use broad process-name kills.
+
+If Newton uses a desired-elevation clamp, do not pass the flange-only map directly to the real bottom dig. First start a temporary 400 mm alignment stack, take the generator-printed bottom `apply_target` command, and add a dry-run output to materialize the bottom target into the saved flange terrain:
+
+```bash
+BOTTOM_SEED_BAG=/tmp/beam6_flange_bottom_sequence/checkpoints/bottom_target_seed_$(date -u +%Y%m%d_%H%M%S)
+# Run the generator-printed bottom apply command with:
+#   --dry-run-output "$BOTTOM_SEED_BAG" --dry-run-storage-id mcap
+```
+
+Then start Newton with the 400 mm robot and the MCAP inside `$BOTTOM_SEED_BAG`:
 
 ```bash
 --robot-variant m445_terra_400mm_without_teeth --bucket-width 0.4 --bucket-y-sample-half-width 0.2
 ```
 
-For ROS excavation mapping, load the matching saved bag. If the bottom stack is already up:
+For ROS excavation mapping, load the same bottom-target seed bag. Do not load the flange-only bag on one side and the bottom seed on the other.
 
 ```bash
 python3 src/moleworks_ros/high_level_planning/terra_planner/applications/beam6_flange_bottom_sequence/beam6_latest_map.py \
-  --root /tmp/beam6_flange_bottom_sequence/checkpoints \
+  --root "$BOTTOM_SEED_BAG" \
   --load \
   --load-service /excavation_mapping/load_excavation_map
 ```
@@ -176,25 +196,7 @@ test -n "$EM_NODE"
 ros2 param set "$EM_NODE" occupancy_mark_dug_zone_occupied false
 ```
 
-Apply target from the station saved in `station_anchor.json`:
-
-```bash
-ros2 run mole_excavation_mapping mesh_to_excavation_grid_map.py apply \
-  "/home/lorenzo/Downloads/0505_trench test-20260515T123758Z-3-001/0505_trench test/Mesh/Bottom_6mLong.stl" \
-  --authoring-frame BASE_CONTROL \
-  --mesh-anchor-x max \
-  --mesh-x 6.375 \
-  --mesh-y 0.0 \
-  --mesh-anchor-y origin \
-  --align-major-axis x \
-  --reference-mode local_min \
-  --mesh-reference-z max \
-  --map-topic /excavation_mapping/grid_map \
-  --load-service /excavation_mapping/load_excavation_map \
-  --timeout-sec 60.0 \
-  --tf-timeout-sec 5.0 \
-  --force
-```
+Apply the bottom target from the station saved in `station_anchor.json` by running the exact generator-printed bottom `apply_target` command. Do not reuse the old hardcoded Downloads path or zero-yaw placement for a live run.
 
 Clear costmaps:
 
@@ -224,7 +226,13 @@ ros2 launch terra_planner beam6_sequence_stage.launch.py \
   workspace_plan_trench_entry_margin_m:=0.25 \
   workspace_plan_trench_exit_margin_m:=0.25 \
   workspace_dig_boundary_margin_m:=0.3 \
-  grading_only:=true \
+  grading_only:=false \
+  enable_grading_pass:=true \
+  use_dig_zone_if_nonempty:=false \
+  dig_3d_dig_zone_layer_name:=current_dig_workspace \
+  dig_3d_pullup_boundary_min_distance_m:=0.0 \
+  grading_workspace_extension_m:=0.500 \
+  workspace_completion_profile:=completion_foundation_strict.yaml \
   dig_start_soil_carving_service:=excavation_mapping/start_target_clamped_soil_carving \
   trench_axis_finish_mask_mode:=target_depth \
   grading_completion_mode:=local_open \

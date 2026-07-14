@@ -1,17 +1,18 @@
 ---
 name: google-chat-cdp
-description: Use Google Chat through an approved live Chrome session. Use to verify the account, open a DM or space, and inspect or send messages in the browser.
+description: "Use Google Chat through an approved live Chrome session. Use to verify the account, open a DM or space, and inspect or send messages when connector access is insufficient."
 ---
 
 # Google Chat CDP
 
-Use this skill together with `chrome-cdp` for Google Chat tasks in the user's live Chrome session.
+Use this skill together with [chrome-cdp](../chrome-cdp/SKILL.md) only when connector/API access is
+insufficient and Lorenzo explicitly approves using the live browser for the requested Chat action.
 
 ## Preconditions
 
 - `chrome-cdp` is available at `/home/lorenzo/codex_skills/skills/chrome-cdp/`.
 - Chrome remote debugging is already enabled in `chrome://inspect/#remote-debugging`.
-- The user has explicitly asked for a Google Chat action.
+- The user has explicitly asked for a Google Chat action and approved live-browser interaction.
 
 ## Approval Model
 
@@ -83,6 +84,9 @@ In an open conversation:
 - use `/home/lorenzo/codex_skills/skills/chrome-cdp/scripts/cdp type <target> '<message>'`
 - click the button whose aria-label is `Send message`
 
+Pass message text as one wrapper argument. Do not concatenate user text into JavaScript, selectors,
+or shell source; if quoting is ambiguous, write the draft visibly and stop before Send.
+
 Verify completion:
 
 - the draft textbox should clear back to a blank newline
@@ -95,3 +99,5 @@ Verify completion:
 - Avoid index-based selectors across separate calls if the Chat list can change.
 - If login/account switching just happened, assume the old target ID is stale until `list` proves otherwise.
 - Keep the user informed before any action that sends a real message.
+- Scope inspection to the approved Chat tab and conversation; do not inspect unrelated tabs, cookies,
+  storage, or account data.

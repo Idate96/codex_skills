@@ -21,7 +21,7 @@ Usage:
 
 Options:
   --session NAME   tmux session name (default: ros)
-  --ws PATH        workspace path (default: ~/ros2_ws)
+  --ws PATH        workspace path (default: auto-detect ~/ros2_ws, then ~/moleworks/ros2_ws)
   --endeffector-type TYPE  end-effector type for URDF (default: prompt or 'shovel')
   --mapping-profile PROFILE  perception mapping contract to use (default: local; choices: local, site)
   --design-map-name NAME  optional excavation design map artifact for perception (default: empty)
@@ -37,7 +37,7 @@ EOF
 }
 
 SESSION="ros"
-WS="${HOME}/ros2_ws"
+WS=""
 RESTART="false"
 ATTACH="false"
 ENDEFFECTOR_TYPE=""
@@ -166,6 +166,18 @@ if [[ -n "$DIG_CONTROLLER" ]]; then
   PRE_FOXGLOVE_WINDOWS+=("$DIG_WINDOW")
 fi
 
+if [[ -z "$WS" ]]; then
+  for candidate in "${HOME}/ros2_ws" "${HOME}/moleworks/ros2_ws"; do
+    if [[ -f "$candidate/install/setup.bash" ]]; then
+      WS="$candidate"
+      break
+    fi
+  done
+fi
+if [[ -z "$WS" ]]; then
+  echo "Could not auto-detect a built robot workspace; pass --ws PATH" >&2
+  exit 2
+fi
 WS="$(realpath -m "$WS")"
 if [[ ! -d "$WS" ]]; then
   echo "Workspace not found: $WS" >&2
@@ -282,7 +294,7 @@ start_perception() {
 }
 
 start_dig() {
-  "$HOME/.codex/skills/dig-controllers/scripts/dig_controllers_tmux.sh" \
+  "/home/lorenzo/codex_skills/skills/dig-controllers/scripts/dig_controllers_tmux.sh" \
     --controller "$DIG_CONTROLLER" \
     --session "$SESSION" \
     --window "$DIG_WINDOW" \
@@ -365,7 +377,7 @@ is_shell_command() {
 }
 
 wait_for_pre_foxglove_windows() {
-  local timeout_sec="${1:-30}"
+  local timeout_sec=30
   local deadline detected_role win
   deadline=$((SECONDS + timeout_sec))
 

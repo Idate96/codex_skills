@@ -1,21 +1,22 @@
 ---
 name: ocs2-arm-experiments
-description: Run Mole OCS2 arm experiments on hardware with safe bringup, cylindrical goals, diagnostics, rosbagging, and publisher-conflict checks.
+description: "Run Mole OCS2 arm experiments on hardware with safe bringup, cylindrical goals, diagnostics, rosbagging, and publisher-conflict checks. Use for real-robot OCS2 motion tests and recovery."
 ---
 
 # OCS2 Arm Experiments
 
 Use this for real-actuation Mole OCS2 arm experiments: lifecycle bringup, cylindrical end-effector goals, diagnostic recording, staged validation, and recovery.
 
-## Required Reference
+## Procedure Reference
 
-Read [references/full-runbook.md](references/full-runbook.md) before launching the controller or commanding motion. It contains the exact machine task profiles, lifecycle commands, goal senders, diagnostic artifacts, recovery commands, and tuning interpretation rules.
+The safety contract below is mandatory. Then read only the task-relevant sections of [references/full-runbook.md](references/full-runbook.md): provenance/logging, hardware preconditions, launch/lifecycle, goal publishing, recording, validation, or recovery. Do not load the entire long runbook for a narrow inspection.
 
 Use `ocs2-tuning-fastloop` when the task is specifically repeatable one-case tuning and limit verification.
 
 ## Safety Contract
 
 - Before motion, verify `/machine_status` reports the required hydraulic, autonomy, and Gravis-command readiness.
+- Startup or diagnostic requests do not authorize motion. Require the user's requested live goal or maneuver before publishing it.
 - `/mole/actuator_commands` must have exactly one intended command publisher. Stop competing DIG, scheduler, Foxglove, or stale controller publishers first.
 - A subagent may manage launch, configure/activate, first-policy, and publisher checks only when the user explicitly allows delegation. It must not publish motion goals or actuator commands.
 - Do not switch from `real_collisions` to a blind/no-collision profile unless the user or main agent explicitly authorizes it.

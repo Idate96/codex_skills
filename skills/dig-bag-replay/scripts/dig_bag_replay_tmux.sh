@@ -20,6 +20,8 @@ Options:
   --foxglove-port PORT   Foxglove bridge port (default: 8766)
   --endeffector-type T   shovel or shovel_w_teeth (default: shovel)
   --design-bag-path P    Explicit excavation preload bag path
+  --confirm-offline-container
+                          Confirm this container is dedicated to offline replay
   --attach               Attach to tmux after startup
   -h, --help             Show this help
 USAGE
@@ -33,6 +35,7 @@ FOXGLOVE_PORT="8766"
 ENDEFFECTOR_TYPE="shovel"
 DESIGN_BAG_PATH="package://mole_maps/maps/hong0326_no_holes/hong0326_no_holes_surface"
 ATTACH="false"
+CONFIRM_OFFLINE_CONTAINER="false"
 BAG_ROOT=""
 
 while [[ $# -gt 0 ]]; do
@@ -53,6 +56,8 @@ while [[ $# -gt 0 ]]; do
       ENDEFFECTOR_TYPE="${2:-}"; shift 2 ;;
     --design-bag-path)
       DESIGN_BAG_PATH="${2:-}"; shift 2 ;;
+    --confirm-offline-container)
+      CONFIRM_OFFLINE_CONTAINER="true"; shift ;;
     --attach)
       ATTACH="true"; shift ;;
     -h|--help)
@@ -67,6 +72,11 @@ done
 if [[ -z "$BAG_ROOT" ]]; then
   echo "--bag-root is required" >&2
   usage
+  exit 2
+fi
+if [[ "$CONFIRM_OFFLINE_CONTAINER" != "true" ]]; then
+  echo "Refusing replay cleanup without --confirm-offline-container." >&2
+  echo "Use a container dedicated to offline replay; never confirm a live robot container." >&2
   exit 2
 fi
 
@@ -100,6 +110,10 @@ fi
 
 if [[ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null || true)" != "true" ]]; then
   echo "Container is not running: $CONTAINER" >&2
+  exit 2
+fi
+if ! docker exec "$CONTAINER" bash -lc "source /opt/ros/jazzy/setup.bash && source '$CONTAINER_WS/install/setup.bash' && test -f \"\$(ros2 pkg prefix mole_bringup)/share/mole_bringup/launch/dig_bag_replay.launch.py\""; then
+  echo "Replay launch file is unavailable in container workspace: $CONTAINER_WS" >&2
   exit 2
 fi
 

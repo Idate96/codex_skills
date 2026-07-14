@@ -24,7 +24,7 @@ Options:
   --controller NAME     controller key (required)
   --session NAME        tmux session name (default: ros)
   --window NAME         tmux window name (default: dig)
-  --ws PATH             workspace path (default: ~/ros2_ws)
+  --ws PATH             workspace path (default: auto-detect ~/ros2_ws, then ~/moleworks/ros2_ws)
   --use-sim-time BOOL   true|false (default: false)
   --robot-namespace NS  dig3d namespace (default: mole)
   --no-activate         don't auto configure/activate (only print commands)
@@ -40,7 +40,7 @@ is_bool() {
 
 SESSION="ros"
 WINDOW="dig"
-WS="${HOME}/ros2_ws"
+WS=""
 USE_SIM_TIME="false"
 AUTO_ACTIVATE="true"
 RUN_ACTION="false"
@@ -107,6 +107,18 @@ if [[ -z "$ROBOT_NAMESPACE" ]]; then
   exit 2
 fi
 
+if [[ -z "$WS" ]]; then
+  for candidate in "${HOME}/ros2_ws" "${HOME}/moleworks/ros2_ws"; do
+    if [[ -f "$candidate/install/setup.bash" ]]; then
+      WS="$candidate"
+      break
+    fi
+  done
+fi
+if [[ -z "$WS" ]]; then
+  echo "Could not auto-detect a built workspace; pass --ws PATH" >&2
+  exit 2
+fi
 WS="$(realpath -m "$WS")"
 if [[ ! -d "$WS" ]]; then
   echo "Workspace not found: $WS" >&2

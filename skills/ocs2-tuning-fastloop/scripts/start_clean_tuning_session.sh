@@ -2,10 +2,10 @@
 set -euo pipefail
 
 SESSION="mpc_orch"
-WORKSPACE="${HOME}/ros2_ws"
+WORKSPACE=""
 OUT_ROOT="${HOME}/mpc_tuning/current"
 CSV_PREFIX="mole_m4_matrix_live"
-BENCH_SCRIPT="${WORKSPACE}/src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_controller/scripts/mole_m4_cyl_accuracy_benchmark.py"
+REPLACE_SESSION=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -25,12 +25,27 @@ while [[ $# -gt 0 ]]; do
       CSV_PREFIX="$2"
       shift 2
       ;;
+    --replace-session)
+      REPLACE_SESSION=1
+      shift
+      ;;
     *)
       echo "Unknown arg: $1" >&2
       exit 2
       ;;
   esac
 done
+
+if [[ -z "${WORKSPACE}" ]]; then
+  for candidate in "${HOME}/ros2_ws" "${HOME}/moleworks/ros2_ws"; do
+    if [[ -f "${candidate}/install/setup.bash" ]]; then
+      WORKSPACE="${candidate}"
+      break
+    fi
+  done
+fi
+
+BENCH_SCRIPT="${WORKSPACE}/src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_controller/scripts/mole_m4_cyl_accuracy_benchmark.py"
 
 if [[ ! -f "${WORKSPACE}/install/setup.bash" ]]; then
   echo "Missing workspace setup file: ${WORKSPACE}/install/setup.bash" >&2
@@ -50,6 +65,10 @@ echo "${TS}" > "${OUT_ROOT}/.session_ts"
 echo "${ACTIVE_CSV}" > "${OUT_ROOT}/.active_csv"
 
 if tmux has-session -t "${SESSION}" 2>/dev/null; then
+  if [[ "${REPLACE_SESSION}" -ne 1 ]]; then
+    echo "Session ${SESSION} already exists; inspect it, then rerun with --replace-session if replacement is intended." >&2
+    exit 2
+  fi
   tmux kill-session -t "${SESSION}"
 fi
 

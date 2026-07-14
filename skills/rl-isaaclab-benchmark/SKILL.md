@@ -1,6 +1,6 @@
 ---
 name: rl-isaaclab-benchmark
-description: "Benchmark Moleworks IsaacLab checkpoints: playback, excavation evaluation, fair ranking, TensorBoard plots, and run comparison."
+description: "Benchmark Moleworks IsaacLab checkpoints. Use for policy playback, excavation evaluation, fair checkpoint ranking, TensorBoard temporal plots, and run comparison."
 ---
 
 # IsaacLab Benchmark Workflow
@@ -141,7 +141,7 @@ Rank from the generated benchmark reports, not from "latest checkpoint wins".
 After pulling or benchmarking a run, generate progression plots:
 
 ```bash
-python3 scripts/plot_tb_scalars.py \
+python3 /home/lorenzo/codex_skills/skills/rl-isaaclab/scripts/plot_tb_scalars.py \
   --run-dir logs/rsl_rl/<exp>/<run_dir> \
   --plot-core \
   --out-dir outputs/analysis/training_curves
@@ -150,8 +150,10 @@ python3 scripts/plot_tb_scalars.py \
 Use exact tags or regex when the default core plot is not enough:
 
 ```bash
-python3 scripts/plot_tb_scalars.py --run-dir logs/rsl_rl/<exp>/<run_dir> --list-tags
-python3 scripts/plot_tb_scalars.py --run-dir logs/rsl_rl/<exp>/<run_dir> --regex '^Episode_Termination/'
+python3 /home/lorenzo/codex_skills/skills/rl-isaaclab/scripts/plot_tb_scalars.py \
+  --run-dir logs/rsl_rl/<exp>/<run_dir> --list-tags
+python3 /home/lorenzo/codex_skills/skills/rl-isaaclab/scripts/plot_tb_scalars.py \
+  --run-dir logs/rsl_rl/<exp>/<run_dir> --regex '^Episode_Termination/'
 ```
 
 ## Comparison Hygiene

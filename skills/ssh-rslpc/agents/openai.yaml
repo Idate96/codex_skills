@@ -1,4 +1,4 @@
 interface:
   display_name: "SSH RSLPC"
   short_description: "Connect to lorenzo@rslpc via Tailscale"
-  default_prompt: "Connect to lorenzo@rslpc and verify SSH access."
+  default_prompt: "Use $ssh-rslpc to connect to lorenzo@rslpc and verify host and user identity."

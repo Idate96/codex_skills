@@ -1,0 +1,4 @@
+interface:
+  display_name: "Robot ROS"
+  short_description: "Operate and debug the Mole robot ROS stack"
+  default_prompt: "Use $robot-ros to operate or diagnose the Mole/Menzi M4 ROS stack and route to the narrowest relevant runbook."

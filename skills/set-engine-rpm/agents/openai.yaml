@@ -1,0 +1,4 @@
+interface:
+  display_name: "Set Engine RPM"
+  short_description: "Read or set Mole/Menzi M4 engine RPM"
+  default_prompt: "Use $set-engine-rpm to read or set the Mole/Menzi M4 engine RPM through the available ROS service."

@@ -21,6 +21,8 @@ Options:
   --container-ws PATH     Workspace path inside container (default: /workspace/moleworks/ros2_ws)
   --playback-rate RATE    ros2 bag replay rate (default: 0.2)
   --foxglove-port PORT    Foxglove bridge port (default: 8766)
+  --confirm-offline-container
+                          Confirm this container is dedicated to offline replay
   --attach                Attach to tmux after startup
   -h, --help              Show this help
 USAGE
@@ -32,6 +34,7 @@ CONTAINER_WS="/workspace/moleworks/ros2_ws"
 PLAYBACK_RATE="0.2"
 FOXGLOVE_PORT="8766"
 ATTACH="false"
+CONFIRM_OFFLINE_CONTAINER="false"
 SEGMENT_DIR=""
 MANIFEST=""
 SEGMENT_NAME=""
@@ -57,6 +60,8 @@ while [[ $# -gt 0 ]]; do
       PLAYBACK_RATE="${2:-}"; shift 2 ;;
     --foxglove-port)
       FOXGLOVE_PORT="${2:-}"; shift 2 ;;
+    --confirm-offline-container)
+      CONFIRM_OFFLINE_CONTAINER="true"; shift ;;
     --attach)
       ATTACH="true"; shift ;;
     -h|--help)
@@ -67,6 +72,12 @@ while [[ $# -gt 0 ]]; do
       exit 2 ;;
   esac
 done
+
+if [[ "$CONFIRM_OFFLINE_CONTAINER" != "true" ]]; then
+  echo "Refusing replay cleanup without --confirm-offline-container." >&2
+  echo "Use a container dedicated to offline replay; never confirm a live robot container." >&2
+  exit 2
+fi
 
 if [[ -n "$SEGMENT_DIR" && ( -n "$MANIFEST" || -n "$SEGMENT_NAME" ) ]]; then
   echo "Use either --segment-dir or --manifest + --segment-name" >&2
@@ -133,6 +144,10 @@ fi
 
 if [[ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null || true)" != "true" ]]; then
   echo "Container is not running: $CONTAINER" >&2
+  exit 2
+fi
+if ! docker exec "$CONTAINER" bash -lc "source /opt/ros/jazzy/setup.bash && source '$CONTAINER_WS/install/setup.bash' && ros2 pkg prefix foxglove_bridge >/dev/null"; then
+  echo "foxglove_bridge is unavailable in container workspace: $CONTAINER_WS" >&2
   exit 2
 fi
 

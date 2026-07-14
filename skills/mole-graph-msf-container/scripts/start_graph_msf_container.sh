@@ -3,12 +3,15 @@ set -euo pipefail
 
 SESSION="${1:-graph_msf}"
 WINDOW="${2:-container}"
-IMAGE_TAG="moleworks_ros:graph_msf"
 
-if docker ps --format '{{.Image}}' | grep -q "^${IMAGE_TAG}$"; then
-  echo "Container already running for ${IMAGE_TAG}."
-  echo "Attach with: tmux attach -t ${SESSION} (or check 'docker ps' for the name)."
-  exit 0
+if docker ps --format '{{.Names}}' | grep -qx 'moleworks_ros'; then
+  CONTAINER_COMMAND="docker exec -it moleworks_ros bash"
+else
+  if ! bash -ic 'type moleworks_ros' >/dev/null 2>&1; then
+    echo "Missing shell function 'moleworks_ros'; cannot start the current Moleworks ROS container." >&2
+    exit 1
+  fi
+  CONTAINER_COMMAND="bash -ic 'moleworks_ros'"
 fi
 
 if tmux has-session -t "${SESSION}" 2>/dev/null; then
@@ -21,8 +24,7 @@ fi
 
 TARGET="${SESSION}:${WINDOW}"
 
-tmux send-keys -t "${TARGET}" "source ~/.bashrc" C-m
-tmux send-keys -t "${TARGET}" "moleworks_ros_graph_msf" C-m
+tmux send-keys -t "${TARGET}" "${CONTAINER_COMMAND}" C-m
 
-echo "Started ${IMAGE_TAG} container in tmux session '${SESSION}', window '${WINDOW}'."
+echo "Started or attached to the Moleworks ROS container in tmux session '${SESSION}', window '${WINDOW}'."
 echo "Attach with: tmux attach -t ${SESSION}"

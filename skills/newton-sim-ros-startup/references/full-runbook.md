@@ -5,6 +5,19 @@ description: Start or restart single-container Newton and Moleworks ROS stacks f
 
 # Newton Sim ROS Startup — Full Runbook
 
+## Contents
+
+- Use and non-negotiables
+- Shell identity and attach fallback
+- Runtime shell preflight
+- tmux layouts and fast Nav2 loop
+- Launch windows: Newton, robot, state publisher, perception, planner, OCS2, single workspace, Dig3D, Foxglove, Ackermann, Nav2, benchmark
+- Sanity checks and Dig deployment order
+- Failure bundle capture and checkpoint resume
+- Teardown
+
+Read only the sections selected by `SKILL.md`; the core safety contract remains in `SKILL.md`.
+
 ## Use This Skill For
 
 Use this only for the single-container Newton workflow inside `moleworks_ros:latest`.

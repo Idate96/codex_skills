@@ -1,0 +1,4 @@
+interface:
+  display_name: "Moleworks Sub-Agent Orchestrator"
+  short_description: "Delegate independent Moleworks investigation lanes"
+  default_prompt: "Use $moleworks-subagent-orchestrator to split this context-heavy Moleworks task into bounded evidence-gathering lanes."

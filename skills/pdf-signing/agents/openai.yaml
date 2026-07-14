@@ -1,0 +1,4 @@
+interface:
+  display_name: "PDF Signing"
+  short_description: "Place and visually verify Lorenzo's signature"
+  default_prompt: "Use $pdf-signing to place Lorenzo's handwritten signature in this PDF and verify the result visually."

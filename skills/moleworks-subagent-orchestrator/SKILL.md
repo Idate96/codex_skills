@@ -1,6 +1,6 @@
 ---
 name: moleworks-subagent-orchestrator
-description: Orchestrate sub-agents for context-heavy Moleworks code, RL, ROS, cluster, benchmark, or process investigations.
+description: "Orchestrate sub-agents for context-heavy Moleworks code, RL, ROS, cluster, benchmark, or process investigations. Use when the task has independent evidence-gathering tracks or exceeds one-agent context."
 ---
 
 # Moleworks Sub-Agent Orchestrator
@@ -43,9 +43,12 @@ Good sub-agent task shapes:
 
 ## Delegation Suggestions
 
-- Assign read-only codebase or documentation questions to a narrowly scoped agent.
-- Delegate writes only for bounded changes with a disjoint file set.
+- Make sub-agent tasks read-only by default. Repository access does not authorize robot motion,
+  cluster submission/cancellation, outbound messages, GitHub publication, or other external mutation.
+- Delegate writes only when the parent task already authorizes them, using bounded changes with a
+  disjoint file set and explicit file ownership.
 - Reuse the same agent for follow-up questions on one topic instead of respawning.
+- Keep safety- or intent-sensitive decisions in the parent thread; sub-agents gather evidence.
 
 ## Output Contract For Sub-Agents
 
@@ -55,6 +58,7 @@ Require compact answers:
 - then evidence as file paths, line refs, commands, or artifact names
 - no raw log dumps unless the parent explicitly asks
 - no speculative architecture essays
+- no live mutation unless the task explicitly names the authorized target and action
 
 Good result shape:
 

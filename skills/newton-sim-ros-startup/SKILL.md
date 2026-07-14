@@ -1,15 +1,15 @@
 ---
 name: newton-sim-ros-startup
-description: Start or restart single-container Newton and Moleworks ROS stacks for bridge, Nav2, perception, Dig3D, Terra, and checkpoint recovery.
+description: "Start or restart single-container Newton and Moleworks ROS stacks. Use for bridge, Nav2, perception, Dig3D, Terra, checkpoint recovery, and single-container cleanup."
 ---
 
 # Newton Sim ROS Startup
 
 Use this for the single-container Newton workflow in `moleworks_ros`. For the split IsaacLab/Terra and ROS-container path, use `sim-startup` instead.
 
-## Required Reference
+## Procedure Reference
 
-Read [references/full-runbook.md](references/full-runbook.md) before executing a startup, restart, failure capture, or checkpoint resume. It preserves the exact launch commands, tmux layouts, map-loading contracts, diagnostics, and recovery procedures.
+The safety contract and routing rules below are mandatory. Then read only the task-relevant sections of [references/full-runbook.md](references/full-runbook.md): shell/preflight, tmux layout, the selected launch windows, sanity checks, Dig deployment, failure capture/resume, or teardown. Do not load the entire long runbook for a narrow operation.
 
 Use the narrower companion skill when applicable:
 

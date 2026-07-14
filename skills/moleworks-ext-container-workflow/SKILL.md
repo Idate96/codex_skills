@@ -1,15 +1,9 @@
 ---
 name: moleworks-ext-container-workflow
-description: Run and debug IsaacLab train, play, or eval commands in the `moleworks_ext` container with persistent tmux logs.
+description: "Run and debug IsaacLab train, play, or eval commands in the `moleworks_ext` container with persistent tmux logs. Use for bounded local container runs and false-hang diagnosis."
 ---
 
 # Moleworks Ext Container Workflow
-
-## When To Use
-Use this skill when you need to run or debug commands inside `isaac-lab-moleworks_ext-dev`, especially for:
-- `scripts/rsl_rl/train.py`, `scripts/rsl_rl/play.py`, or similar IsaacLab entrypoints
-- local smoke tests before longer runs
-- any workflow where persistent logs in tmux are required
 
 ## Non-Negotiables
 - Run IsaacLab scripts via `/workspace/isaaclab/isaaclab.sh -p`.
@@ -35,23 +29,25 @@ docker ps --format '{{.Names}}\t{{.Status}}' | rg isaac-lab-moleworks_ext-dev
 2. If it is not running, start it:
 ```bash
 cd ~/moleworks/moleworks_ext/docker
-docker compose --env-file .env.moleworks_ext-dev \
-  -f docker-compose.yaml -f docker-compose.override.yaml \
-  up -d isaac-lab-ext-dev
+compose_files=(-f docker-compose.yaml)
+[[ -f docker-compose.override.yaml ]] && compose_files+=(-f docker-compose.override.yaml)
+docker compose --env-file .env.moleworks_ext-dev "${compose_files[@]}" up -d isaac-lab-ext-dev
 ```
 
 ## Standard Launch Pattern
-1. Create a tmux window in your current session:
+1. Create or reuse a stable tmux session, then add a window:
 ```bash
-tmux new-window -n mwext-run
+SESSION=mwext
+tmux has-session -t "$SESSION" 2>/dev/null || tmux new-session -d -s "$SESSION" -n shell
+tmux new-window -t "$SESSION" -n mwext-run
 ```
 2. Run the command inside the container:
 ```bash
-tmux send-keys -t mwext-run "docker exec -it isaac-lab-moleworks_ext-dev bash -lc 'cd /workspace/moleworks_ext && <YOUR_COMMAND>'" C-m
+tmux send-keys -t "$SESSION:mwext-run" "docker exec -it isaac-lab-moleworks_ext-dev bash -lc 'cd /workspace/moleworks_ext && <YOUR_COMMAND>'" C-m
 ```
 3. Capture output right away:
 ```bash
-tmux capture-pane -pt mwext-run -S -200
+tmux capture-pane -pt "$SESSION:mwext-run" -S -200
 ```
 
 ## Smoke-Test Templates
@@ -103,4 +99,4 @@ export MW_SKIP_APP_CLOSE=1
 tmux capture-pane -pt <window> -S -300
 ```
 4. If you see `torch.save:done` and `saved=...`, the run is healthy even if teardown logs warnings.
-5. If no new logs appear for >60s, stop with `C-c`, then relaunch `--headless` in the same tmux window.
+5. If logs are quiet for more than 60 seconds, inspect the pane process, CPU, and GPU activity before deciding it is hung. Isaac startup and compilation can be quiet. Stop only the scoped Isaac process after confirming it is inactive or failed, then relaunch `--headless` in the same tmux window.

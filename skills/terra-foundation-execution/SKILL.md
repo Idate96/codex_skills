@@ -1,6 +1,6 @@
 ---
 name: terra-foundation-execution
-description: "Execute packaged Terra foundation plans in Newton with Nav2, checkpoints, stall measurement, recovery, and failure capture."
+description: "Execute packaged Terra foundation plans in Newton. Use for Nav2-gated plan execution, checkpointing, post-dump stall measurement, recovery, and failure capture."
 ---
 
 # Terra Foundation Execution
@@ -225,10 +225,13 @@ Start lightweight monitors before the first dig:
 
 ```bash
 mkdir -p "$RUN_DIR/monitors"
-ros2 topic echo /controller_status --full-length > "$RUN_DIR/monitors/controller_status.log" 2>&1
-ros2 topic echo /mole/cmd_vel_smoothed > "$RUN_DIR/monitors/cmd_vel_smoothed.log" 2>&1
-ros2 topic echo /dig_3d/scooped_soil_volume > "$RUN_DIR/monitors/scooped_soil_volume.log" 2>&1
+: > "$RUN_DIR/monitors/pids"
+ros2 topic echo /controller_status --full-length > "$RUN_DIR/monitors/controller_status.log" 2>&1 & echo $! >> "$RUN_DIR/monitors/pids"
+ros2 topic echo /mole/cmd_vel_smoothed > "$RUN_DIR/monitors/cmd_vel_smoothed.log" 2>&1 & echo $! >> "$RUN_DIR/monitors/pids"
+ros2 topic echo /dig_3d/scooped_soil_volume > "$RUN_DIR/monitors/scooped_soil_volume.log" 2>&1 & echo $! >> "$RUN_DIR/monitors/pids"
 ```
+
+Run these in a dedicated monitor pane or shell. On completion or failure, stop only the recorded PIDs and wait for them; do not use broad `pkill` patterns.
 
 Also keep the Terra pane log. On failure or completion, record:
 

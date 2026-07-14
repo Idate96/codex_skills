@@ -1,0 +1,4 @@
+interface:
+  display_name: "Oracle Review"
+  short_description: "Ask a second model with repository context"
+  default_prompt: "Use $oracle to obtain an independent second-model review of this problem with the relevant repository context."

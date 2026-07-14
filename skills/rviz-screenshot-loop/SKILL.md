@@ -1,6 +1,6 @@
 ---
 name: rviz-screenshot-loop
-description: Capture and inspect RViz or ROS GUI screenshots while validating frames, display status, and visual artifacts.
+description: "Capture and inspect RViz or ROS GUI screenshots. Use for iterative visual validation of frames, display status, overlays, maps, point clouds, and rendering artifacts."
 ---
 
 # RViz Screenshot Loop
@@ -8,21 +8,18 @@ description: Capture and inspect RViz or ROS GUI screenshots while validating fr
 If the task is not RViz-specific, use `chrome-cdp` for approved Chrome capture
 or an available GUI screenshot tool directly.
 
-## When To Use
-- You need to **see RViz** or other GUI state while debugging ROS.
-- You want to verify **fixed frame**, **display status**, or **visual artifacts** after running ROS commands.
-
 ## Prereqs
 - X11 session.
-- An enabled screen-capture tool. The examples below use the optional MCP tool `screenshot.screenshot`; if it is unavailable, report that limitation.
+- An enabled screen-capture capability. Discover the available GUI or screenshot tool at runtime; tool names vary by environment.
 
 ## Quick Discovery
 - List monitors: `xrandr --listmonitors`
 - List windows: `wmctrl -l`
 - Find RViz windows: `xdotool search --name '.*RViz.*'`
 
-## Tool Calls (MCP)
-When available, use the MCP tool `screenshot.screenshot`:
+## Capture Parameters
+
+Use the available screenshot tool's equivalent of:
 
 - Full screen:
   - `{"mode":"full"}`
@@ -37,8 +34,7 @@ When available, use the MCP tool `screenshot.screenshot`:
 - Region:
   - `{"mode":"region","x":2600,"y":50,"width":1800,"height":1000}`
 
-Optional:
-- `max_width=0` to keep full resolution.
+Request original/full resolution when text or small status icons must be read.
 
 ## Workflow
 1. Run your ROS or sim command.
@@ -46,6 +42,8 @@ Optional:
 3. Read the RViz text/status (Global Status, TF, fixed frame, PointCloud status).
 4. If the user asked for sim bringup, **use `sim-startup` skill first**, then capture RViz.
 5. If debugging TF or topics, **use `ros2-debugging` skill first**, then capture RViz to confirm.
+6. Inspect the resulting image rather than treating a successful capture call as visual verification.
 
 ## Failure Handling
 - If window title matches multiple IDs, pick the correct one from `wmctrl -l` and use `window_id`.
+- If no capture capability is available, report the limitation and preserve useful text diagnostics from RViz/ROS logs.

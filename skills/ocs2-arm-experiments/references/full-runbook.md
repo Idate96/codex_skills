@@ -5,6 +5,20 @@ description: Run Mole OCS2 arm experiments on hardware with safe bringup, cylind
 
 # OCS2 Arm Experiments — Full Runbook
 
+## Contents
+
+- Delegated startup boundary
+- Segment diagnostics and artifact policy
+- Workspace/runtime provenance and true-hold rule
+- Hardware safety preconditions
+- tmux and real-actuation launch
+- Lifecycle bootstrap and realtime checks
+- Direct semantic goals and alternatives
+- Command scaling and rosbag recording
+- Validation phases and no-motion recovery
+
+Read only the sections selected by `SKILL.md`; its safety contract remains mandatory.
+
 ## Workflow
 
 ### Delegated Startup / Configure Loop

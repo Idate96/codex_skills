@@ -1,0 +1,4 @@
+interface:
+  display_name: "RViz Screenshot Loop"
+  short_description: "Iterate on RViz with visual verification"
+  default_prompt: "Use $rviz-screenshot-loop to capture, inspect, and iteratively verify the requested RViz or ROS GUI state."

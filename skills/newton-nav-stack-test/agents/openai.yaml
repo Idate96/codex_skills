@@ -1,0 +1,4 @@
+interface:
+  display_name: "Newton Nav Stack Test"
+  short_description: "Validate Newton Nav2 and side-target tracking"
+  default_prompt: "Use $newton-nav-stack-test to validate Newton Nav2 bringup, path health, Foxglove visibility, and side-target tracking."

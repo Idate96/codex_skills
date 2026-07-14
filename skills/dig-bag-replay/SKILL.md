@@ -1,6 +1,6 @@
 ---
 name: dig-bag-replay
-description: Replay split or single-scoop DIG bags with TF, mapping, and Foxglove in the `moleworks_ros` container.
+description: "Replay split or single-scoop DIG bags with TF, mapping, and Foxglove in the `moleworks_ros` container. Use for bag inspection, single-scoop replay, and mapping or visualization recovery."
 ---
 
 # Dig Bag Replay
@@ -13,6 +13,8 @@ There are two entrypoints:
 
 Assumption:
 - one active replay session at a time; each helper clears the other replay session before launch
+- the selected container is dedicated to offline replay; both helpers require
+  `--confirm-offline-container` before replacing replay-style processes
 
 Do not use it for the live robot stack:
 - for the real robot, use `robot-startup`
@@ -23,17 +25,19 @@ Do not use it for the live robot stack:
 Full split-run replay:
 
 ```bash
-~/.codex/skills/dig-bag-replay/scripts/dig_bag_replay_tmux.sh \
+/home/lorenzo/codex_skills/skills/dig-bag-replay/scripts/dig_bag_replay_tmux.sh \
   --bag-root /home/lorenzo/mcap/dig3d_2026-03-26/dig3d_real_run_2026-03-26_21-02-16 \
+  --confirm-offline-container \
   --attach
 ```
 
 Single-scoop segment replay from a manifest row:
 
 ```bash
-~/.codex/skills/dig-bag-replay/scripts/dig_segment_replay_tmux.sh \
+/home/lorenzo/codex_skills/skills/dig-bag-replay/scripts/dig_segment_replay_tmux.sh \
   --manifest /home/lorenzo/mcap/dig3d_2026-03-26/split_single_scoops_obs_2026-03-28/single_scoop_manifest_2026-03-28.csv \
   --segment-name trenching_single_2026-03-26_21-44-29_s01_strong_scoop \
+  --confirm-offline-container \
   --attach
 ```
 
@@ -51,6 +55,9 @@ Before launch, the helper stops prior replay-style processes in that container:
 - `elevation_mapping_node`
 - `mole_excavation_mapping_node`
 - `ros2 bag play`
+
+Do not pass the confirmation flag for a container attached to the real robot or hosting another
+needed ROS stack. Start or select a dedicated replay container instead.
 
 ## Defaults
 
@@ -74,7 +81,7 @@ python3 /home/lorenzo/codex_skills/skills/kleinkram-upload/scripts/reconstruct_s
 Then point `--bag-root` at one reconstructed run:
 
 ```bash
-~/.codex/skills/dig-bag-replay/scripts/dig_bag_replay_tmux.sh \
+/home/lorenzo/codex_skills/skills/dig-bag-replay/scripts/dig_bag_replay_tmux.sh \
   --bag-root /path/to/downloaded_project/reconstructed_runs/run_name \
   --attach
 ```
@@ -86,7 +93,8 @@ Use full split-run replay when:
 - the run exists as `sensors/`, `state/`, `commands/`, `lidar/`, optional `elevation_map/`
 
 Full split-run workflow:
-1. Run `dig_bag_replay_tmux.sh` with `--bag-root`.
+1. Confirm the container is dedicated to offline replay, then run `dig_bag_replay_tmux.sh` with
+   `--bag-root` and `--confirm-offline-container`.
 2. Open Foxglove on `ws://localhost:8766`.
 3. Review replayed `/tf`, `/tf_static`, `/mole/state`, `/mole/actuator_commands`, raw lidar.
 4. Review `/mole/robot_description` if you want the URDF model in Foxglove.
@@ -100,7 +108,8 @@ Use fast single-scoop segment replay when:
 
 Single-scoop workflow:
 1. Pick a `segment_name` from `single_scoop_manifest_*.csv` or `PLAYBACK_PRIORITY_*.md`.
-2. Run `dig_segment_replay_tmux.sh` with `--manifest` and `--segment-name`.
+2. Run `dig_segment_replay_tmux.sh` with `--manifest`, `--segment-name`, and
+   `--confirm-offline-container` after the same container check.
 3. Open Foxglove on `ws://localhost:8766`.
 4. Review the recorded topics already inside the segment bag:
    - `/tf`, `/tf_static`
@@ -130,9 +139,10 @@ ros2 node info /mole/elevation_mapping_node
 Override the excavation preload:
 
 ```bash
-~/.codex/skills/dig-bag-replay/scripts/dig_bag_replay_tmux.sh \
+/home/lorenzo/codex_skills/skills/dig-bag-replay/scripts/dig_bag_replay_tmux.sh \
   --bag-root /path/to/run \
   --design-bag-path package://mole_maps/maps/hong0326_holes/hong0326_holes_surface \
+  --confirm-offline-container \
   --attach
 ```
 

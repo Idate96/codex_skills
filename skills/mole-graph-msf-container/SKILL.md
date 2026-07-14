@@ -1,55 +1,43 @@
 ---
 name: mole-graph-msf-container
-description: Start or attach to the Mole Graph-MSF container in tmux, optionally launching `mole_estimator`.
+description: "Start or attach to the Mole Graph-MSF container in tmux, optionally launching `mole_estimator`. Use for estimator-container bringup, attachment, health checks, and shutdown."
 ---
 
 # Mole Graph-MSF Container
 
-## Overview
-Start the Graph-MSF container from the host and keep it running in tmux, then (if requested) launch the `mole_estimator` inside the container.
+Graph-MSF estimator work now uses the standard `moleworks_ros` container; do not rely on the retired `moleworks_ros_graph_msf` alias or `moleworks_ros:graph_msf` image.
 
-## Quick Start (tmux)
-1) Run the helper script:
-```
-/home/lorenzo/.codex/skills/mole-graph-msf-container/scripts/start_graph_msf_container.sh [session] [window]
-```
-2) Attach to the session:
-```
+## Start Or Attach
+
+```bash
+/home/lorenzo/codex_skills/skills/mole-graph-msf-container/scripts/start_graph_msf_container.sh [session] [window]
 tmux attach -t <session>
 ```
-3) Verify the container is running:
-```
-docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
-```
 
-## Start Without tmux (direct shell)
-Use this when a one-off interactive container is fine.
-```
-bash -lc "source ~/.bashrc; moleworks_ros_graph_msf"
-```
+The helper uses the preferred `moleworks_ros` shell function when no container exists and opens `docker exec -it moleworks_ros bash` when it is already running.
 
-## Launch the State Estimator (inside container, optional)
-Use when the user asks to run the estimator from the Graph-MSF container.
-```
+## Launch Estimator Inside The Container
+
+Source the built workspace and use the current package default unless the user requested a named profile. Verify any explicit config exists before launch; `mole_estimator_robot.yaml` is not a current profile.
+
+```bash
+WS="$HOME/ros2_ws"
+[[ -f "$WS/install/setup.bash" ]] || WS="$HOME/moleworks/ros2_ws"
 source /opt/ros/jazzy/setup.bash
-source /home/lorenzo/ros2_ws/install/setup.bash
-ros2 launch mole_estimator mole_estimator.launch.py \
-  config:=/home/lorenzo/ros2_ws/src/moleworks_ros/mole_estimator/config/mole_estimator_robot.yaml
+source "$WS/install/setup.bash"
+ros2 launch mole_estimator mole_estimator.launch.py
 ```
 
-## Health Checks
-```
-ros2 topic list | egrep "graph_msf|/mole/state"
-ros2 topic echo --once /mole/state
-ros2 topic echo --once --qos-reliability best_effort /tf
+For an explicit profile, select a current YAML from `<workspace>/src/moleworks_ros/mole_estimator/config/` and pass it through the launch file's current config argument.
+
+## Health And Cleanup
+
+Use bounded checks:
+
+```bash
+ros2 topic list | rg 'graph_msf|/mole/state'
+timeout 10 ros2 topic echo --once /mole/state
+timeout 10 ros2 topic echo --once --qos-reliability best_effort /tf
 ```
 
-## Stop
-- Exit the container shell, or run:
-```
-docker stop <container_name>
-```
-- If tmux was used:
-```
-tmux kill-session -t <session>
-```
+Stop only the estimator process, tmux window/session, or `moleworks_ros` container started by this workflow. Do not stop an unrelated shared container.

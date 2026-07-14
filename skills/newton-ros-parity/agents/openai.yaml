@@ -1,0 +1,4 @@
+interface:
+  display_name: "Newton ROS Parity"
+  short_description: "Validate Newton-to-ROS clocks, TF, and terrain"
+  default_prompt: "Use $newton-ros-parity to bring up or inspect the Newton-to-Moleworks ROS parity stack and clean it up afterward."

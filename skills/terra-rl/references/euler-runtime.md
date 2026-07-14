@@ -2,23 +2,7 @@
 
 ## Required Slurm Runtime Shape
 
-Generic one-GPU comparison jobs are acceptable when the user wants quick A/B training and does not
-require a specific GPU type:
-
-```bash
-#SBATCH -n 1
-#SBATCH --cpus-per-task=4
-#SBATCH --gpus=1
-#SBATCH --partition=gpu.24h
-#SBATCH --time=24:00:00
-#SBATCH --mem-per-cpu=8G
-```
-
-On 2026-05-11 this allocated 1x NVIDIA GeForce RTX 2080 Ti on `eu-lo-g2-*` nodes for Terra A/B
-runs. Always confirm the actual GPU with `sacct AllocTRES` or `nvidia-smi`.
-
-If the user explicitly asks for RTX 3090s, request them directly. This can increase queue time and
-may move the job to `gpuhe.24h`.
+Use only verified NVIDIA GeForce RTX 3090 or RTX 4090 allocations for new Terra RL training unless the user explicitly approves another GPU family. Generic `--gpus=N` requests are insufficient by themselves because they can land on a different GPU type; constrain the node family and verify the actual allocation with both Slurm and `nvidia-smi`.
 
 Full default 3090 run:
 
@@ -83,7 +67,9 @@ variants use the same XLA flags.
 Run inside the allocation, after the exports above:
 
 ```bash
-"$VENV/bin/python" $WORK/terra-baselines/scripts/euler/check_jax_runtime.py --min-devices 4
+RUNTIME_CHECK="$WORK/terra-baselines/scripts/euler/check_jax_runtime.py"
+test -f "$RUNTIME_CHECK"
+"$VENV/bin/python" "$RUNTIME_CHECK" --min-devices 4
 ```
 
 This catches the two important classes of failure that `jax.devices()` alone misses:

@@ -1,6 +1,6 @@
 ---
 name: chat-morning-triage
-description: Triage Lorenzo's recent Google Chat into urgent actions, replies, follow-ups, and FYIs. Use for morning chat scans or chat-derived todo lists.
+description: "Triage Lorenzo's recent Google Chat into urgent actions, replies, follow-ups, and FYIs. Use for morning chat scans and chat-derived todo lists."
 ---
 
 # Chat Morning Triage
@@ -14,9 +14,10 @@ Use this skill for Lorenzo's beginning-of-day Google Chat sweep.
      - `https://www.googleapis.com/auth/chat.spaces`
      - `https://www.googleapis.com/auth/chat.messages.readonly`
    - If `messages.list` still returns `403 insufficient authentication scopes` right after a re-auth, move `~/.config/gws/token_cache.json` aside and retry once. This forces a fresh token refresh without losing saved credentials.
-2. Run:
+2. Choose a window that reaches the last working period. Use 18 hours on an ordinary weekday, about
+   72 hours on Monday, and widen further after a holiday or time away. Then run, for example:
    ```bash
-   python3 /home/lorenzo/codex_skills/skills/chat-morning-triage/scripts/scan_chat.py --since-hours 18 --page-size 15
+   python3 /home/lorenzo/codex_skills/skills/chat-morning-triage/scripts/scan_chat.py --since-hours "$SINCE_HOURS" --page-size 15
    ```
 3. Read the JSON output and produce a compact todo list with these buckets:
    - `Urgent today`
@@ -32,7 +33,8 @@ Use this skill for Lorenzo's beginning-of-day Google Chat sweep.
 5. Default scan scope:
    - known collaborator DMs from `/home/lorenzo/codex_skills/skills/chat-replies/references/collaborators.md`
    - recent named spaces active within the scan window when they are small enough to be useful for triage
-6. If an important DM is missing from the collaborator mapping, update the collaborator note after confirming the identity.
+6. If an important DM is missing from the collaborator mapping, report it. Update the local mapping
+   only when the user requested reference maintenance and the identity is confirmed.
 7. Do not send replies unless Lorenzo explicitly asks.
 
 ## Output Conventions

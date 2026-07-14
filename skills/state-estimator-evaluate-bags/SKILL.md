@@ -1,6 +1,6 @@
 ---
 name: state-estimator-evaluate-bags
-description: Reprocess and evaluate Mole estimator rosbags, generating Graph-MSF outputs, metrics, comparisons, and tuning reports.
+description: "Reprocess and evaluate Mole estimator rosbags. Use for Graph-MSF output generation, isolated ROS-domain replay, metric comparison, failure diagnosis, and tuning reports."
 ---
 
 # State Estimator Evaluate Bags
@@ -10,7 +10,8 @@ description: Reprocess and evaluate Mole estimator rosbags, generating Graph-MSF
 1) Build the estimator (fail fast on duplicate packages in this workspace):
 
 ```bash
-cd ~/ros2_ws
+WS="$HOME/ros2_ws"; [[ -f "$WS/install/setup.bash" ]] || WS="$HOME/moleworks/ros2_ws"
+cd "$WS"
 source /opt/ros/jazzy/setup.bash
 colcon build --base-paths src --packages-up-to mole_estimator mole_bag_tools
 source install/setup.bash
@@ -27,21 +28,23 @@ Typical layout:
 Use the batch reprocessor (it orchestrates a dedicated tmux session so ROS output is inspectable):
 
 ```bash
-cd ~/ros2_ws
+WS="$HOME/ros2_ws"; [[ -f "$WS/install/setup.bash" ]] || WS="$HOME/moleworks/ros2_ws"
+cd "$WS"
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
+BATCH_DIR="$HOME/mcap/<batch>"
 
 # Important: pick a ROS domain id that is NOT already in use, otherwise you'll record mixed publishers.
 ros2 run mole_bag_tools reprocess_mole_estimator_sensor_bags \
-  --batch-dir ~/mcap/mole_estimator_batch_2026-02-08 \
+  --batch-dir "$BATCH_DIR" \
   --ros-domain-id 80
 ```
 
 Notes:
 - The script hard-fails if required topics are missing (including the 4 leg IMUs).
 - The script hard-fails if `ROS_DOMAIN_ID` already has any nodes (domain isolation preflight).
-- For iteration speed it trims `legs_updown_20260208_152409` to 240 s by default (override with `--no-default-trims` or `--trim ...`).
- - The reprocessed eval bags record `/mole/turn_joint_filtered` so the offline analyzer can use the same filtered turn-joint omega as the estimator.
+- Use `--no-default-trims` or an explicit `--trim ...` when a repository default trim does not match the selected batch.
+- Reprocessed eval bags record `/mole/turn_joint_filtered` so the analyzer can use the estimator's filtered turn-joint omega.
 
 4) Analyze + generate the summary table (automation).
 
@@ -49,9 +52,9 @@ Batch (writes JSON per bag + a Markdown report):
 
 ```bash
 ros2 run mole_bag_tools evaluate_mole_estimator_eval_bags \
-  --reproc-dir ~/mcap/mole_estimator_batch_2026-02-08/reproc \
-  --json-dir ~/mcap/mole_estimator_batch_2026-02-08/metrics_YYYYMMDD_HHMMSS \
-  --md-out src/moleworks_ros/mole_estimator/docs/eval_batch_2026-02-08_metrics.md
+  --reproc-dir "$BATCH_DIR/reproc" \
+  --json-dir "$BATCH_DIR/metrics_YYYYMMDD_HHMMSS" \
+  --md-out "$BATCH_DIR/metrics_YYYYMMDD_HHMMSS/report.md"
 ```
 
 Single bag (after reprocessing):
@@ -66,11 +69,11 @@ ros2 run mole_bag_tools analyze_mole_estimator_eval_bag \
 
 ```bash
 ros2 run mole_bag_tools compare_mole_estimator_metrics_runs \
-  --a-json-dir ~/mcap/mole_estimator_batch_2026-02-08/metrics_OLD \
-  --b-json-dir ~/mcap/mole_estimator_batch_2026-02-08/metrics_NEW \
+  --a-json-dir "$BATCH_DIR/metrics_OLD" \
+  --b-json-dir "$BATCH_DIR/metrics_NEW" \
   --label-a OLD \
   --label-b NEW \
-  --md-out ~/mcap/mole_estimator_batch_2026-02-08/metrics_NEW/metrics_diff.md
+  --md-out "$BATCH_DIR/metrics_NEW/metrics_diff.md"
 ```
 
 The diff report includes control-relevant checks like `wz_err` (BASE yaw-rate consistency), plus the core smoothness/jitter metrics.
@@ -117,21 +120,7 @@ ros2 bag play "$SENSORS_BAG" \
   --playback-duration 240.0
 ```
 
-Notes on the report:
-- The summary table highlights strict-threshold failures as `FAIL(xxx)`.
-- It reports `J_TURN lag abs-med [ms]` (effective turn-joint lag; keep small since `J_TURN` is actively controlled).
-- It reports pose/twist consistency in two frames:
-  - `pose-twist map v_xy RMS`: includes map<->odom corrections (can be inflated by global corrections).
-  - `pose-twist odom v_xy RMS`: preferred local consistency check (odom->base vs twist).
-- Pose/twist consistency uses backward alignment (`*_bwd`) because the estimator publishes velocities derived from a
-  backward finite difference.
-- The analyzer drops initial `STATUS_OK` transients by default (`ok_warmup_s=1.0`).
-
-Key estimator knob for velocity quality:
-- `output_twist.source` in `mole_estimator/config/mole_estimator.yaml`
-  - `graph`: derive BASE twist from Graph-MSF IMU twist + transforms
-  - `pose_diff_odom`: finite-diff odom->BASE to get consistent v_xy (recommended baseline)
-- `output_twist.pose_diff_lpf_tau_s`: small low-pass (<=0.10s) if v_xy is noisy.
+For metric semantics, frame interpretation, and the main velocity-quality knobs, read [references/metrics.md](references/metrics.md).
 
 ## Common pitfalls (high signal)
 

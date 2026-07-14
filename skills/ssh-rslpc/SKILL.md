@@ -1,6 +1,6 @@
 ---
 name: ssh-rslpc
-description: Connect to `lorenzo@rslpc` over Tailscale and verify host/user identity. Use for `rslpc` or typo `rlspc` SSH requests.
+description: "Connect to `lorenzo@rslpc` over Tailscale and verify host/user identity. Use for SSH requests naming `rslpc` or the common typo `rlspc`."
 ---
 
 # SSH RSLPC
@@ -15,16 +15,16 @@ Use this skill to make SSH access to `rslpc` deterministic. Verify Tailscale pee
 ```bash
 tailscale status | grep -E "[[:space:]]rslpc[[:space:]]"
 ```
-2. If `rslpc` is missing, switch to the `fangnan99.github` tailnet profile:
+2. If `rslpc` is missing, record the current Tailscale profile, disclose that switching is host-global state, then switch to the `fangnan99.github` profile:
 ```bash
 profile_id="$(sudo tailscale switch --list | awk '$2=="fangnan99.github" {print $1; exit}')"
 sudo tailscale switch "$profile_id"
 ```
 3. Run the strict connectivity check:
 ```bash
-bash scripts/check_rslpc_ssh.sh
+/home/lorenzo/codex_skills/skills/ssh-rslpc/scripts/check_rslpc_ssh.sh
 ```
-4. Start the interactive shell if needed:
+4. Start the interactive shell only when the user explicitly asked for one:
 ```bash
 ssh rslpc
 ```
@@ -43,4 +43,4 @@ ssh rslpc
 
 ## Script
 
-- `scripts/check_rslpc_ssh.sh`: Verify peer visibility and SSH access end-to-end.
+- `/home/lorenzo/codex_skills/skills/ssh-rslpc/scripts/check_rslpc_ssh.sh`: Verify peer visibility and SSH access end-to-end.

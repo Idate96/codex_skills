@@ -1,6 +1,6 @@
 ---
 name: chat-replies
-description: Read or reply in Google Chat, download Chat attachments, or turn chat context into a Calendar invite. Use for DMs, spaces, PDFs, timesheets, and meeting links.
+description: "Read or reply in Google Chat, download Chat attachments, or turn chat context into a Calendar invite. Use for DMs, spaces, PDFs, timesheets, meeting links, and Chat-based scheduling."
 ---
 
 # Chat Replies
@@ -25,19 +25,27 @@ Use this skill when Lorenzo asks to read or reply in Google Chat, or to pull fil
    - If the latest message looks blank, inspect `attachment[]` before assuming the sender sent an empty message.
    - With the local `gws` CLI, Chat list/create commands pass required API parameters through `--params`, not first-class flags:
      ```bash
-     gws chat spaces messages list \
-       --params '{"parent":"spaces/SPACE_ID","pageSize":10}'
+     SPACE='spaces/SPACE_ID'
+     PARAMS=$(jq -cn --arg parent "$SPACE" '{parent: $parent, pageSize: 10}')
+     gws chat spaces messages list --params "$PARAMS"
+
+     MESSAGE='message body'
+     BODY=$(jq -cn --arg text "$MESSAGE" '{text: $text}')
      gws chat spaces messages create \
-       --params '{"parent":"spaces/SPACE_ID"}' \
-       --json '{"text":"message body"}'
+       --params "$(jq -cn --arg parent "$SPACE" '{parent: $parent}')" \
+       --json "$BODY"
      ```
+     Always serialize user-derived message text with `jq --arg` (or an equivalent JSON encoder); do
+     not interpolate it into hand-written JSON.
    - To reply in a thread, include the thread in the body:
      ```bash
      gws chat spaces messages create \
        --params '{"parent":"spaces/SPACE_ID"}' \
        --json '{"text":"message body","thread":{"name":"spaces/SPACE_ID/threads/THREAD_ID"}}'
      ```
-   - If a thread reply returns `404` or Lorenzo says he cannot see it, repost a concise top-level message in the space and include any PR/review link directly.
+   - If a thread reply returns `404` or Lorenzo says he cannot see it, repost a concise top-level
+     message in the space and include any PR/review link directly. Then re-list a small recent window
+     and verify the top-level message's text and `createTime`.
    - For uploaded files, prefer `attachment[].attachmentDataRef.resourceName` over `attachment[].name` when downloading.
    - `downloadUri` can bounce to an interactive Google sign-in page from CLI usage, so do not rely on it for automation.
 3. Sort messages by `createTime`.
@@ -72,6 +80,7 @@ Use this skill when Lorenzo asks to read or reply in Google Chat, or to pull fil
 - Do not guess collaborator email addresses for follow-up or CCs. Use a local mapping or ask Lorenzo.
 - For meetings, require an attendee, absolute time, and explicit duration; inspect nearby events and patch a matching owned event instead of duplicating it.
 - Verify Calendar mutations include the intended attendee and Meet link.
+- Verify sent Chat messages by reading back the returned message resource or a small recent window.
 - Prefer short, informal first-person wording unless Lorenzo asks for a different tone.
 - Prefer the Google Chat API over browser automation for read/send operations.
 - If `messages.list` still returns `403 insufficient authentication scopes` right after a re-auth, move `~/.config/gws/token_cache.json` aside and retry once.

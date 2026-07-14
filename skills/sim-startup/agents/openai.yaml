@@ -1,4 +1,4 @@
 interface:
   display_name: "Sim Startup"
   short_description: "Start mixed-container Isaac sim in tmux"
-  default_prompt: "Start the mixed-container Moleworks Isaac/Terra sim stack with tmux windows sim, robot, perception, using ROS_DOMAIN_ID 24 unless told otherwise."
+  default_prompt: "Use $sim-startup to start the split-container Moleworks Isaac/Terra simulation stack in tmux on the requested ROS domain."

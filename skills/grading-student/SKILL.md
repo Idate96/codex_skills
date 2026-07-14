@@ -1,11 +1,17 @@
 ---
 name: grading-student
-description: Finalize RSL student grading and offboarding. Use for grading sheets, grade handoffs, tracker evidence, eDoz requests, access revocation, or status replies.
+description: "Finalize RSL student grading and offboarding. Use for grading sheets, grade handoffs, tracker evidence, eDoz requests, access revocation, and grading-status replies."
 ---
 
 # Grading Student
 
 Use this skill for the end-of-project grading/offboarding path for RSL student projects.
+
+Route the request before acting:
+
+- A status check, grade lookup, audit, or draft request is read-only.
+- Tracker edits, access changes, form submissions, email, and Chat messages require the user to request that action; a request to inspect grading status does not authorize them.
+- A request to finalize the complete offboarding workflow authorizes the listed in-scope steps, but still requires evidence before marking any state complete.
 
 ## References
 
@@ -94,3 +100,4 @@ If `gws auth login` says no OAuth client is configured, first create or provide 
 - Do not use credentials from unrelated environments or clusters.
 - Do not expose OAuth tokens, client secrets, downloaded credentials, or private grading-sheet contents beyond the requested summary.
 - Keep chat confirmations informal and factual, for example: `Done - I sent Lorena the grading sheet for Luca and updated the tracker for the completed project/grading-sheet handoff.`
+- Verify every external write or send by reading back the resulting tracker cells, access state, or message/thread metadata.

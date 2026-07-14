@@ -1,6 +1,6 @@
 ---
 name: rl-newton-cluster-ops
-description: "Operate Newton RL runs on Euler, Brev, or Vast.ai: smoke, submit, verify startup, monitor, sync, and update ledgers."
+description: "Operate Newton RL runs on Euler, Brev, or Vast.ai. Use for smoke gates, submission, startup verification, scheduler and W&B monitoring, targeted sync, and experiment ledgers."
 ---
 
 # Newton Cluster Ops
@@ -189,19 +189,7 @@ If W&B is expected but no W&B URL appears yet, do not assume the run is healthy;
 check whether it is still constructing the world/reset cache or has failed
 before logger initialization.
 
-When waiting for long training runs to reach curriculum/checkpoint gates, sleep in long intervals by default:
-
-```bash
-sleep 7200
-```
-
-For convergence-oriented runs, prefer multi-hour waits such as `sleep 7200` to
-`sleep 21600` unless a checkpoint/completion boundary is expected sooner. Use
-shorter sleeps only for startup validation, benchmark completion, debugging
-failures, imminent process completion, or when the user explicitly asks for a
-tighter cadence. While sleeping, avoid repeated manual polling; resume with a
-compact status table sourced from W&B, Slurm, checkpoint files, benchmark
-markers, and run artifacts.
+For long training runs, use the product's recurring monitor or wait mechanism with a cadence matched to the next expected checkpoint or completion boundary. Do not block an agent process with multi-hour `sleep` commands. Each resumed check should produce one compact status table from W&B, Slurm, checkpoint files, benchmark markers, and run artifacts.
 
 When a long run exits, do a completion gate before calling it successful:
 
@@ -267,7 +255,7 @@ Treat these as mandatory for real runs:
 4. When a completed pinned benchmark clearly changes the best-known checkpoint for a named condition, update `docs/experiments/latest.md`.
 5. When a run is no longer live, preserve the latest detailed state in `docs/experiments/archive/`.
 6. Then move the compact summary row to `docs/experiments/done.md`.
-7. A non-live job must not remain `RUNNING`; mark it with one terminal label such as `FAILED_INVALID`, `FAILED_RESOURCE`, `FAILED_RESET_PREFILTER`, `FAILED_SIGNAL`, `CANCELLED_PRUNED`, or `TIMEOUT_COMPLETE`.
+7. A non-live job must not remain `RUNNING`. Record the scheduler terminal state (`COMPLETED`, `FAILED`, `TIMEOUT`, or `CANCELLED`) separately from the scientific/artifact assessment such as `usable`, `invalid`, `resource failure`, or `pruned`; do not encode a timeout as completion.
 8. For Vast.ai work, also update `docs/experiments/vast_current_jobs.md`
    whenever launching, stopping, syncing, or status-checking instances. Keep it
    compact: instance id, endpoint, hardware, live job names, and whether the

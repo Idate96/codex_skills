@@ -1,6 +1,6 @@
 ---
 name: pdf-signing
-description: Place Lorenzo's existing handwritten signature image in a local PDF and verify it visually. Use for non-cryptographic PDF signing or placement fixes.
+description: "Place Lorenzo's existing handwritten signature image in a local PDF and verify it visually. Use for non-cryptographic PDF signing, signature placement, and placement fixes."
 ---
 
 # PDF Signing
@@ -15,7 +15,7 @@ Use this when the task is to place an existing signature image onto a PDF. This 
 4. Inspect the signature page before editing:
    - Render the relevant page with `pdftoppm -png`.
    - Use `view_image` on the rendered page.
-5. Place the signature with `scripts/place_signature.py`.
+5. Place the signature with `/home/lorenzo/codex_skills/skills/pdf-signing/scripts/place_signature.py`.
 6. Render the edited page and verify the placement visually.
 7. Save to a new output PDF unless Lorenzo explicitly asks to overwrite the source.
 8. If `python3` does not have `fitz`/`PyMuPDF`, run the script through `uv` instead of trying to mutate the system Python.
@@ -60,7 +60,7 @@ Then open `/tmp/pdf_signing_preview/page-3.png` with `view_image`.
 - `--page` is 1-based.
 - Each `--rect` is `x0,y0,x1,y1` in PDF points.
 - PyMuPDF uses a top-left origin with `y` increasing downward.
-- Verified ETH monthly timesheet supervisor signature rectangle on the current SAP landscape A4 form:
+- Previously verified ETH monthly-timesheet rectangle; reuse only after visually confirming the current form has the same layout:
   - page `1`
   - rect `686,146,818,175`
 - Prefer matching the size and baseline of any existing handwritten signature already present in the document.

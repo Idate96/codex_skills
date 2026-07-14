@@ -1,6 +1,6 @@
 ---
 name: vast-isaaclab-training
-description: "Operate billable Vast.ai IsaacLab/UGEP runs: instances, runtime setup, W&B training, sync, monitoring, billing cleanup, and ledgers."
+description: "Operate billable Vast.ai IsaacLab/UGEP runs. Use for instance selection, runtime hydration, W&B training, monitoring, sync, billing cleanup, and experiment ledgers."
 ---
 
 # Vast IsaacLab Training
@@ -10,6 +10,11 @@ description: "Operate billable Vast.ai IsaacLab/UGEP runs: instances, runtime se
 Treat live Vast.ai actions as billable infrastructure changes. Before creating,
 stopping, destroying, or modifying an instance, identify the target instance and
 separate it from unrelated running work.
+
+Status, inventory, recommendation, and command-preparation requests are read-only. Creating or
+modifying an instance, launching paid training, stopping, and destroying are distinct actions; perform
+only the stages the user requested. Cleanup of a newly created failed task instance is allowed within
+an authorized launch workflow to prevent accidental billing, with the result reported.
 
 For command details and known Moleworks paths, read
 `references/vast-isaaclab-runbook.md` before taking live Vast actions.
@@ -28,7 +33,8 @@ For command details and known Moleworks paths, read
    - Prefer verified direct-SSH offers, sufficient disk, and a conservative price over suspicious cheapest offers.
 
 3. Create or select the instance.
-   - Use the GPU count requested by the user; if unspecified, ask or choose a conservative single RTX 3090 for smoke/trial runs.
+   - Use the GPU count requested by the user. If the request does not determine an existing instance,
+     GPU type/count, or acceptable cost envelope, ask before creating billable infrastructure.
    - Use at least 120 GB disk for Moleworks Ext / UGEP unless the user says otherwise.
    - Record the instance immediately in `docs/VAST_INSTANCES.md`.
 

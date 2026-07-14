@@ -1,6 +1,6 @@
 ---
 name: rl-isaaclab
-description: "Route Moleworks IsaacLab RL work: smoke tests, cluster or Vast runs, sync, playback, benchmarks, and experiment tracking."
+description: "Route Moleworks IsaacLab RL work. Use as the default entry point for smoke tests, Euler or Vast training, sync, playback, benchmarking, and experiment tracking."
 ---
 
 # RL + IsaacLab Router
@@ -35,7 +35,7 @@ Use this as the default entry point for `moleworks_ext` RL work. Keep it thin an
 
 ## Branch References
 
-Read only the docs that match the current task:
+Resolve the active checkout first and read only docs that exist and match the current task; branch-specific ledgers may not exist in the canonical checkout:
 
 - `docs/AI_RESEARCHER_WORKFLOW.md`
 - `docs/EXPERIMENTS_ONGOING.md`
@@ -52,6 +52,6 @@ Read only the docs that match the current task:
 - Live run report: `scripts/utils/cluster_run_report.sh`
 - Config diff: `scripts/utils/compare_run_configs.py`
 - Excavation benchmark: `scripts/mole_environments/excavation3D/benchmark_excavation.py`
-- Temporal plots: `scripts/plot_tb_scalars.py`
+- Temporal plots: `/home/lorenzo/codex_skills/skills/rl-isaaclab/scripts/plot_tb_scalars.py`
 
 If the task starts to sprawl across cluster ops, benchmarks, ROS parity, and repo archaeology at the same time, stop and load the narrower skills rather than expanding this one.

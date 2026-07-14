@@ -1,4 +1,4 @@
 interface:
   display_name: "Vast IsaacLab Training"
   short_description: "Launch and monitor IsaacLab runs on Vast.ai"
-  default_prompt: "Use $vast-isaaclab-training to launch a Moleworks IsaacLab training run on Vast.ai and keep the ledgers updated."
+  default_prompt: "Use $vast-isaaclab-training to inspect or operate the requested Moleworks IsaacLab workflow on Vast.ai while preserving billing and mutation boundaries."

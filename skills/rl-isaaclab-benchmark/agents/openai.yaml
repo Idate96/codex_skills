@@ -1,0 +1,4 @@
+interface:
+  display_name: "IsaacLab Benchmark"
+  short_description: "Benchmark and compare IsaacLab checkpoints"
+  default_prompt: "Use $rl-isaaclab-benchmark to benchmark these IsaacLab checkpoints under a fair pinned contract and report the evidence."

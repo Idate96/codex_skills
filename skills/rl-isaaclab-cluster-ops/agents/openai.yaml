@@ -1,0 +1,4 @@
+interface:
+  display_name: "IsaacLab Cluster Ops"
+  short_description: "Submit, monitor, and sync IsaacLab Euler runs"
+  default_prompt: "Use $rl-isaaclab-cluster-ops to smoke-test, submit, monitor, debug, or sync this IsaacLab Euler run."
