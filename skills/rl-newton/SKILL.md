@@ -30,12 +30,29 @@ No single checkout is guaranteed to contain every analytic and FEE tool. Before 
 - For live Newton/ROS/Terra failures, save a checkpoint/map snapshot and logs before changing code or config, record the hypothesis/change/test, then resume from the saved state.
 - For live excavation, keep the per-scoop and per-workspace evidence ledger required by the active runbook.
 
+## Delegate Mechanical Execution
+
+- Use a sub-agent by default for context-heavy, mechanical execution: local training smokes, real cluster submission,
+  startup verification, scheduler/W&B monitoring, targeted artifact sync, benchmark execution, and benchmark-log parsing.
+- Keep experiment design, checkout selection, mutation/compute authorization, launch count, benchmark contract, and
+  promotion decisions in the parent agent. Delegation never broadens the user's authorization.
+- Give one worker ownership of a run's complete launch lifecycle so two agents cannot submit duplicate jobs: validate
+  the exact alias, smoke it, submit once, update the ledger, pass the startup gate, and return the job/W&B/artifact
+  evidence. Reuse that worker for later monitoring or failure diagnosis.
+- Give one benchmark worker ownership of a selected checkpoint panel. Run local GPU benchmarks sequentially, retain raw
+  output in the run artifact tree or `/tmp`, and return only report paths plus decision-relevant metrics.
+- Require compact worker output: direct outcome, commands and validation results, immutable config/run identifiers,
+  scheduler/W&B state, artifact paths, and unresolved risks. Keep raw logs out of the parent context unless diagnosing a
+  concrete failure.
+- If sub-agents are unavailable, perform the same bounded workflow locally and keep tool output narrowly filtered.
+
 ## Route
 
 - Use `rl-newton-cluster-ops` for smoke gates, Euler/Brev/Vast submit, startup verification, monitoring, sync, and ledgers.
 - Use `rl-newton-benchmark` for FEE or analytic benchmarks, terrain banks, replay, leaderboards, qualitative clips, and result analysis.
 - Use `newton-ros-parity` plus `ros2-debugging` for ROS, TF, terrain-topic, Dig3D, or cleanup issues.
-- Use `moleworks-subagent-orchestrator` only when the task has independent evidence-gathering lanes and delegation is authorized.
+- Use `moleworks-subagent-orchestrator` for delegated launch, monitoring, sync, or benchmark execution, as well as tasks
+  with independent evidence-gathering lanes.
 
 ## Starting Points
 
