@@ -35,7 +35,8 @@ On Euler, `#SBATCH --gpus=rtx_3090:N` resolves to
 ```bash
 module load stack/2024-06 cuda/12.1.1
 
-WORK=/cluster/home/lterenzi/codex_terra_edge_validation
+WORK=/cluster/home/lterenzi/codex_terra_edge_validation   # code only; home is a hard 50 GB cap
+RUNS=/cluster/scratch/lterenzi/codex_terra_edge_runs      # W&B, checkpoints, run logs
 VENV=/cluster/scratch/lterenzi/codex_terra_edge_venv
 SITE_PACKAGES=$("$VENV/bin/python" - <<'PY'
 import site
@@ -48,10 +49,13 @@ export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export LD_LIBRARY_PATH="$SITE_PACKAGES/nvidia/cudnn/lib:$SITE_PACKAGES/nvidia/cuda_cupti/lib:$SITE_PACKAGES/nvidia/cublas/lib:$SITE_PACKAGES/nvidia/cuda_nvrtc/lib:$SITE_PACKAGES/nvidia/nccl/lib:${LD_LIBRARY_PATH:-}"
 export WANDB_ENTITY=aless-weber-eth
 export WANDB_PROJECT=mixed-agents
-export WANDB_DIR="$WORK/wandb"
+export WANDB_DIR="$RUNS/wandb"      # scratch, NOT home — see Storage Targets below
+mkdir -p "$WANDB_DIR"
 export DATASET_PATH=/cluster/project/rsl/alesweber/TerraProject/terra/data/terra/train
 export DATASET_SIZE=600
 ```
+
+Point checkpoint output at `$RUNS` too (e.g. `--checkpoint_dir "$RUNS/checkpoints/$SLURM_JOB_ID"`). Symlink from the home workspace if a tool expects a local path: `ln -sfn "$RUNS" "$WORK/runs"`.
 
 For jobs that hit cuDNN autotune failures, add:
 
@@ -61,6 +65,24 @@ export XLA_FLAGS="${XLA_FLAGS:+$XLA_FLAGS }--xla_gpu_autotune_level=0"
 
 Expect a small steady-state throughput cost. Compare policy curves by update/W&B step unless both
 variants use the same XLA flags.
+
+## Storage Targets
+
+Verified quotas and purge policy from the RSL Euler guide and `lquota` on 2026-07-20:
+
+| Location | Quota | Purge | Use for Terra |
+|---|---|---|---|
+| `/cluster/home/lterenzi` | 45 GB soft / **50 GB hard** | never | Code and small config only. Was 44.2 GB used (88% of hard) on 2026-07-20. |
+| `/cluster/scratch/lterenzi` | 2.5 TB soft / 2.7 TB hard | **files not accessed for ~15 days are deleted** | W&B (`WANDB_DIR`), checkpoints, run logs, the training venv. |
+| `/cluster/work/rsl/lterenzi` | ≤ 200 GB, ~50k inodes | never | Archive of final large checkpoints, tars, Singularity images. Verified writable; 261 GB used, prune first. |
+| `/cluster/project/rsl/lterenzi` | ≤ 75 GB, ~2.5M inodes | never | Long-term venvs and many-small-file trees (high inode). Verified writable; 106 GB used, prune first. |
+| `$TMPDIR` (local node scratch) | up to 800 GB | at end of job | Stage dataset/container for a single run's I/O. |
+
+Rules:
+
+- Run artifacts (checkpoints, `WANDB_DIR`, logs) go under `/cluster/scratch/lterenzi/codex_terra_edge_runs/`, NEVER `/cluster/home`. On 2026-07-20 a Terra job died with `Disk quota exceeded` because these were written to home while home was at 44/50 GB; ops moved them to that scratch dir with symlinks from the home workspace.
+- Scratch is purged after ~15 days of no access. Anything needed long-term must be `rsync`'d to `/cluster/work/rsl/lterenzi` (large files) or `/cluster/project/rsl/lterenzi` (venvs), or be cheaply rebuildable. Do not keep the only copy of a final checkpoint on scratch.
+- The Terra dataset already lives read-only at `/cluster/project/rsl/alesweber/TerraProject/...`; never copy it into home.
 
 ## Mandatory GPU Preflight
 
@@ -125,3 +147,9 @@ If state is `crashed` and summary/history are empty, the run produced no trainin
   CUDA libraries or module setup are wrong; do not train.
 - Job stuck before update 1:
   record as compile/runtime investigation, not a training result.
+- Import fails on an empty `jax` (or similar) namespace package when the venv lives on
+  `/cluster/scratch`: the scratch purge deleted files not accessed for ~15 days and left a hollow
+  package tree. Rebuild the venv, and keep long-lived venvs on `/cluster/project/rsl/lterenzi`.
+- `Disk quota exceeded` / `OSError: [Errno 122]` while writing checkpoints or W&B files: home
+  (50 GB hard) is full because run artifacts were pointed at `/cluster/home`. Repoint `WANDB_DIR`
+  and checkpoint dirs to `/cluster/scratch/lterenzi/codex_terra_edge_runs/`; check `lquota`.

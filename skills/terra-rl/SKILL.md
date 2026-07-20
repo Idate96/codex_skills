@@ -144,6 +144,19 @@ compatibility, read `references/wandb-success-calibration.md`.
 
 Read [references/euler-runtime.md](references/euler-runtime.md) for the current workspace, module and library exports, verified runtime-check path, monitoring commands, and known failure signatures. Treat package pins and node families there as runtime-checked values, not timeless defaults.
 
+### Storage targets
+
+`/cluster/home/lterenzi` is a hard 50 GB cap (44.2 GB used on 2026-07-20, over the 45 GB soft quota). On 2026-07-20 a Terra job died with `Disk quota exceeded` because `WANDB_DIR` and checkpoints were written under home; ops moved them to `/cluster/scratch/lterenzi/codex_terra_edge_runs/` with symlinks from the home workspace. Home is for code and small files only.
+
+| Artifact | Path | Caveat |
+|---|---|---|
+| Checkpoints, `WANDB_DIR`, run logs | `/cluster/scratch/lterenzi/codex_terra_edge_runs/` (symlink from the home workspace) | NEVER write these to `/cluster/home`. Scratch: files not accessed for ~15 days are purged. |
+| Final large checkpoints, tars | `/cluster/work/rsl/lterenzi` (200 GB, few big files) | Verified writable 2026-07-20; already 261 GB used, prune first. |
+| venvs, many-small-file trees | `/cluster/project/rsl/lterenzi` (75 GB, high inode) | Verified writable 2026-07-20; already 106 GB used, prune first. |
+| Dataset (read-only) | `/cluster/project/rsl/alesweber/TerraProject/...` | Existing project space; do not copy into home. |
+
+Scratch is purged when a file has not been accessed for ~15 days. Anything needed long-term (final checkpoints, venvs) must be `rsync`'d to work/project or be rebuildable — a venv left on scratch was already corrupted by the purge (empty `jax` namespace package, import fails). Do not put the training venv or final artifacts on scratch and expect them to survive.
+
 ## Local Performance And Failure History
 
 For local CPU/GPU environments, capacity and throughput measurements, retained or
