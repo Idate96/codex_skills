@@ -1,0 +1,4 @@
+interface:
+  display_name: "RSL GitHub Access"
+  short_description: "Manage leggedrobotics access through CSV PRs"
+  default_prompt: "Use $rsl-github-access to grant or renew my leggedrobotics repository or team access."
