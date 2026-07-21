@@ -25,7 +25,7 @@ Read the branch docs before improvising:
 - `docs/experiments/latest.md`
 - `docs/experiments/running.md`
 - `docs/experiments/done.md`
-- `docs/SHARED_TURN_DEFAULT_TRAINING.md`
+- `docs/research/README.md`
 - `cluster/README.md`
 - `cluster/docs/workflows.md`
 
@@ -106,6 +106,31 @@ For the current shared-turn `dev/analytic` work, prefer the Euler helpers and le
   user explicitly asks for seed robustness or the design has already narrowed
   to a small set of finalists. Repeated runs are not a substitute for
   ablations.
+
+## Euler Storage Contract
+
+Treat file placement as a launch invariant, not a cleanup afterthought:
+
+- `/cluster/scratch/$USER`: synchronized Newton/Newton-Actuators/RSL-RL source,
+  per-run code snapshots, logs, W&B state, and disposable caches. Scratch is
+  purged, so sync required outputs and checkpoints before they age out.
+- `/cluster/project/rsl/$USER`: persistent expanded datasets, generated asset
+  roots, and software trees with many small files.
+- `/cluster/work/rsl/$USER`: large `.sif` images, checkpoints, and compressed
+  archives only. Never rsync an expanded source, environment, cache, or asset
+  tree into work; its inode allowance is much smaller.
+
+Before a broad sync or large launch, check:
+
+```bash
+ssh euler 'lquota; lfs quota -u "$USER" /cluster/work/rsl; \
+  (head -n 5 && grep -w "$USER") < /cluster/project/rsl/.rsl_user_data_usage.txt'
+```
+
+Use the checked-in `.env.cluster.template` layout. If a persistent small-file
+tree is found in work, migrate it to
+project storage, verify the copy, and leave a compatibility symlink only when
+existing launch contracts still reference the old path.
 
 ## Smoke Gate
 

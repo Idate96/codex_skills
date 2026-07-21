@@ -11,9 +11,9 @@ Use this skill for cluster-side RL operations in `moleworks_ext`.
 
 Read the repo workflow/docs before improvising:
 
-- `docs/AI_RESEARCHER_WORKFLOW.md`
-- `docs/EXPERIMENTS_ONGOING.md`
-- `docs/EXPERIMENTS_RUN.md`
+- `docs/research/README.md`
+- `docs/research/ugep/README.md`
+- `docs/research/ugep/experiments/active.md`
 - `docs/MULTI_GPU_TRAINING.md`
 - `docker/cluster/cluster_interface.sh`
 - `docker/cluster/sync_experiments.sh`
@@ -29,6 +29,35 @@ Read the repo workflow/docs before improvising:
 - Do not talk about "pulling a policy" unless the job actually trained one.
 - Keep experiment docs current in the same work session as submit/sync/closeout.
 - Prefer targeted live diagnostics and targeted sync before broad full-log sync.
+
+## Euler Storage Contract
+
+Use the storage class that matches the file pattern:
+
+- `/cluster/project/rsl/$USER`: synchronized `moleworks_ext` source, expanded
+  UGEP asset roots, persistent logs, and reproducibility metadata.
+- `/cluster/work/rsl/$USER`: large `.sif` images, checkpoints, and compressed
+  archives only. Never place expanded source/assets or caches here because its
+  inode allowance is small.
+- `/cluster/scratch/$USER`: Isaac Sim caches, W&B cache/state, and disposable
+  staging. Scratch is purged; sync required artifacts before they age out.
+- `$TMPDIR`: per-job expanded assets and containers. Use `--stage-dir-ro` to
+  copy persistent project assets into node-local scratch for a run.
+
+The local cluster configuration should define:
+
+```bash
+CLUSTER_ISAACLAB_DIR=/cluster/project/rsl/$CLUSTER_USER/moleworks_ext
+CLUSTER_LOGS_PATH=/cluster/project/rsl/$CLUSTER_USER/moleworks_ext_logs
+CLUSTER_SIF_PATH=/cluster/work/rsl/$CLUSTER_USER
+CLUSTER_ISAAC_SIM_CACHE_DIR=/cluster/scratch/$CLUSTER_USER/docker-isaac-sim
+CLUSTER_WANDB_DIR=/cluster/scratch/$CLUSTER_USER/wandb
+```
+
+Before broad syncs or asset generation, inspect `lquota`, `lfs quota -u
+$USER /cluster/work/rsl`, and the RSL project usage report. Treat a directory
+with thousands of expanded files under work as a placement bug: migrate it to
+project, verify it, and update every staging path before deleting the old tree.
 
 ## Local Smoke Gate
 
@@ -69,8 +98,9 @@ Use narrow checks first:
 ```bash
 ssh euler 'squeue -u $USER'
 ssh euler 'sacct -j <jobid> --format=JobID,State,Elapsed,Timelimit,Partition%12,ExitCode -P'
-ssh euler 'tail -100 /cluster/scratch/<user>/moleworks_ext_<timestamp>/slurm-<jobid>.out'
-ssh euler 'tail -50 /cluster/scratch/<user>/moleworks_ext_<timestamp>/slurm-<jobid>.err'
+source docker/cluster/.env.cluster
+ssh "$CLUSTER_LOGIN" "tail -100 '$CLUSTER_SLURM_LOGS_PATH/slurm-<jobid>.out'"
+ssh "$CLUSTER_LOGIN" "tail -50 '$CLUSTER_SLURM_LOGS_PATH/slurm-<jobid>.err'"
 ```
 
 Preferred live diagnostic helper:
