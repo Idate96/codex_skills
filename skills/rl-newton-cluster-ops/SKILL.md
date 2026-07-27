@@ -37,10 +37,35 @@ For the current shared-turn `dev/analytic` work, prefer the Euler helpers and le
 - Shared-turn partially dug recovery or replay finetune: `cluster/submit_shared_turn_w_cabin_partially_dug.sh`
 - Shared-turn no-AoA actor branch family: `cluster/submit_shared_turn_w_cabin_no_aoa_actor.sh`
 - Generic training: `cluster/submit_job.sh`
+- Bounded one-GPU Euler benchmark/diagnostic: `cluster/submit_job.sh quick`
 - Brev only when explicitly requested: `cluster/submit_job_brev.sh`
 - Vast.ai: `cluster/sync_code_vast.sh`, `cluster/setup_vast_env.sh`,
   `cluster/submit_job_vast.sh`, then `cluster/sync_logs.sh` with
   `CLUSTER_TYPE=vast`
+
+For a short Euler command that is not `scripts/rsl_rl/train.py`, use
+`submit_job.sh quick`; `MOLEWORKS_CLUSTER_COMMAND` is unsupported. Pass each
+command token after `--`, use `@LOG_ROOT@` for persistent inputs, and use
+`@OUTPUT_DIR@` for outputs. The launcher writes exact argv to a private
+NUL-delimited command file, forces normal code sync plus an immutable snapshot,
+records the command in the submit manifest, and disables W&B unless explicitly
+configured otherwise:
+
+```bash
+cd /path/to/intended/worktree/cluster
+CLUSTER_ENV_FILE=/path/to/shared/.env.euler ./submit_job.sh quick \
+  --run-id <unique-id> \
+  --task <task> \
+  --num-worlds <N> \
+  -- \
+  python scripts/<benchmark>.py \
+  --checkpoint @LOG_ROOT@/<checkpoint-subpath> \
+  --output @OUTPUT_DIR@
+```
+
+Sync and checksum-verify any checkpoint under `@LOG_ROOT@` before submitting.
+Never reuse a quick-job run id: its source snapshot and command file are
+immutable.
 
 ## Hard Rules
 
