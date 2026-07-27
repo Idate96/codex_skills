@@ -91,6 +91,15 @@ Write and run the smallest test set that makes the result trustworthy:
 
 Keep tests fast, deterministic, and targeted. Do not pursue coverage targets, compatibility matrices, duplicated test layers, exhaustive edge cases, or mocks for trivial glue. During iteration, run the narrowest relevant tests; run broader suites only when required by the repository or justified by integration risk.
 
+Use a time-boxed evidence funnel:
+
+- Keep focused unit and contract checks in the seconds-scale whenever practical.
+- For a vectorized GPU simulator, test hundreds of environments together (default to roughly 512, adjusted within 128-1024 for memory) with the shortest useful horizon and a 2-5 minute hard timeout.
+- Do not use a serial one-environment rollout as the default functional smoke; reserve it for a concrete trace, rendering, or numerical-debug question.
+- Write detailed per-environment data to an artifact and print only compact aggregates.
+- Stop after the first stage that answers the current research decision. Run large banks, repeated seeds, statistical intervals, and long horizons only when the claim or promotion gate requires them.
+- Launch one bounded run and let it finish or time out; do not spend the iteration loop repeatedly polling an unchanged process.
+
 ## Do Not Build Smoke Frameworks
 
 - Do not turn asynchronous infrastructure, process startup and cleanup, discovery, retries, and timing into a custom orchestration state machine merely to claim that a system works.

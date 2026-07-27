@@ -33,6 +33,23 @@ Read only what matches the task:
 - Compare fresh-RBF performance before reasoning about carved-terrain replay.
 - Do not trust a saved terrain bank until same-episode verification passes.
 
+## Fast Evidence Funnel
+
+Use the cheapest stage that can answer the current question:
+
+1. Run focused import, shape, coordinate, and contract tests; target seconds, not minutes.
+2. Run one bounded vectorized CUDA smoke. For Newton simulators designed for batched execution, start at 512 worlds (normally stay within 128-1024), use one macro or the smallest useful step horizon, disable W&B, and impose a 2-5 minute wall-clock limit.
+3. Scale to a development bank only after the smoke passes and the next decision needs behavior across geometries.
+4. Run the full pinned promotion bank, repeats, confidence intervals, videos, and tail analysis only for a promotion or paper claim that needs them.
+
+Never benchmark a batched GPU environment with `num_envs=1` merely because it
+looks cheaper; simulator setup and synchronized rollout overhead can make that
+much slower. Reserve one-world runs for trace inspection, rendering, or
+reproducing a specific numerical failure. Emit aggregate counts, rates, timing,
+and artifact paths to the console; keep per-world rows in files. Start one
+bounded command, wait for completion or its hard timeout, and avoid repeated
+status polling.
+
 ## Main Entry Points
 
 - Generic excavation benchmark: `scripts/benchmark/benchmark_excavation.py`

@@ -21,6 +21,9 @@ No single checkout is guaranteed to contain every analytic and FEE tool. Before 
 - Run launchers from the selected worktree. A shared `CLUSTER_ENV_FILE` does not change the code source unless `LOCAL_MOLEWORKS_DIR` is explicitly set.
 - Keep local execution to static checks, dry runs, smoke tests, and bounded diagnostics. Do not run full RL/transformer training on Lorenzo's workstation.
 - Disable W&B for smoke/debug. Use W&B and the experiment ledgers for real training.
+- Use a fast evidence funnel: focused deterministic tests first, then one short vectorized CUDA smoke, then a larger benchmark only when the current decision needs promotion-quality statistics.
+- For vectorized Newton environments, start development smokes with hundreds of worlds in one GPU batch (normally 512; tune within 128-1024 for memory). Do not use one serial world unless debugging a trace, renderer, or world-specific numerical failure.
+- Give development smokes a 2-5 minute wall-clock budget and a tiny behavioral horizon (for example one composed macro). Let the bounded command finish once and inspect its aggregate artifact; avoid frequent polling and per-world console dumps.
 - Treat tiny PPO runs as startup evidence only. Judge behavior from meaningful rollout scale plus pinned checkpoint benchmarks.
 - A production cluster launch requires a user request for real training; status, diagnosis, config review, or benchmark requests do not authorize a new expensive run.
 - Use `sacct` for scheduler truth, W&B for learning history, and synced run directories for checkpoints and metadata. Reconcile all three before reporting terminal state.
