@@ -82,8 +82,27 @@ skill, so write it as *what it does + when to use it*, not just a title.
 real directory sitting in an agent's skills folder — if it reports `KEEP`, move
 that directory into this repo first, then re-run.
 
+## The `~/codex_skills` legacy path
+
+About 23 skills hard-code absolute paths like
+`/home/lorenzo/codex_skills/skills/chrome-cdp/scripts/cdp` inside their
+`SKILL.md` and scripts. `install.sh` therefore also creates:
+
+```
+~/codex_skills -> <repo>
+```
+
+so those paths keep resolving wherever the repo is checked out. There is still
+exactly one real copy of every skill.
+
+> **Portability caveat:** those paths embed `/home/lorenzo`, so they only work
+> on a machine with that home directory. On a host with a different username
+> they need rewriting to a relative or `$HOME`-based form.
+
 ## Safety notes
 
 - Only directories containing `SKILL.md` are linked.
 - Broken links left behind by deleted skills are pruned automatically.
 - Real (non-symlink) directories in the agent folders are never touched.
+- `install.sh` will not replace a real `~/codex_skills` directory; move an old
+  clone aside first, then re-run.

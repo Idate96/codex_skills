@@ -92,6 +92,27 @@ link_into() {
 [ "$DO_CODEX"  -eq 1 ] && link_into "codex"  "$HOME/.codex/skills"
 [ "$DO_CLAUDE" -eq 1 ] && link_into "claude" "$HOME/.claude/skills"
 
+# Legacy path compatibility.
+# ~23 skills hard-code absolute /home/lorenzo/codex_skills/skills/... paths in
+# their SKILL.md and scripts. Keep that path resolving no matter where the repo
+# is actually checked out.
+LEGACY="$HOME/codex_skills"
+echo "==> legacy path  ($LEGACY)"
+if [ "$(readlink -f "$LEGACY" 2>/dev/null)" = "$REPO" ]; then
+  echo "  ok     already resolves to this repo"
+elif [ -L "$LEGACY" ]; then
+  echo "  relink $LEGACY  ($(readlink "$LEGACY") -> $REPO)"
+  run rm "$LEGACY"
+  run ln -s "$REPO" "$LEGACY"
+elif [ -e "$LEGACY" ]; then
+  echo "  KEEP   $LEGACY is a real directory — not touching it."
+  echo "         If it is an old clone, move it aside and re-run so the"
+  echo "         hard-coded paths resolve here instead."
+else
+  echo "  link   $LEGACY -> $REPO"
+  run ln -s "$REPO" "$LEGACY"
+fi
+
 if [ "$DRY_RUN" -eq 1 ]; then
   echo
   echo "dry run — nothing changed."
