@@ -25,10 +25,15 @@ node --version
 test -f "$CLI"
 ```
 
-Rebuild `/home/lorenzo/oracle` if the CLI is stale or missing. For a high-value browser run, start or attach to the verified persistent Chrome profile first, then require both preflights:
+Rebuild `/home/lorenzo/oracle` if the CLI is stale or missing. For a high-value
+browser run, start or attach to the verified persistent Chrome profile first,
+then require both preflights. The helper selects the dedicated container
+profile and port `9223` inside Docker, or the host profile and port `9222`
+outside Docker:
 
 ```bash
 node "$CLI" status --hours 6 --limit 20
+node /home/lorenzo/codex_skills/skills/oracle/scripts/browser_ensure.js
 node /home/lorenzo/codex_skills/skills/oracle/scripts/browser_preflight.js
 ```
 
@@ -44,7 +49,9 @@ Do not send unless the second command prints `ORACLE_BROWSER_PREFLIGHT_OK`. Read
 4. Run a dry preview and inspect file count, size, secret exposure, and generated artifacts.
 5. Run browser mode with the verified `Pro` picker label.
 6. If the CLI detaches or times out, reattach to the stored session instead of launching a duplicate.
-7. Verify the saved answer is a substantive final review for the correct prompt before using it.
+7. Verify the saved answer is a substantive final review for the correct prompt before using it. If
+   the saved transcript contains only a preamble or lacks the requested sentinel, treat it as an
+   incomplete capture and follow the live-browser recovery below. Never infer permission to retry.
 
 Preview:
 
@@ -57,11 +64,19 @@ node "$CLI" --dry-run summary --files-report \
 Browser run:
 
 ```bash
+if test -f /.dockerenv; then
+  ORACLE_PROFILE="${ORACLE_BROWSER_PROFILE:-/home/lorenzo/.oracle/browser-profile-moleworks-ros-container-gpt56}"
+  ORACLE_PORT="${ORACLE_BROWSER_PORT:-9223}"
+else
+  ORACLE_PROFILE="/home/lorenzo/.oracle/browser-profile-real-google-profile1-current-experts"
+  ORACLE_PORT=9222
+fi
 node "$CLI" \
+  --model gpt-5.6-pro \
   --engine browser \
   --browser-manual-login \
-  --browser-manual-login-profile-dir /home/lorenzo/.oracle/browser-profile-real-google-profile1-current-experts \
-  --browser-port 9222 \
+  --browser-manual-login-profile-dir "$ORACLE_PROFILE" \
+  --browser-port "$ORACLE_PORT" \
   --browser-chrome-path /opt/google/chrome/chrome \
   --browser-model-strategy select \
   --browser-model-label "Pro" \
@@ -82,3 +97,25 @@ node "$CLI" session <id-or-slug> --render
 ```
 
 Reject an answer that cannot access its attachments, belongs to another prompt, or only promises future inspection. For concurrent browser runs, include a unique sentinel requirement in the prompt and verify it in the final answer.
+
+### Live-browser completion recovery
+
+ChatGPT can emit a short planning preamble and then continue the same assistant
+response. The CLI can capture that preamble and mark its stored session complete
+before the live conversation has finished.
+
+- A promise-only transcript, missing sentinel, or disagreement between CLI
+  status and the live page means **incomplete capture**, not failed review.
+- Do not launch another run, send a follow-up, change the model, navigate away,
+  or open a replacement conversation.
+- Preserve the exact conversation URL and use the `chrome-cdp` skill to inspect
+  only that tab, read-only. Check the latest assistant message, requested
+  sentinel, and whether the page still shows active generation.
+- If generation is active, wait and re-inspect the same conversation. When the
+  CLI transcript conflicts with that page, the exact live conversation is the
+  completion source of truth.
+- Accept the answer only after it is substantive, belongs to the original
+  prompt, includes the sentinel when one was required, and generation has
+  stopped.
+- If the exact conversation has visibly stopped without a valid answer, report
+  that failure and ask the user before any resubmission. Never auto-resubmit.

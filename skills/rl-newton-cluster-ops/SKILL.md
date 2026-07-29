@@ -69,7 +69,19 @@ immutable.
 
 ## Hard Rules
 
+- When collaboration/sub-agent tools are available, always delegate the
+  mechanical cluster task to a worker agent. This includes submission,
+  scheduler polling, remote log and W&B parsing, checkpoint inventory, log
+  sync, and benchmark execution. Give the worker the exact run identifiers,
+  expected contract, and compact output fields; keep raw logs out of the
+  primary context. The primary agent retains scientific interpretation,
+  state-changing decisions, and the user-facing conclusion. Fall back to
+  direct execution only when delegation is unavailable or the worker cannot
+  access the required system.
 - Local smoke first, with W&B disabled.
+- Smoke gates must check numerical validity, not only process survival: after the first update,
+  assert finite loss scalars, model parameters, optimizer state, and any teacher/distillation
+  tensors that affect the update before calling the gate passed.
 - Real cluster runs use W&B.
 - After submitting any real training run, verify that the run actually gets
   through startup before reporting it as successfully launched. `sbatch`

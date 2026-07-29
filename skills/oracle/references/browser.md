@@ -2,15 +2,20 @@
 
 ## Persistent Profile
 
-Use `/home/lorenzo/.oracle/browser-profile-real-google-profile1-current-experts` and DevTools port `9222`. Do not default to temporary `/tmp/oracle-browser-*`, `/tmp/oracle-reattach-*`, or an unverified copied profile; those can lose ChatGPT authentication.
+On the host, use
+`/home/lorenzo/.oracle/browser-profile-real-google-profile1-current-experts`
+and DevTools port `9222`. In the Moleworks ROS container, use the isolated
+`/home/lorenzo/.oracle/browser-profile-moleworks-ros-container-gpt56` profile
+and port `9223`. The container profile persists through the mounted home
+directory; never open the host profile from a container process. Do not default
+to temporary `/tmp/oracle-browser-*`, `/tmp/oracle-reattach-*`, or an
+unverified copied profile; those can lose ChatGPT authentication.
 
-If DevTools has no signed-in ChatGPT page, launch Chrome explicitly:
+Use the launcher helper to start the appropriate Chrome process after a host or
+container restart:
 
 ```bash
-/opt/google/chrome/chrome \
-  --remote-debugging-port=9222 \
-  --user-data-dir=/home/lorenzo/.oracle/browser-profile-real-google-profile1-current-experts \
-  https://chatgpt.com
+node /home/lorenzo/codex_skills/skills/oracle/scripts/browser_ensure.js
 ```
 
 Then run `/home/lorenzo/codex_skills/skills/oracle/scripts/browser_preflight.js`. If it fails, ask Lorenzo to sign in in that exact window. A page title or URL alone is not proof of authentication.
@@ -40,3 +45,25 @@ If ChatGPT says a bundle was already uploaded, create a fresh archive name with 
 Sessions live under `~/.oracle/sessions` unless `ORACLE_HOME_DIR` overrides it. Reattach after CLI timeout instead of rerunning. Use unique short slugs and a prompt sentinel when other Oracle requests are active.
 
 If a session is `chrome-disconnected`, inspect the exact Oracle and Chrome processes before restarting. Preserve other browser work.
+
+### Preamble-only or prematurely completed capture
+
+A browser response may first contain a short plan such as “I’ll inspect the
+files” and then continue with the actual review. Oracle's saved transcript can
+capture only that first text and report the session complete while the same
+ChatGPT conversation is still generating.
+
+When the rendered transcript is promise-only or lacks the required sentinel:
+
+1. Treat it as an incomplete capture. Do not retry, follow up, change models, or
+   create another conversation.
+2. Keep the exact conversation URL from the original run.
+3. Use the `chrome-cdp` skill read-only on that exact tab. Do not inspect
+   unrelated tabs, type in the composer, click controls, or navigate.
+4. Check the latest assistant message for the original prompt's substantive
+   structure and sentinel, and check whether generation is still active.
+5. If active, wait and inspect the same tab again. Do not use stored CLI status
+   alone as proof of browser completion.
+6. Recover the answer only after generation stops and validation passes. If the
+   page has stopped without a valid answer, report the failure and obtain
+   explicit user approval before submitting anything new.

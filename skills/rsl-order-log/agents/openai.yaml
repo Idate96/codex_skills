@@ -1,0 +1,4 @@
+interface:
+  display_name: "RSL Order Log"
+  short_description: "Log purchases in the canonical RSL order sheet"
+  default_prompt: "Use $rsl-order-log to add this purchase to the canonical RSL order list."

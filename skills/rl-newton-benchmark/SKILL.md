@@ -295,4 +295,3 @@ unset WANDB_MODE
 - For new benchmarks, repeated comparisons, or noisy log parsing, delegate to the benchmark worker and keep only compact result tables in the parent.
 - Prefer exact benchmark commands with pinned contracts over ad-hoc reruns.
 - If delegation tools are unavailable, run the minimum benchmark locally, keep output bounded, and summarize from the generated report files rather than from streamed logs.
-- If the task spans many result files, W&B runs, cluster syncs, or ledger updates, also use `moleworks-subagent-orchestrator`.

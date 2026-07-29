@@ -25,6 +25,15 @@ No single checkout is guaranteed to contain every analytic and FEE tool. Before 
 - For vectorized Newton environments, start development smokes with hundreds of worlds in one GPU batch (normally 512; tune within 128-1024 for memory). Do not use one serial world unless debugging a trace, renderer, or world-specific numerical failure.
 - Give development smokes a 2-5 minute wall-clock budget and a tiny behavioral horizon (for example one composed macro). Let the bounded command finish once and inspect its aggregate artifact; avoid frequent polling and per-world console dumps.
 - Treat tiny PPO runs as startup evidence only. Judge behavior from meaningful rollout scale plus pinned checkpoint benchmarks.
+- Default to fresh training after a material environment-contract change. Fine-tuning requires a written, evidence-backed
+  reuse argument: identify which behavior and state-value structure should transfer, why the predecessor policy remains
+  inside the new feasible trajectory set, and why preserving its critic and optimizer is preferable to a fresh control.
+  Changes to physics/contact dynamics, actor observations, action semantics, reset distribution, reward or termination
+  semantics, success geometry, or controller authority are presumptively fresh-training changes. Do not fine-tune merely
+  because a checkpoint exists or fresh training costs more. Override this presumption only with a controlled comparison
+  or a narrowly local change whose predecessor behavior remains valid; record that motivation in the experiment ledger.
+  A first resumed batch dominated by new failures, critic shock, or out-of-distribution actions is evidence to stop and
+  restart fresh, not a reason to let the fine-tune run longer.
 - A production cluster launch requires a user request for real training; status, diagnosis, config review, or benchmark requests do not authorize a new expensive run.
 - Use `sacct` for scheduler truth, W&B for learning history, and synced run directories for checkpoints and metadata. Reconcile all three before reporting terminal state.
 - Benchmark before promoting a checkpoint or training recipe. Compare a common pinned checkpoint and contract, never each run's unrelated “latest”.
@@ -37,6 +46,10 @@ No single checkout is guaranteed to contain every analytic and FEE tool. Before 
 
 - Use a sub-agent by default for context-heavy, mechanical execution: local training smokes, real cluster submission,
   startup verification, scheduler/W&B monitoring, targeted artifact sync, benchmark execution, and benchmark-log parsing.
+- Delegate analysis of live or completed training environments, benchmark runs, and any other command whose logs,
+  scalar history, or repeated status output could fill the parent context without improving the experiment decision.
+  Give one worker the raw run identifiers and a bounded evidence schema; have it retain noisy output and return only a
+  compact metric table, artifact paths, failure headline, and unresolved risks.
 - Keep experiment design, checkout selection, mutation/compute authorization, launch count, benchmark contract, and
   promotion decisions in the parent agent. Delegation never broadens the user's authorization.
 - Give one worker ownership of a run's complete launch lifecycle so two agents cannot submit duplicate jobs: validate
@@ -54,8 +67,6 @@ No single checkout is guaranteed to contain every analytic and FEE tool. Before 
 - Use `rl-newton-cluster-ops` for smoke gates, Euler/Brev/Vast submit, startup verification, monitoring, sync, and ledgers.
 - Use `rl-newton-benchmark` for FEE or analytic benchmarks, terrain banks, replay, leaderboards, qualitative clips, and result analysis.
 - Use `newton-ros-parity` plus `ros2-debugging` for ROS, TF, terrain-topic, Dig3D, or cleanup issues.
-- Use `moleworks-subagent-orchestrator` for delegated launch, monitoring, sync, or benchmark execution, as well as tasks
-  with independent evidence-gathering lanes.
 
 ## Starting Points
 

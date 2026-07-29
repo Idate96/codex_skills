@@ -92,4 +92,3 @@ Do not interpret a Jacobian mismatch as proof of FK failure without checking the
 
 - Prefer repo scripts and diagnostics over ad-hoc ROS archaeology.
 - Keep live CLI output bounded with timeouts and `tmux capture-pane`.
-- If the task turns into prolonged pane/log/process inspection, also use `moleworks-subagent-orchestrator`.

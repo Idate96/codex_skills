@@ -81,7 +81,9 @@ Use this skill when Lorenzo asks to read or reply in Google Chat, or to pull fil
 - For meetings, require an attendee, absolute time, and explicit duration; inspect nearby events and patch a matching owned event instead of duplicating it.
 - Verify Calendar mutations include the intended attendee and Meet link.
 - Verify sent Chat messages by reading back the returned message resource or a small recent window.
-- Prefer short, informal first-person wording unless Lorenzo asks for a different tone.
+- Write replies in a chat-native style: short, informal, and direct, without email-like
+  greetings, sign-offs, separators, or ceremonial requests unless the conversation
+  clearly calls for them.
 - Prefer the Google Chat API over browser automation for read/send operations.
 - If `messages.list` still returns `403 insufficient authentication scopes` right after a re-auth, move `~/.config/gws/token_cache.json` aside and retry once.
 

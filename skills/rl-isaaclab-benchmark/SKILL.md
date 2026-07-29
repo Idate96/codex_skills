@@ -1,6 +1,6 @@
 ---
 name: rl-isaaclab-benchmark
-description: "Benchmark Moleworks IsaacLab checkpoints. Use for policy playback, excavation evaluation, fair checkpoint ranking, TensorBoard temporal plots, and run comparison."
+description: "Benchmark Moleworks IsaacLab checkpoints. Use for policy playback, excavation evaluation, fair checkpoint ranking, TensorBoard temporal plots, run comparison, and UGEP transfer-leaderboard updates."
 ---
 
 # IsaacLab Benchmark Workflow
@@ -89,6 +89,32 @@ the percentage-point delta versus the same-contract real-machine-trained
 baseline. Do not rank a checkpoint from strict full+close alone: a policy can
 game that metric by barely scraping the surface and terminating through close.
 
+## UGEP Leaderboard Closeout
+
+After a verified UGEP transfer replay, refresh the per-machine leaderboard as
+part of benchmark closeout:
+
+1. Aggregate integer termination counts across the frozen replay seeds; never
+   average seed rates.
+2. Compare the generated/randomized checkpoint with the same-contract
+   real-machine-trained checkpoint on the identical real-machine fleet.
+3. Regenerate the HTML with the checked-in builder; do not hand-edit the HTML:
+
+   ```bash
+   python3 scripts/mole_environments/ugep/data_analysis/build_ugep_leaderboard.py \
+     --eval-dir <directory-containing-summary-and-three-seed-aggregate-jsons>
+   ```
+
+4. Verify that the page includes pooled and all six machine rows (M545,
+   CAT323, M445, SV100, DX225, JD145), with strict, full, close, negative, and
+   timeout values plus candidate-versus-real-trained deltas.
+5. Show the per-machine negative gate, keep incompatible benchmark epochs in
+   separate sections, retain artifact/checkpoint provenance, and label
+   real-machine-model simulation separately from on-hardware evidence.
+
+The generated file is `.artifacts/ugep/leaderboard.html` in the active
+`moleworks_ext` checkout.
+
 Launch local UGEP replays through tmux inside the dev container so long runs
 remain inspectable:
 
@@ -159,5 +185,4 @@ python3 /home/lorenzo/codex_skills/skills/rl-isaaclab/scripts/plot_tb_scalars.py
 ## Comparison Hygiene
 
 - Use `compare_run_configs.py` before manual config diffs.
-- If the task spans many benchmark reports, TensorBoard runs, or W&B records, also use `moleworks-subagent-orchestrator`.
 - If playback or debugging also uses a ROS parity stack, also use `newton-ros-parity` and `ros2-debugging` and make sure the ROS side is cleaned up before the next IsaacLab launch.

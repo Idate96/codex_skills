@@ -59,6 +59,8 @@ Use only verified NVIDIA GeForce RTX 3090 or RTX 4090 allocations unless the use
    job before any JAX or W&B training command.
 5. Run the GPU runtime preflight from this skill in the Slurm job before training.
 6. For new runtime/config changes, run a first-update smoke with W&B disabled before a full run.
+   The smoke must assert finite losses, model parameters, optimizer state, and rollout/teacher
+   tensors when applicable; a completed update is not enough if it wrote NaN parameters.
 7. Launch a production Slurm/W&B job only when the user requested real training and the smoke evidence is real: update 1 completed, not only dataset/model initialization. A status, diagnosis, or config-review request does not authorize a new expensive run.
 8. For A/B comparisons, verify each side independently past update 1. Do not count a Slurm
    `RUNNING` job as healthy until the log shows completed updates.

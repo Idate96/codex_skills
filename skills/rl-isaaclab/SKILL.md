@@ -31,7 +31,6 @@ Use this as the default entry point for `moleworks_ext` RL work. Keep it thin an
 - For billable Vast.ai instance lifecycle and IsaacLab runtime hydration, also use `vast-isaaclab-training`.
 - For checkpoint benchmarking, policy playback, TensorBoard temporal plots, and run-to-run comparisons, also use `rl-isaaclab-benchmark`.
 - If IsaacLab debugging also involves ROS parity stacks, TF, Dig3D replay, or controller-side checks, also use `newton-ros-parity` and `ros2-debugging`.
-- If the task needs many code/doc searches, W&B queries, log inspection, or benchmark diffs, also use `moleworks-subagent-orchestrator`.
 
 ## Branch References
 

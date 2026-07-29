@@ -1,10 +1,17 @@
 #!/usr/bin/env node
 
 const { execFileSync } = require("node:child_process");
+const { existsSync } = require("node:fs");
 const CDP = require("/home/lorenzo/oracle/node_modules/chrome-remote-interface");
 
+const IN_CONTAINER = existsSync("/.dockerenv");
 const DEFAULT_PROFILE =
-  "/home/lorenzo/.oracle/browser-profile-real-google-profile1-current-experts";
+  process.env.ORACLE_BROWSER_PROFILE ||
+  (IN_CONTAINER
+    ? "/home/lorenzo/.oracle/browser-profile-moleworks-ros-container-gpt56"
+    : "/home/lorenzo/.oracle/browser-profile-real-google-profile1-current-experts");
+const DEFAULT_PORT =
+  process.env.ORACLE_BROWSER_PORT || (IN_CONTAINER ? "9223" : "9222");
 
 function argument(name, fallback) {
   const index = process.argv.indexOf(name);
@@ -13,7 +20,7 @@ function argument(name, fallback) {
 
 async function main() {
   const profile = argument("--profile", DEFAULT_PROFILE);
-  const port = Number(argument("--port", "9222"));
+  const port = Number(argument("--port", DEFAULT_PORT));
   if (!profile || !Number.isInteger(port)) {
     throw new Error("usage: browser_preflight.js [--profile PATH] [--port PORT]");
   }
