@@ -1,0 +1,4 @@
+interface:
+  display_name: "German Learning"
+  short_description: "Learn German from corrections, texts, and cards"
+  default_prompt: "Use $german-learning to explain my German passage and turn useful phrases into study cards."

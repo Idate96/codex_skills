@@ -1,0 +1,4 @@
+interface:
+  display_name: "Address PR Review"
+  short_description: "Investigate and address PR reviewer feedback"
+  default_prompt: "Use $address-pr-review to investigate this review, update the pull request, and write a concise reply."

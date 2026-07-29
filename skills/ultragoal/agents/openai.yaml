@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ultragoal"
+  short_description: "Durable Codex goals with verifiers"
+  default_prompt: "Use $ultragoal to design and activate a durable goal for a long-running objective."

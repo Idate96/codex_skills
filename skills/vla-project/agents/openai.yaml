@@ -1,0 +1,4 @@
+interface:
+  display_name: "VLA Project"
+  short_description: "VLA pick-and-place workflows"
+  default_prompt: "Use $vla-project to inspect banana dataset artifacts, rebuild LeRobot augmentations, run QA, or prepare the requested ACT or Molmo workflow."
