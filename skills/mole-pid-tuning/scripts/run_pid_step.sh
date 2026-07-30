@@ -2,14 +2,14 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 --confirm-hardware --confirm-safe-start <joint> <pos|neg> <abs_current> <step_s> [settle_s] [steady_window_s]" >&2
+  echo "usage: $0 --confirm-hardware --confirm-safe-start <joint> <pos|neg> <abs_velocity> <step_s>" >&2
 }
 if [[ "${1:-}" != "--confirm-hardware" || "${2:-}" != "--confirm-safe-start" ]]; then
   usage
   exit 2
 fi
 shift 2
-if (( $# < 4 || $# > 6 )); then
+if (( $# != 4 )); then
   usage
   exit 2
 fi
@@ -25,10 +25,9 @@ if [[ ! -f "${tuning_ws}/install/setup.bash" ]]; then
 fi
 source "${tuning_ws}/install/setup.bash"
 
-bag_root="${LUT_BAG_ROOT:-${HOME}/mcap/open_loop_lut}"
+bag_root="${PID_BAG_ROOT:-${HOME}/mcap/pid_tuning}"
 mkdir -p "${bag_root}"
-exec ros2 run mole_sysid mole_sysid_lut_collect \
+exec ros2 run mole_sysid mole_sysid_pid_step \
   --confirm-hardware --confirm-safe-start \
-  --joint "$1" --direction "$2" --abs-current "$3" --step-s "$4" \
-  --output-root "${bag_root}" \
-  --settle-s "${5:-1.0}" --steady-window-s "${6:-1.0}"
+  --joint "$1" --direction "$2" --abs-velocity "$3" --step-s "$4" \
+  --output-root "${bag_root}"

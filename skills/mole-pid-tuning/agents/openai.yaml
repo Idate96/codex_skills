@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mole PID Tuning"
+  short_description: "Inspect and tune M445 joint PID steps"
+  default_prompt: "Use $mole-pid-tuning to run and inspect one guarded M445 joint PID step."

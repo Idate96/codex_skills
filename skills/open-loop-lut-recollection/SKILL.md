@@ -1,109 +1,57 @@
 ---
 name: open-loop-lut-recollection
-description: "Recollect or repair bounded-joint open-loop current LUT points on the robot, especially `J_TELE` and `J_EE_PITCH`. Use for sparse, noisy, or missing current-to-velocity calibration points."
+description: "Collect, inspect, and merge one-at-a-time M445 open-loop current-to-cylinder-velocity LUT points on the robot. Use for LUT regeneration, breakaway recollection, monotonicity repair, or bounded-joint current calibration."
 ---
 
 # Open-Loop LUT Recollection
 
-## Overview
+Actuate only after Lorenzo explicitly authorizes robot motion and an operator confirms clearance and
+the emergency stop. Stop `mole_pid_joint_controller`; the guarded runner refuses a competing command
+publisher, stale `/mole/measurements`, invalid raw position/velocity sensor status, stale
+`/machine_status`, locked interlocks, an unsafe start side, a soft-limit approach, or an excessive
+joint-specific current.
 
-Use this for robot-side `MODE_CURRENT` LUT recollection on bounded joints.
+## One-point loop
 
-This actuates the real robot. Run it only when Lorenzo explicitly requests LUT motion, an operator is
-present, hydraulics/interlocks are understood, the workspace is clear, and no competing controller or
-publisher owns the command path. A diagnostic or planning request does not authorize motion.
-
-Default rules:
-- one bag per amplitude,
-- stop `mole_pid_joint_controller`,
-- positive current starts near the lower joint limit,
-- negative current starts near the upper joint limit,
-- dense extra points near breakaway,
-- exclude edge amplitudes that cannot produce a clean steady window.
-
-## Quick Start
-
-1. In tmux, source:
-   - `source /opt/ros/jazzy/setup.bash`
-   - the active built workspace (`~/ros2_ws` or `~/moleworks/ros2_ws`)
-2. Stop `mole_pid_joint_controller`.
-3. Set engine RPM separately.
-4. Confirm fresh state/measurements, command ownership, the correct start side, and clearance from the
-   hard stop. Do not use unbounded manual pulses; use an approved bounded positioning method.
-5. Run one amplitude with both explicit confirmations:
+1. Preposition with `$robot-move-to-position`. For `J_TURN` and `J_BOOM`, positive current starts
+   in the upper half because it decreases joint position. For `J_STICK`, `J_TELE`, and
+   `J_EE_PITCH`, positive starts in the lower half. Negative uses the opposite side. Do not sit on
+   a hard stop.
+2. Run exactly one amplitude:
 
 ```bash
 /home/lorenzo/codex_skills/skills/open-loop-lut-recollection/scripts/run_open_loop_lut_step.sh \
-  --confirm-hardware --confirm-safe-start J_TELE pos 0.25 4.0 1.0 1.0
+  --confirm-hardware --confirm-safe-start J_TELE pos 0.25 4.0
 ```
 
-## Collection Rules
+3. Read the printed `TRIAL_RESULT` YAML and its `analysis/lut_result.yaml`,
+   `lut_points.csv`, `segments.csv`, and plots.
+4. If aborted, do not bypass the guard. Reposition or repair the reported precondition. If analysis
+   has no clean steady segment, repeat once from the correct side with a longer plateau before
+   increasing current.
+5. Add points progressively. Densify the first-moving/breakaway region; stop when a point hits a
+   limit, folds back, or cannot sustain a steady window.
 
-### Bounded-joint start rule
+Set `LUT_BAG_ROOT` to reuse an existing output root. The wrapper contains no motion logic; it only
+sources the built workspace and calls `mole_sysid_lut_collect`.
 
-- positive current: start near the lower limit
-- negative current: start near the upper limit
+## Build a candidate
 
-Do not start directly on the hard stop. Back off slightly first.
-
-### Dense low-speed rule
-
-If there is a jump from "no motion" to "moving", fill the gap with extra points.
-
-Examples:
-- `J_TELE`: fill around `-0.20 .. -0.25` and `+0.17 .. +0.25`
-- `J_EE_PITCH`: fill around `+/-0.10 .. +/-0.20`
-
-### Plateau rule
-
-If analysis fails with no valid steady segment:
-- repeat once from the correct start side,
-- try a longer plateau before increasing current,
-- use `4.0 s` for higher-current bounded-joint points by default.
-
-### Edge-point rule
-
-Drop amplitudes that cannot produce a clean steady window away from joint stops.
-
-Symptoms:
-- large current but near-zero median velocity,
-- strong non-monotonic jump relative to neighbors,
-- repeated recollection still collapses near zero.
-
-## Wrapper
-
-The wrapper records one MCAP bag, runs the current step, stops recording
-cleanly, and runs `mole_sysid_tune_lut`.
+After reviewing at least two moving analyses for one direction, merge that entire branch once:
 
 ```bash
-/home/lorenzo/codex_skills/skills/open-loop-lut-recollection/scripts/run_open_loop_lut_step.sh \
-  --confirm-hardware --confirm-safe-start \
-  <joint> <pos|neg> <abs_current> <step_phase_s> [settle_s] [steady_window_s]
+ros2 run mole_sysid mole_sysid_build_lut_candidate \
+  --base-lut "$(ros2 pkg prefix --share mole_pid_joint_controller)/params/luts_m445.yaml" \
+  --output-lut /tmp/luts_m445_candidate.yaml \
+  --joint J_TELE --direction pos \
+  /data/analysis_point_1 /data/analysis_point_2
 ```
 
-Defaults:
-- bag root: `~/mcap/open_loop_lut` (override with `LUT_BAG_ROOT` for an existing campaign)
-- baseline: `1.0 s`
-- final hold: `1.0 s`
-- no return leg
-- `--max-abs-current 1.0`
-- fastwrite MCAP
+The builder never overwrites the active LUT. It rejects mixed provenance, fallback cylinder math,
+no-motion points, duplicate inverse velocities, and folded branches. Review the candidate YAML and
+its `.points.csv` before any deployment. Collect and merge the other direction separately.
+The checked-in `J_BOOM` negative branch already has a small fold: rebuild its negative branch first,
+then use that candidate as the base when rebuilding the positive branch.
 
-The wrapper rejects currents outside `(0, 1.0] A`, refuses a running PID controller, checks fresh
-state topics, finalizes the bag through an EXIT trap, and validates the bag before analysis.
-
-## Outputs
-
-Per amplitude:
-- bag: `<bag_root>/<tag>`
-- analysis: `<bag_root>/analysis_<tag>_lut`
-
-Read:
-- `lut_points.csv`
-- `segments.csv`
-- `plots.pdf`
-
-## References
-
-- Repo note:
-  - `$ROS_WS/src/moleworks_ros/low_level/mole_sysid/OPEN_LOOP_LUT_TUNING.md`
+Canonical package details live in
+`$ROS_WS/src/moleworks_ros/low_level/mole_sysid/OPEN_LOOP_LUT_TUNING.md`.
