@@ -1,6 +1,6 @@
 ---
 name: terra-rl
-description: "Run Terra RL training across `terra` and `terra-baselines`. Use for validation, Euler Slurm, W&B comparison, PPO configuration, JAX/CUDA preflight, first-update smoke tests, and failure diagnosis."
+description: "Run Terra RL training across `terra` and `terra-baselines`. Use for validation, Euler Slurm, W&B comparison, PPO configuration, JAX/CUDA preflight, first-update smoke tests, checkpointed 24h/120h continuation, and failure diagnosis."
 ---
 
 # Terra RL
@@ -70,6 +70,36 @@ Use only verified NVIDIA GeForce RTX 3090 or RTX 4090 allocations unless the use
    tradeoffs; then verify recommendations locally before retaining changes.
 10. Keep `docs/EXPERIMENTS_RUNNING.md` and `docs/EXPERIMENTS_LOG.md` current with job ids, W&B ids,
    exact failure signatures, and whether W&B has real history.
+
+## Checkpointed Training Duration
+
+- Treat minute-scale/update-1 jobs as runtime smokes only. Unless explicitly
+  named as a shorter diagnostic, give a behavioral screen at least one healthy
+  24-hour allocation before making a negative or saturation claim.
+- Configure an absolute update target safely beyond what one allocation can
+  finish. Wall time may end a segment; it must not make a promising run stop
+  early merely because the update target was too small.
+- Save and validate a rolling checkpoint at least every 500 updates. A Slurm
+  timeout with a finite, loadable checkpoint is `CONTINUABLE`, not a failed
+  experiment. Evaluate the latest complete checkpoint in a separate job when
+  the hard timeout prevents post-training commands from running.
+- Continue with `--resume_from`, never `--warm_start_from`. Preserve model
+  parameters, optimizer state/step, global `next_update`, schedule position,
+  environment protocol, and adaptive sampler state. Set `total_timesteps` for
+  the absolute final update target, not for an additional segment length.
+- Reuse the W&B run ID with `resume=must` only when the checkpoint is at or
+  beyond the last logged `train/update`. Otherwise create a linked continuation
+  run so replay from an older checkpoint cannot create backward/duplicate
+  history. Record every Slurm segment and checkpoint hash in the ledger.
+- Promote a promising recipe to the 120-hour queue and continue while fixed
+  held-out exact, macro, or worst-condition performance is still improving.
+  Stop on a held-out plateau across multiple checkpoints, not on wall time or
+  online training success alone. Report updates, transitions, and GPU-hours.
+
+Current Terra resumes restart RNG, live environment state, and action history,
+so continuation is statistically continuous but not bit-exact. Read
+[references/euler-runtime.md](references/euler-runtime.md) before implementing
+segmented jobs.
 
 ## Current ResMap64 R1/R2 Launch
 

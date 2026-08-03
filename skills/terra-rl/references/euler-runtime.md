@@ -111,6 +111,30 @@ Do not rely on `squeue` alone. A job can remain `RUNNING` after a runtime error 
 process is still alive. If the log contains a fatal runtime error, the process is sleeping, and
 GPU utilization is 0%, cancel and relaunch after a targeted smoke.
 
+## Checkpointed Wall-Time Continuation
+
+Use 24-hour and 120-hour allocations as resumable compute segments. Set the
+trainer's absolute update target above the work expected to fit in one segment,
+and checkpoint every 100--500 updates. Do not depend on a `FINAL` checkpoint:
+a hard Slurm timeout skips all shell commands after the trainer.
+
+After a timeout:
+
+1. locate the latest complete checkpoint and verify finite parameters,
+   optimizer state, `train_state_step`, `next_update`, and adaptive sampler
+   state when enabled;
+2. run fixed evaluation separately if the timed-out job could not do so;
+3. relaunch the unchanged treatment with `--resume_from CHECKPOINT` and an
+   absolute final `total_timesteps` target greater than `next_update`; and
+4. resume the same W&B run with `WANDB_RESUME=must` only if its last logged
+   update does not exceed the checkpoint; otherwise start a linked continuation
+   run with the same absolute `train/update` axis.
+
+Classify a wall-time exit with a valid checkpoint as `CONTINUABLE`. Classify it
+as failed only when no valid checkpoint exists or the runtime/finite/integrity
+contract failed. A soft stop before wall time is cleaner, but is not required
+for research continuity when rolling checkpoints are frequent.
+
 For allocated-node GPU state:
 
 ```bash
