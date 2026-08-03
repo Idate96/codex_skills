@@ -102,6 +102,11 @@ Keep tests fast, deterministic, and targeted. Do not pursue coverage targets, co
 - Add no new unit test for trivial wiring, serialization, or third-party API
   calls when a syntax check plus the existing end-to-end path already covers
   the realistic failure.
+- Treat recipe aliases, resolved-config field diffs, parser choices, and other
+  declarative wiring as launch-time preflight evidence, not permanent unit
+  tests. Save the compact diff or receipt with the experiment when pairing is
+  scientifically important; add a regression test only after that wiring has
+  caused a costly or plausibly recurring silent failure.
 - Use at most one new integration smoke for logging, UI, launch, or plumbing
   changes. It should check the externally useful result, not every internal
   field.
