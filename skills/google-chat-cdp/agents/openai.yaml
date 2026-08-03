@@ -1,4 +1,4 @@
 interface:
-  display_name: "Google Chat CDP"
-  short_description: "Use Google Chat through the live Chrome session"
-  default_prompt: "Use $google-chat-cdp with $chrome-cdp to verify the active Google Chat account, open a DM or space, and send or inspect messages in the user's existing Chrome session."
+  display_name: "Google Chat Browser Fallback"
+  short_description: "Fallback to approved Chrome control when gws is unavailable"
+  default_prompt: "Use $google-chat-cdp with $chrome-cdp only after the standard chat-replies gws workflow is unavailable and the user explicitly approves browser fallback."

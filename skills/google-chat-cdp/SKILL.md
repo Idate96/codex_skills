@@ -1,12 +1,20 @@
 ---
 name: google-chat-cdp
-description: "Use Google Chat through an approved live Chrome session. Use to verify the account, open a DM or space, and inspect or send messages when connector access is insufficient."
+description: "Browser-only fallback for Google Chat through an approved live Chrome session. Use only when the user explicitly requests browser/CDP control, or after the standard chat-replies gws CLI workflow is unavailable and the user explicitly approves the fallback. A Chat URL alone must not trigger this skill."
 ---
 
 # Google Chat CDP
 
-Use this skill together with [chrome-cdp](../chrome-cdp/SKILL.md) only when connector/API access is
-insufficient and Lorenzo explicitly approves using the live browser for the requested Chat action.
+Normal Google Chat reads and replies must use
+[`chat-replies`](../chat-replies/SKILL.md) and the authenticated `gws` CLI.
+Do not select this skill merely because a request contains a `chat.google.com`
+URL. Use this skill together with [chrome-cdp](../chrome-cdp/SKILL.md) only when:
+
+- Lorenzo explicitly asks for browser or CDP interaction; or
+- the `gws` workflow is unavailable, that failure has been reported, and
+  Lorenzo explicitly approves browser fallback.
+
+Do not silently switch from `gws` to browser automation.
 
 ## Preconditions
 
