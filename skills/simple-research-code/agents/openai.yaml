@@ -1,4 +1,4 @@
 interface:
   display_name: "Simple Research Code"
-  short_description: "Maximize trustworthy research iteration speed"
-  default_prompt: "Use $simple-research-code to simplify this research workflow around its real operating model. For a single-operator ROS public launch, start and own the complete application stack—including enabled sensor acquisition, perception, mapping, planning, coordination, control/execution, and workers—while naming one exact external robot-prerequisite procedure and readiness contract. Keep its tool model consistent, delete alternate owners and attach/reuse surfaces, avoid duplicate DDS absence guards, and validate exact artifacts or live safety state at the consuming boundary."
+  short_description: "Move fast with direct code and claim-driven tests"
+  default_prompt: "Use $simple-research-code to simplify this research workflow around its real operating model. Keep one direct path, fail loudly, and use a small claim-driven test budget rather than testing every helper. For a single-operator ROS public launch, own the complete application stack, name the exact external robot prerequisites, delete alternate owners and attach/reuse surfaces, and validate safety-critical state at the consuming boundary."
