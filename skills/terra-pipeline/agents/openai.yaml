@@ -1,0 +1,4 @@
+interface:
+  display_name: "Terra Pipeline"
+  short_description: "Run and recover Moleworks Terra pipelines"
+  default_prompt: "Use $terra-pipeline to start a safe, single-owner Terra run with reviewed SDF boundaries."

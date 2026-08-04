@@ -8,7 +8,7 @@ description: "Record split Mole DIG/Newton rosbags for sensors, state, commands,
 ## Quick Start
 
 ```bash
-/home/lorenzo/codex_skills/skills/dig-bag-recording/scripts/dig_split_recording_tmux.sh \
+~/git/codex_skills/skills/dig-bag-recording/scripts/dig_split_recording_tmux.sh \
   --scenario dig_newton \
   --use-sim-time true \
   --attach
@@ -24,6 +24,13 @@ This creates a single run directory:
 - `raw/elevation_map/`
 - `raw/dig3d_special_obs/` for `dig_3d*` scenarios
 
+## Runtime Image and DDS Contract
+
+- Use the published `rslheap/moleworks_ros:latest` image by default. Record the immutable `rslheap/moleworks_ros:sha-<merge-sha>` tag when the run needs exact image provenance.
+- In a fresh remote-robot shell, normal nodes use the runtime DDS CLIENT profile and the ROS 2 CLI daemon uses the observer SUPER_CLIENT profile. Run preflight and inspection commands as plain `ros2 ...` commands.
+- The helper below launches the canonical `mole_bag_tools rosbag_record.launch.py`. That launcher gives each rosbag child the observer profile while leaving its parent and non-recorder processes on runtime CLIENT. When no observer profile exists, such as local DDS, children inherit the environment unchanged.
+- Do not replace the canonical launcher with raw remote `ros2 bag record` or a copied Fast DDS export/unset prefix. If the split stays empty, first confirm that the image/container is current; pull the published image, recreate the container, and start a fresh tmux window.
+
 ## Workflow
 
 1. Before recording, confirm the intended real/sim stack and `use_sim_time` choice, check that the
@@ -32,6 +39,10 @@ This creates a single run directory:
 3. Run digging action(s).
 4. Stop the recorder with `Ctrl-C` in the left `record` tmux pane and wait for rosbag finalization.
 5. Verify each expected bag has `metadata.yaml`, at least one `.mcap`, and a readable `ros2 bag info`.
+
+The helper intentionally owns only workspace setup and tmux orchestration. DDS
+role selection remains inside the current image and the canonical bag launcher;
+callers should not add DDS environment boilerplate.
 
 Useful preflight (adapt the required topics to the scenario):
 

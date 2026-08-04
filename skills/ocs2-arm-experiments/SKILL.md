@@ -13,6 +13,13 @@ The safety contract below is mandatory. Then read only the task-relevant section
 
 Use `ocs2-tuning-fastloop` when the task is specifically repeatable one-case tuning and limit verification.
 
+## Runtime Image and DDS Contract
+
+- `rslheap/moleworks_ros:latest` is the default runtime image. For a reproducible run, also record the immutable `rslheap/moleworks_ros:sha-<merge-sha>` tag.
+- A fresh remote-robot shell uses the runtime DDS CLIENT profile. Its ROS 2 CLI daemon uses the observer SUPER_CLIENT profile. Run normal `ros2` commands directly; do not prepend per-command Fast DDS exports or discovery-server cleanup.
+- Start recordings through `mole_bag_tools rosbag_record.launch.py`. It gives only its recorder children the observer profile and leaves the controller and provenance collector on the runtime CLIENT profile. Local DDS runs inherit their normal environment.
+- If a robot shell lacks `MOLE_DDS_RUNTIME_PROFILE` or `MOLE_DDS_OBSERVER_PROFILE`, still exports `ROS_DISCOVERY_SERVER`/`FASTDDS_DEFAULT_PROFILES_FILE`, or behaves differently from a new shell, treat its image or container as stale. Pull the published image, recreate the container, and open fresh tmux panes; do not normalize every command by hand.
+
 ## Safety Contract
 
 - Before motion, verify `/machine_status` reports the required hydraulic, autonomy, and Gravis-command readiness.
@@ -32,7 +39,7 @@ Use `ocs2-tuning-fastloop` when the task is specifically repeatable one-case tun
 1. Confirm runtime provenance.
    - Check the active workspace setup and `ros2 pkg prefix` for `mole_msgs` and `mole_ocs2_arm_controller`.
    - Record `task.info_path` and copy the exact live task/model sources into any review bundle.
-2. Establish a run directory and start the continuous benchmark logger.
+2. Establish a run directory and start the canonical OCS2 recorder plus the continuous benchmark logger.
 3. Check machine readiness and publisher exclusivity.
 4. Launch OCS2 in the shared container-local tmux session.
    - Prefer the current machine startup helper.

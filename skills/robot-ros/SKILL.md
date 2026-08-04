@@ -9,6 +9,12 @@ description: "Operate and debug the Mole/Menzi M4 ROS 2 stack. Use for bringup r
 
 Use the repo runbooks and scripts as the single source of truth for operating and debugging the robot stack, and keep operator-facing docs consistent with the current code/topic names.
 
+## Default Container And DDS Contract
+
+Use a freshly pulled or rebuilt `rslheap/moleworks_ros:latest` container. Normal shell processes use Fast DDS CLIENT, while the ROS 2 daemon uses the observer SUPER_CLIENT profile for graph discovery. After sourcing the workspace, run plain `ros2 ...` commands.
+
+Do not repeat long DDS environment prefixes. If a shell does not have this contract, treat its image or container as stale: pull or rebuild the image and recreate the container. Do not make command-local exports the operational default.
+
 ## Workflow (Always Do This First)
 
 1. Resolve the active robot workspace and repo root; prefer `$HOME/ros2_ws` on-machine and fall back to `$HOME/moleworks/ros2_ws` when present.

@@ -7,6 +7,12 @@ description: "Debug ROS 2 topics, nodes, services, TF, DDS domains, and tmux-man
 
 Keep this skill generic. Do not turn it into a project-specific launch runbook.
 
+## Moleworks Container DDS Default
+
+In a freshly pulled or rebuilt `rslheap/moleworks_ros:latest` container, source the workspace and run plain `ros2 ...` commands. The shell uses Fast DDS CLIENT for runtime processes, and the ROS 2 daemon uses an observer SUPER_CLIENT profile for graph discovery.
+
+Do not prepend long DDS export/unset sequences to routine probes. If this default is absent, pull or rebuild the image and recreate the container; a stale container should not become a permanent shell workaround. Use an explicit profile override only for a bounded diagnostic that genuinely needs a different DDS role.
+
 ## Checking TF Transforms
 
 **CRITICAL: Always use long timeouts (10-15 seconds minimum).**
@@ -38,10 +44,11 @@ For ad-hoc Python probes using `TransformListener`, create the node inside the s
 
 ## Checking ROS Topics
 
-On crowded robot PCs, a fresh-shell `ros2 topic list` can look empty even when the
-system is running. Treat that as a weak signal. Prefer direct checks for the
-specific topic/service/node, longer timeouts, TF evidence, tmux process/logs, and
-publisher ownership before restarting anything.
+On crowded robot PCs, `ros2 topic list` can still look empty even when the system
+is running. First confirm that the shell is from the current image and that its
+observer daemon is healthy. Treat one empty graph listing as a weak signal; prefer
+direct checks for the specific topic/service/node, longer timeouts, TF evidence,
+tmux process/logs, and publisher ownership before restarting anything.
 
 ```bash
 echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset}"

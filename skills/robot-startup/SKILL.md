@@ -36,6 +36,12 @@ Base stack is the default. If the base is already running and only a controller 
 
 The wrapper manages named tmux windows (`low_level`, `perception`, optional `estimator`, optional `dig`, then `foxglove`). It leaves unrelated busy windows alone, starts Foxglove only after earlier managed launches pass readiness, and disables tmux continuum restore unless `--keep-continuum-restore` is explicit.
 
+## DDS And Container Default
+
+Use a freshly pulled or rebuilt `rslheap/moleworks_ros:latest` container. Its shell configures normal ROS processes as Fast DDS CLIENT and the ROS 2 daemon as an observer SUPER_CLIENT. Source the workspace, then run the wrapper and ordinary `ros2 ...` commands directly.
+
+Do not paste DDS profile exports/unsets in front of each command. If that plain-command contract is missing, the container is stale: pull or rebuild the image and recreate the container instead of patching its environment command by command. The startup wrapper intentionally does not duplicate image-level DDS setup.
+
 ## Mapping Contract
 
 Default to `mapping_profile:=local`; do not silently load a site-scale design bag. Dig controllers consume both current and target terrain from `/excavation_mapping/grid_map`.

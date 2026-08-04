@@ -155,11 +155,18 @@ Important:
 
 Before trusting any review note, task file, or turn-model diagnosis, confirm you are looking at the same workspace that is actually running on hardware.
 
+The published default is `rslheap/moleworks_ros:latest`; use its immutable
+`rslheap/moleworks_ros:sha-<merge-sha>` tag when exact image provenance matters.
+A fresh robot container shell auto-sources ROS and the selected workspace, uses
+the runtime DDS CLIENT profile for normal nodes, and runs the ROS 2 CLI daemon
+with the observer SUPER_CLIENT profile. Keep normal commands as plain `ros2 ...`.
+
 Minimum check:
 
 ```bash
 pwd
 readlink -f install/setup.bash
+show_dds_mode
 ros2 param get /mole/mole_arm_mpc_controller task.info_path
 ```
 
@@ -168,21 +175,20 @@ Rules:
 - If a throwaway/live workspace is being used (for example `/home/lorenzo/tmp/mpc_machine_test_ws`), do **not** review or tune against stale defaults in another checkout.
 - For every review bundle, copy the exact live task file and the exact live turn-model source files that produced the run.
 
-Container overlay guard:
+Container overlay guard, from a fresh interactive shell:
 
 ```bash
-source /opt/ros/jazzy/setup.bash
-source /workspace/moleworks/ros2_ws/install/setup.bash
 readlink -f /workspace/moleworks/ros2_ws/install/setup.bash
 ros2 pkg prefix mole_msgs
 ros2 pkg prefix mole_ocs2_arm_controller
 ```
 
-In the `moleworks_ros` Newton/Terra container, do **not** rely on a shell banner such as
-`Sourcing ROS2 workspace at /home/lorenzo/ros2_ws`. That shell default can leave you with a graph that
-looks alive while custom interfaces and OCS2 packages are missing in the current pane. For this workflow,
-re-source `/workspace/moleworks/ros2_ws/install/setup.bash` and verify both package prefixes before
-launching OCS2, benchmark scripts, or planner services.
+If either package prefix is missing or points at the wrong workspace, recreate
+the shell with the intended `MOLE_ROS_WS` instead of layering another workspace
+over it. If `show_dds_mode` does not report runtime CLIENT plus daemon observer,
+or legacy discovery variables remain set, pull the current published image and
+recreate the container. Do not carry a long DDS export/unset prefix into every
+OCS2 command.
 
 ### 0.2) True-Hold Rule (Mandatory)
 
@@ -235,10 +241,13 @@ If `foxglove_bridge` appears as a publisher on `/mole/actuator_commands`, clear 
 ros2 topic info /mole/actuator_commands -v
 # if you see "Node name: foxglove_bridge" under Publisher:
 tmux send-keys -t ros:foxglove.1 C-c
-tmux send-keys -t ros:foxglove.1 "cd ~/ros2_ws && source /opt/ros/jazzy/setup.bash && source install/setup.bash && ros2 launch foxglove_bridge foxglove_bridge_launch.xml" C-m
 sleep 2
 ros2 topic info /mole/actuator_commands -v
 ```
+
+Leave the stale bridge stopped during the commanded segment. Restart it after
+deactivation through the current robot/Terra startup helper, which scopes only
+Foxglove to observer DDS; do not reconstruct that environment in this pane.
 
 ### 2. tmux Layout (ros session)
 
@@ -260,7 +269,10 @@ tmux new-window -t ros -n ocs2
 tmux split-window -t ros:ocs2 -h
 ```
 
-Use the same tmux pane family for launch + activate + goal publish. The preferred helpers now bootstrap ROS/workspace/FastDDS internally, so do not add manual `source /opt/ros/jazzy/setup.bash` or hand-picked DDS profiles unless you are debugging the bootstrap itself.
+Use the same tmux pane family for launch + activate + goal publish. Fresh image
+shells already source ROS/the selected workspace and configure the DDS split, so
+use plain `ros2` commands. Source or override them manually only while debugging
+the shell bootstrap itself.
 
 ### 3. Launch (Real Actuation)
 
@@ -307,8 +319,6 @@ Manual launch path (use only if you need custom handover/debug):
 Launch OCS2 arm with real actuator commands:
 
 ```bash
-source /opt/ros/jazzy/setup.bash
-source /workspace/moleworks/ros2_ws/install/setup.bash
 ros2 pkg prefix mole_ocs2_arm_controller
 ros2 pkg prefix mole_msgs
 
@@ -503,17 +513,42 @@ ros2 topic info /mole/actuator_commands -v
 
 ### 6. Recording (rosbag)
 
-Record the minimum useful set:
+Use the canonical OCS2 split. Start it before lifecycle configure and stop it
+only after deactivation/cleanup so provenance and terminal state are captured:
 
 ```bash
-mkdir -p ~/bags/ocs2_arm
-ros2 bag record -o ~/bags/ocs2_arm/$(date +%Y%m%d_%H%M%S)_ocs2_arm \
-  --topics \
-  /mole/joint_states /tf /tf_static /machine_status \
-  /mole/ocs2/arm_controller/diagnostics \
-  /mole/ocs2/target /mole/ocs2/observation /mole/ocs2/policy \
-  /mole/actuator_commands
+RUN_DIR=~/ocs2_benchmarks/ocs2_arm/live_$(date +%Y%m%d_%H%M%S)
+mkdir -p "${RUN_DIR}"
+ros2 launch mole_bag_tools rosbag_record.launch.py \
+  bag_path:="${RUN_DIR}" \
+  append_timestamp:=false \
+  record_sensors:=false \
+  record_state:=false \
+  record_commands:=false \
+  record_lidar:=false \
+  record_camera:=false \
+  record_elevation_map:=false \
+  record_ocs2:=true \
+  record_dig3d_special_obs:=false \
+  capture_ocs2_provenance:=true \
+  require_ocs2_provenance:=true
 ```
+
+On a remote robot, this launcher gives only the rosbag child its observer DDS
+profile; the launch/provenance process remains on runtime CLIENT. Do not replace
+it with raw `ros2 bag record` plus a hand-written DDS environment. Local runs
+inherit local DDS unchanged.
+
+After the recorder has finalized:
+
+```bash
+ros2 bag info "${RUN_DIR}/raw/ocs2"
+ros2 run mole_bag_tools validate_ocs2_recording "${RUN_DIR}" --write
+```
+
+The evidence validator expects at least 60 seconds and positive counts for its
+required OCS2/state topics. An empty or short split is a failed recording, even
+if the benchmark CSV is otherwise usable.
 
 ### 7. Validation Phases (Recommended Order)
 
