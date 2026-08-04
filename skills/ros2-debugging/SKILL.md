@@ -1,104 +1,103 @@
 ---
 name: ros2-debugging
-description: "Debug ROS 2 topics, nodes, services, TF, DDS domains, and tmux-managed stacks. Use for bounded health checks, publisher conflicts, transform failures, and reliable timeout-based diagnosis."
+description: "Diagnose ROS 2 topics, nodes, services, actions, parameters, TF, DDS domains, and tmux-managed processes with bounded read-only checks. Use for missing graphs, publisher conflicts, transform failures, stale data, and ownership diagnosis before any restart."
 ---
 
-# ROS2 Debugging Best Practices
+# ROS 2 Debugging
 
-Keep this skill generic. Do not turn it into a project-specific launch runbook.
+Keep this skill portable and read-only by default. Route project-specific
+bringup or recovery to its owning skill/runbook.
 
-## Moleworks Container DDS Default
+## Establish The Owning Environment
 
-In a freshly pulled or rebuilt `rslheap/moleworks_ros:latest` container, source the workspace and run plain `ros2 ...` commands. The shell uses Fast DDS CLIENT for runtime processes, and the ROS 2 daemon uses an observer SUPER_CLIENT profile for graph discovery.
+1. Identify the process/tmux session and sourced workspace that own the graph.
+2. Check `ROS_DOMAIN_ID` and relevant discovery variables in the same shell as
+   the failing process.
+3. Run `ros2 <verb> -h` before relying on distribution-sensitive flags.
+4. Bound every graph/data probe with `timeout`; do not wait indefinitely.
+5. Treat one empty graph listing as weak evidence. Confirm the domain,
+   discovery path, target endpoint, process logs, and direct data before a
+   restart.
 
-Do not prepend long DDS export/unset sequences to routine probes. If this default is absent, pull or rebuild the image and recreate the container; a stale container should not become a permanent shell workaround. Use an explicit profile override only for a bounded diagnostic that genuinely needs a different DDS role.
+A supported project container may configure DDS automatically, while a robot
+installation may use a host workspace. Do not declare a working owning shell
+stale merely because it is not inside a particular image, and do not paste a
+large DDS override in front of every command.
 
-## Checking TF Transforms
-
-**CRITICAL: Always use long timeouts (10-15 seconds minimum).**
-
-Tools like `tf2_echo` need 1-2 seconds to initialize their TF buffer before they can query transforms.
-
-```bash
-# CORRECT: Long timeout allows TF buffer to initialize
-timeout 15 bash -lc 'ros2 run tf2_ros tf2_echo map BASE 2>&1' | head -20
-
-# WRONG: Short timeout often fails before transform data appears
-timeout 3 ros2 run tf2_ros tf2_echo map BASE
-```
-
-Why this matters:
-
-- `tf2_echo` needs time to initialize its TF buffer.
-- Early "frame does not exist" output is often transient and normal.
-- Short timeouts often fail before real transform data appears.
-- Piping to `head` is fine if the timeout is long enough.
-
-If the stack namespaces TF topics, your debug node must join that namespace or remap the TF topics. Example for a Moleworks-style stack that publishes `/mole/tf` and `/mole/tf_static`:
-
-```bash
-timeout 15 bash -lc 'ros2 run tf2_ros tf2_echo map BASE_GRAV --ros-args -r __ns:=/mole 2>&1' | head -20
-```
-
-For ad-hoc Python probes using `TransformListener`, create the node inside the same namespace as the robot stack; otherwise you can get a false `no tf` even though the transform graph is healthy.
-
-## Checking ROS Topics
-
-On crowded robot PCs, `ros2 topic list` can still look empty even when the system
-is running. First confirm that the shell is from the current image and that its
-observer daemon is healthy. Treat one empty graph listing as a weak signal; prefer
-direct checks for the specific topic/service/node, longer timeouts, TF evidence,
-tmux process/logs, and publisher ownership before restarting anything.
+## Read-Only Graph And Data Checks
 
 ```bash
 echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset}"
-timeout 10 ros2 topic list
-timeout 10 ros2 topic hz /your_topic
-timeout 10 ros2 topic echo /your_topic --once
-timeout 10 ros2 topic info /your_topic --verbose
-```
-
-If you are running multiple ROS stacks on different domains:
-
-- verify `ROS_DOMAIN_ID` in the active shell before trusting any graph output
-- keep one tmux session per domain when possible
-- encode the domain in the session name so captures and restarts are unambiguous
-- do not conclude "the topic is gone" until you have ruled out a domain mismatch
-
-## Common ROS2 Debugging Commands
-
-```bash
 timeout 10 ros2 node list
 timeout 10 ros2 node info /your_node
 
+timeout 10 ros2 topic list
+timeout 10 ros2 topic info /your_topic --verbose
+timeout 10 ros2 topic echo /your_topic --once
+timeout 10 ros2 topic hz /your_topic
+
 timeout 10 ros2 service list
-timeout 10 ros2 service call /service_name std_srvs/srv/Empty "{}"
+timeout 10 ros2 service type /your_service
+timeout 10 ros2 action list -t
 
 timeout 10 ros2 param list /your_node
 timeout 10 ros2 param get /your_node parameter_name
-
-timeout 20 ros2 run tf2_tools view_frames
 ```
 
-## tmux Integration
+`topic hz` commonly ends with timeout status 124 after producing useful
+samples. Record the observed samples/rate rather than treating that bounded
+exit alone as a failure.
 
-When running ROS commands in tmux, keep the pane alive long enough to inspect failures:
+Before calling a service, publishing, sending an action, setting a parameter,
+or changing lifecycle state, establish the endpoint type and obtain the
+operation-specific authorization. Those are not read-only debugging probes.
+
+## TF Checks
+
+Give `tf2_echo` at least 15-20 seconds to populate its buffer. Early “frame
+does not exist” output can be transient:
 
 ```bash
-tmux new-window -n ros2
-tmux send-keys -t ros2 "bash -lc 'ros2 launch your_package your_launch.py; exec bash -i'" C-m
-sleep 0.5
-tmux capture-pane -p -S -200 -t ros2
+timeout 20 bash -lc 'ros2 run tf2_ros tf2_echo map BASE 2>&1' | head -40
 ```
 
-For multi-domain debugging, make the tmux target itself identify the domain, for example:
+On normal ROS 2 stacks, TF transport remains global `/tf` and `/tf_static`;
+putting a node in `/mole` does not move TF to `/mole/tf`. Join/remap a private
+TF transport only when endpoint inspection proves that the stack explicitly
+uses one.
+
+Robot-local frame names may still carry a `tf_prefix`. Construct the effective
+frame from the configured prefix and query that frame; keep global frames such
+as `map` unprefixed. For an ad-hoc `TransformListener`, use the graph's actual
+TF transport and time source, then allow the listener buffer to warm up.
+
+## Publisher And Domain Conflicts
+
+- Use `ros2 topic info <topic> --verbose` to enumerate endpoint node names,
+  namespaces, GIDs, and QoS before assigning ownership.
+- Compare the observed publisher count with the owning launch contract.
+- Check `ROS_DOMAIN_ID` in every relevant process environment; use one named
+  tmux session per domain when possible.
+- Do not conclude that a topic vanished until a direct bounded read, process
+  state, domain, and discovery path agree.
+- Do not start a replacement component beside an unhealthy complete owner.
+
+## Inspect tmux Without Mutating It
 
 ```bash
-tmux new-session -d -s ros123_debug
-tmux send-keys -t ros123_debug "bash -lc 'export ROS_DOMAIN_ID=123; ros2 topic list; exec bash -i'" C-m
+tmux list-sessions
+tmux list-windows -a -F '#{session_name}:#{window_index} #{window_name} #{window_active}'
+tmux list-panes -a -F '#{session_name}:#{window_name}.#{pane_index} #{pane_pid} #{pane_current_command} #{pane_dead}'
+tmux capture-pane -p -S -200 -t session:window
 ```
 
-## Moleworks / Newton Handoff
+Correlate pane commands/logs with ROS endpoint ownership. Creating, killing,
+respawning, or sending keys to panes is a separate operational action.
 
-- If the task is Moleworks Newton parity through `moleworks_ros`, also use `newton-ros-parity`.
-- Keep this skill focused on portable ROS2 debugging primitives: TF timing, topic checks, node/service inspection, and tmux capture.
+## Moleworks Handoff
+
+For a Moleworks robot, first use the maintained monitors under
+`mole_utils/scripts/`, then the current
+`docs/robot_agent/TROUBLESHOOTING_GUIDE.md`. Use `robot-ros` to select the
+narrow recovery skill. Use `newton-ros-parity` when the failure is specifically
+Newton-to-`moleworks_ros` clock/TF/topic parity.

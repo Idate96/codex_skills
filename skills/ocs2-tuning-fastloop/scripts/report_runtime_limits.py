@@ -3,8 +3,9 @@
 Report effective joint velocity/acceleration limits used during tuning.
 
 This combines:
-1) Diagnostic limit columns from the latest benchmark CSV row.
-2) Controller runtime parameters (`command.max_velocity`, `command.max_accel`,
+1) Direction-active diagnostic limit columns from the latest benchmark CSV row.
+2) Controller runtime parameters (`command.min_velocity`, `command.max_velocity`,
+   `command.max_accel`, `command.max_accel_pos`, `command.max_accel_neg`, and
    `command.accel_scale`) from the active controller node.
 
 Fail fast on missing files/columns/params to avoid tuning with ambiguous state.
@@ -21,7 +22,6 @@ import subprocess
 from dataclasses import dataclass
 from typing import Dict, List
 
-
 JOINTS = [
     ("j_turn", "J_TURN"),
     ("j_boom", "J_BOOM"),
@@ -33,7 +33,9 @@ JOINTS = [
 
 @dataclass
 class JointSnapshot:
+    velocity: float
     vel_limit_csv: float
+    acceleration: float
     accel_limit_csv: float
     vel_ratio: float
     accel_ratio: float
@@ -61,11 +63,8 @@ def _f(row: Dict[str, str], key: str) -> float:
     return float(raw)
 
 
-def _ros2_param_get(workspace: pathlib.Path, node: str, param: str) -> str:
-    cmd = (
-        f"source '{workspace}/install/setup.bash' && "
-        f"ros2 param get '{node}' '{param}'"
-    )
+def _ros2_param_get(setup_path: pathlib.Path, node: str, param: str) -> str:
+    cmd = f"source '{setup_path}' && " f"ros2 param get '{node}' '{param}'"
     proc = subprocess.run(
         ["bash", "-lc", cmd],
         capture_output=True,
@@ -87,7 +86,9 @@ def _ros2_param_get(workspace: pathlib.Path, node: str, param: str) -> str:
     line = value_lines[-1]
     m = re.search(r"\bvalue(s)?\s+(is|are):\s*(.*)$", line, flags=re.IGNORECASE)
     if m is None:
-        raise RuntimeError(f"Could not extract value payload for {node}:{param}\nline:\n{line}")
+        raise RuntimeError(
+            f"Could not extract value payload for {node}:{param}\nline:\n{line}"
+        )
     return m.group(3).strip()
 
 
@@ -98,6 +99,12 @@ def _parse_float_list(value_text: str) -> List[float]:
     return [float(x) for x in nums]
 
 
+def _parse_optional_float_list(value_text: str) -> List[float]:
+    if value_text.strip() == "[]":
+        return []
+    return _parse_float_list(value_text)
+
+
 def _parse_scalar_float(value_text: str) -> float:
     nums = _parse_float_list(value_text)
     return float(nums[0])
@@ -105,16 +112,28 @@ def _parse_scalar_float(value_text: str) -> float:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--csv", default="", help="Benchmark CSV path. If empty, use --active-csv-file.")
+    ap.add_argument(
+        "--csv", default="", help="Benchmark CSV path. If empty, use --active-csv-file."
+    )
     ap.add_argument("--active-csv-file", default="~/mpc_tuning/current/.active_csv")
     ap.add_argument("--workspace", default="~/ros2_ws")
+    ap.add_argument(
+        "--setup",
+        default="",
+        help="Exact setup.bash; overrides --workspace/install/setup.bash.",
+    )
     ap.add_argument("--controller-node", default="/mole/mole_arm_mpc_controller")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
     workspace = pathlib.Path(args.workspace).expanduser().resolve()
-    if not (workspace / "install" / "setup.bash").exists():
-        raise FileNotFoundError(f"Workspace setup not found: {workspace}/install/setup.bash")
+    setup_path = (
+        pathlib.Path(args.setup).expanduser().resolve()
+        if args.setup.strip()
+        else workspace / "install" / "setup.bash"
+    )
+    if not setup_path.is_file():
+        raise FileNotFoundError(f"ROS setup not found: {setup_path}")
 
     if args.csv.strip() != "":
         csv_path = pathlib.Path(args.csv).expanduser().resolve()
@@ -122,46 +141,93 @@ def main() -> None:
         active_csv_path = pathlib.Path(args.active_csv_file).expanduser().resolve()
         if not active_csv_path.exists():
             raise FileNotFoundError(f"Active CSV pointer not found: {active_csv_path}")
-        csv_path = pathlib.Path(active_csv_path.read_text(encoding="utf-8").strip()).expanduser().resolve()
+        csv_path = (
+            pathlib.Path(active_csv_path.read_text(encoding="utf-8").strip())
+            .expanduser()
+            .resolve()
+        )
 
     latest = _read_latest_row(csv_path)
 
     by_joint: Dict[str, JointSnapshot] = {}
     for slug, jname in JOINTS:
         by_joint[jname] = JointSnapshot(
+            velocity=_f(latest, f"diag_cmd_vel_{slug}_radps"),
             vel_limit_csv=_f(latest, f"diag_cmd_vel_limit_{slug}_radps"),
+            acceleration=_f(latest, f"diag_cmd_accel_{slug}_radps2"),
             accel_limit_csv=_f(latest, f"diag_cmd_accel_limit_{slug}_radps2"),
             vel_ratio=_f(latest, f"diag_cmd_vel_ratio_{slug}"),
             accel_ratio=_f(latest, f"diag_cmd_accel_ratio_{slug}"),
         )
 
+    min_velocity = _parse_float_list(
+        _ros2_param_get(setup_path, args.controller_node, "command.min_velocity")
+    )
     max_velocity = _parse_float_list(
-        _ros2_param_get(workspace, args.controller_node, "command.max_velocity")
+        _ros2_param_get(setup_path, args.controller_node, "command.max_velocity")
     )
     max_accel = _parse_float_list(
-        _ros2_param_get(workspace, args.controller_node, "command.max_accel")
+        _ros2_param_get(setup_path, args.controller_node, "command.max_accel")
+    )
+    max_accel_pos = _parse_optional_float_list(
+        _ros2_param_get(setup_path, args.controller_node, "command.max_accel_pos")
+    )
+    max_accel_neg = _parse_optional_float_list(
+        _ros2_param_get(setup_path, args.controller_node, "command.max_accel_neg")
     )
     accel_scale = _parse_scalar_float(
-        _ros2_param_get(workspace, args.controller_node, "command.accel_scale")
+        _ros2_param_get(setup_path, args.controller_node, "command.accel_scale")
     )
 
+    if len(min_velocity) != len(JOINTS):
+        raise RuntimeError(
+            f"command.min_velocity size mismatch: got {len(min_velocity)}, expected {len(JOINTS)}"
+        )
     if len(max_velocity) != len(JOINTS):
-        raise RuntimeError(f"command.max_velocity size mismatch: got {len(max_velocity)}, expected {len(JOINTS)}")
+        raise RuntimeError(
+            f"command.max_velocity size mismatch: got {len(max_velocity)}, expected {len(JOINTS)}"
+        )
     if len(max_accel) != len(JOINTS):
-        raise RuntimeError(f"command.max_accel size mismatch: got {len(max_accel)}, expected {len(JOINTS)}")
+        raise RuntimeError(
+            f"command.max_accel size mismatch: got {len(max_accel)}, expected {len(JOINTS)}"
+        )
+    if not max_accel_pos:
+        max_accel_pos = list(max_accel)
+    if not max_accel_neg:
+        max_accel_neg = list(max_accel)
+    if len(max_accel_pos) != len(JOINTS):
+        raise RuntimeError(
+            f"command.max_accel_pos size mismatch: got {len(max_accel_pos)}, expected {len(JOINTS)}"
+        )
+    if len(max_accel_neg) != len(JOINTS):
+        raise RuntimeError(
+            f"command.max_accel_neg size mismatch: got {len(max_accel_neg)}, expected {len(JOINTS)}"
+        )
 
     comparison = {}
     tol = 1e-6
     for idx, (_, jname) in enumerate(JOINTS):
         snap = by_joint[jname]
-        vel_diff = abs(snap.vel_limit_csv - max_velocity[idx])
-        accel_diff = abs(snap.accel_limit_csv - max_accel[idx])
+        active_vel_param = (
+            max_velocity[idx] if snap.velocity >= 0.0 else abs(min_velocity[idx])
+        )
+        active_accel_base = (
+            max_accel_pos[idx] if snap.acceleration >= 0.0 else max_accel_neg[idx]
+        )
+        active_accel_param = active_accel_base * accel_scale
+        vel_diff = abs(snap.vel_limit_csv - active_vel_param)
+        accel_diff = abs(snap.accel_limit_csv - active_accel_param)
         comparison[jname] = {
-            "vel_limit_param_radps": max_velocity[idx],
+            "command_velocity_radps": snap.velocity,
+            "vel_direction": "positive" if snap.velocity >= 0.0 else "negative",
+            "vel_limit_param_radps": active_vel_param,
             "vel_limit_csv_radps": snap.vel_limit_csv,
             "vel_abs_diff": vel_diff,
             "vel_match": vel_diff <= tol,
-            "accel_limit_param_radps2": max_accel[idx],
+            "command_acceleration_radps2": snap.acceleration,
+            "accel_direction": "positive" if snap.acceleration >= 0.0 else "negative",
+            "accel_limit_base_param_radps2": active_accel_base,
+            "accel_limit_param_radps2": active_accel_param,
             "accel_limit_csv_radps2": snap.accel_limit_csv,
             "accel_abs_diff": accel_diff,
             "accel_match": accel_diff <= tol,
@@ -170,7 +236,12 @@ def main() -> None:
         }
 
     worst_vel = max(((v.vel_ratio, j) for j, v in by_joint.items()), key=lambda x: x[0])
-    worst_accel = max(((v.accel_ratio, j) for j, v in by_joint.items()), key=lambda x: x[0])
+    worst_accel = max(
+        ((v.accel_ratio, j) for j, v in by_joint.items()), key=lambda x: x[0]
+    )
+    all_limits_match = all(
+        values["vel_match"] and values["accel_match"] for values in comparison.values()
+    )
 
     out = {
         "csv_path": str(csv_path),
@@ -179,12 +250,17 @@ def main() -> None:
             "seg_id": int(_f(latest, "seg_id")),
         },
         "controller_node": args.controller_node,
+        "setup_path": str(setup_path),
         "controller_params": {
+            "command.min_velocity": min_velocity,
             "command.max_velocity": max_velocity,
             "command.max_accel": max_accel,
+            "command.max_accel_pos": max_accel_pos,
+            "command.max_accel_neg": max_accel_neg,
             "command.accel_scale": accel_scale,
         },
         "joint_comparison": comparison,
+        "all_limits_match": all_limits_match,
         "worst_ratio_latest": {
             "cmd_vel_ratio": {"joint": worst_vel[1], "value": worst_vel[0]},
             "cmd_accel_ratio": {"joint": worst_accel[1], "value": worst_accel[0]},
@@ -193,13 +269,19 @@ def main() -> None:
 
     if args.json:
         print(json.dumps(out, indent=2, sort_keys=True))
+        if not all_limits_match:
+            raise SystemExit(1)
         return
 
     print(f"csv: {out['csv_path']}")
-    print(f"latest: seg={out['latest_row']['seg_id']} t_sec={out['latest_row']['t_sec']:.3f}")
+    print(
+        f"latest: seg={out['latest_row']['seg_id']} t_sec={out['latest_row']['t_sec']:.3f}"
+    )
     print(
         "controller params: "
-        f"max_velocity={max_velocity} max_accel={max_accel} accel_scale={accel_scale:.3f}"
+        f"min_velocity={min_velocity} max_velocity={max_velocity} "
+        f"max_accel={max_accel} max_accel_pos={max_accel_pos} "
+        f"max_accel_neg={max_accel_neg} accel_scale={accel_scale:.3f}"
     )
     print(
         "worst latest ratios: "
@@ -214,6 +296,10 @@ def main() -> None:
             f"accel_limit csv/param={c['accel_limit_csv_radps2']:.3f}/{c['accel_limit_param_radps2']:.3f} "
             f"match={c['accel_match']} | "
             f"ratios vel/accel={c['vel_ratio_latest']:.3f}/{c['accel_ratio_latest']:.3f}"
+        )
+    if not all_limits_match:
+        raise SystemExit(
+            "Runtime diagnostic limits do not match live controller parameters."
         )
 
 

@@ -10,15 +10,21 @@ Graph-MSF estimator work now uses the standard `moleworks_ros` container; do not
 ## Start Or Attach
 
 ```bash
-/home/lorenzo/codex_skills/skills/mole-graph-msf-container/scripts/start_graph_msf_container.sh [session] [window]
+SKILL_DIR="${CODEX_HOME:-$HOME/.codex}/skills/mole-graph-msf-container"
+"$SKILL_DIR/scripts/start_graph_msf_container.sh" [session] [window]
 tmux attach -t <session>
 ```
 
-The helper uses the preferred `moleworks_ros` shell function when no container exists and opens `docker exec -it moleworks_ros bash` when it is already running.
+The helper uses the preferred `moleworks_ros` shell function when no container exists and opens
+`docker exec -it moleworks_ros bash` when it is already running. If the requested tmux window
+already exists, it attaches to that owner without injecting a second shell command.
 
 ## Launch Estimator Inside The Container
 
 Source the built workspace and use the current package default unless the user requested a named profile. Verify any explicit config exists before launch; `mole_estimator_robot.yaml` is not a current profile.
+
+First inspect the existing graph. If `/mole/mole_estimator_node` already exists, use its owning
+tmux/process and do not launch a duplicate estimator.
 
 ```bash
 WS="$HOME/ros2_ws"

@@ -1,92 +1,137 @@
 ---
 name: robot-startup
-description: "Start or restart the real-robot Moleworks ROS tmux stack. Use for base bringup, optional DIG-controller launch, hydraulic unlock, estimator selection, and engine-RPM setup."
+description: "Start or restart the real-robot Moleworks ROS tmux prerequisites and optional standalone perception/DIG stack. Use for bounded machine bringup, tool/namespace/TF selection, hydraulic unlock, or authorized engine-RPM setup."
 ---
 
 # Robot Startup
 
-Start the real-robot stack through the bundled tmux wrapper. Use `newton-sim-ros-startup` for Newton and `sim-startup` for split IsaacLab/Terra simulation.
+Use the bundled tmux wrapper for direct robot bringup. Use `terra-pipeline` for
+a Terra application, `dig-controllers` when the prerequisites already run, and
+`set-engine-rpm` for RPM-only work.
 
-## Authority Boundary
+## Authority And Sources
 
-- A request to start the ROS stack authorizes software bringup only.
-- Unlock hydraulics or change engine RPM only when the user explicitly asks to make the machine ready, unlock it, or set an RPM.
-- Keep an operator present for machine-side actions and require the Menzi interlocks below.
-- Use `--restart` only when the user requested a clean restart or killing the existing managed session is otherwise clearly in scope.
+- A startup request authorizes software bringup only.
+- Unlock hydraulics or change RPM only when the user explicitly asks to make
+  the machine ready, unlock it, or set an RPM. Keep an operator present.
+- Inspect the existing `ros` tmux session and command owners before changing
+  anything. Use `--restart` only when a clean restart is explicitly in scope.
+- Read `<repo>/docs/robot_agent/ROBOT_OPERATIONS_GUIDE.md` for current machine
+  prerequisites and shutdown, then confirm launch arguments in the owning
+  package README/launch file. Do not copy an old quick-reference command.
+- Use the sourced environment that owns the live graph. The current real-robot
+  image is ROS 2 Jazzy; source the selected workspace's `install/setup.bash`
+  and verify `ROS_DISTRO=jazzy` rather than hard-coding a Humble underlay.
+  On a robot installation this may be the host workspace; a container is not a
+  universal requirement.
 
 ## Start The Stack
 
-Run the wrapper immediately for a normal base-stack request:
+Resolve the installed skill path and run the wrapper:
 
 ```bash
-/home/lorenzo/codex_skills/skills/robot-startup/scripts/robot_startup_tmux.sh
+STARTUP="${CODEX_HOME:-$HOME/.codex}/skills/robot-startup/scripts/robot_startup_tmux.sh"
+: "${ROBOT_WS:?Set ROBOT_WS to the workspace verified from the owning tmux/process environment}"
+"$STARTUP" --ws "$ROBOT_WS"
 ```
 
-Useful explicit options:
+The default managed layout is `low_level`, `perception`, `estimator`, then
+`foxglove`. It uses `mole`, an empty TF prefix, the geometry-only `shovel`
+tool, and `mapping_profile:=local`. Useful explicit options are:
 
-- attach: `--attach`
-- workspace override: `--ws <path>`; otherwise the script checks `~/ros2_ws`, then `~/moleworks/ros2_ws`
-- clean restart: `--restart`
-- omit estimator: `--no-estimator`
-- add a controller: `--dig-controller <dig3d|newton|dig|dig-ee>`
-- select tool geometry: `--endeffector-type <type>`
-- load a saved site design: `--mapping-profile site --design-map-name <name>`
+- `--attach`, `--restart`, `--session <name>`, `--ws <path>`
+- `--robot-namespace mole --tf-prefix <prefix>`
+- `--endeffector-type <geometry-only-tool>`; never pass a retired
+  `*_calibrated` value
+- `--mapping-profile <analytical|local|site>` and
+  `--design-map-name <name>` for a design-backed profile
+- `--no-perception` when the later application owner supplies perception
+- `--no-estimator` only for an intentional inspection/low-level diagnostic;
+  machine applications require estimator readiness
+- `--no-foxglove` when the application owns visualization
+- `--dig-controller <dig3d|newton|dig|dig-ee>` to launch a standalone DIG
+  controller without lifecycle activation; after state, TF, map, and publisher checks, use
+  `dig-controllers` for the separately authorized activation/action boundary
 
-Base stack is the default. If the base is already running and only a controller is needed, use `dig-controllers` instead.
+Keep the same effective tool, namespace, and TF prefix across low level,
+estimator, perception, and the application. For Terra, follow its owning skill
+and operator guide: Terra owns enabled perception and visualization, so do not
+prestart duplicates.
 
-The wrapper manages named tmux windows (`low_level`, `perception`, optional `estimator`, optional `dig`, then `foxglove`). It leaves unrelated busy windows alone, starts Foxglove only after earlier managed launches pass readiness, and disables tmux continuum restore unless `--keep-continuum-restore` is explicit.
+Without `--restart`, the wrapper preflights every managed pane, starts only
+idle panes, and refuses a busy pane whose owner is wrong or unknown. It never
+sends Ctrl+C or respawns a busy process implicitly. It delays Foxglove until
+earlier requested launches are present. `--restart` kills and recreates the
+named tmux session. It does not change global tmux continuum settings.
 
-## DDS And Container Default
-
-Use a freshly pulled or rebuilt `rslheap/moleworks_ros:latest` container. Its shell configures normal ROS processes as Fast DDS CLIENT and the ROS 2 daemon as an observer SUPER_CLIENT. Source the workspace, then run the wrapper and ordinary `ros2 ...` commands directly.
-
-Do not paste DDS profile exports/unsets in front of each command. If that plain-command contract is missing, the container is stale: pull or rebuild the image and recreate the container instead of patching its environment command by command. The startup wrapper intentionally does not duplicate image-level DDS setup.
+A matching pane role is not proof of matching configuration. Before relying on
+an accepted busy pane, compare its working directory, process environment, and
+launch arguments with the selected workspace, ROS domain, tool, namespace, TF
+prefix, and profile. Stop on ambiguity; do not start the missing panes beside a
+mixed stack.
 
 ## Mapping Contract
 
-Default to `mapping_profile:=local`; do not silently load a site-scale design bag. Dig controllers consume both current and target terrain from `/excavation_mapping/grid_map`.
+Use `local` for a standalone live local map. `site` and `analytical` are
+design-backed and require an explicit saved design map. Do not load a site map
+silently.
 
-After local bringup, apply runtime desired geometry through `/excavation_mapping/apply_runtime_profile` only when the user asked for a target. Supported families are `constant`, `slanted`, `trench`, and `polar_sector`. The service is one-shot per excavation-mapping lifetime; restart excavation mapping before changing the target.
+Apply runtime desired geometry through
+`/excavation_mapping/apply_runtime_profile` only when the user requested a
+target. Supported profile types are `constant`, `slanted`, `trench`, and
+`polar_sector`. The service accepts one profile per excavation-mapping
+lifetime; restart that owner before applying a different target. Use the
+owning perception README/service definition for the request fields.
 
 ## Optional Machine-Ready Actions
 
-Only continue here after explicit user intent.
+Continue only after explicit user intent. Use 1600 RPM as the standard
+autonomous target when the operator asks to raise RPM or make the machine ready
+without naming a value. An explicit numeric target overrides it. Never apply
+an RPM change for generic software startup. Keep automatic startup targets in
+the maintained 900-1600 RPM envelope. The 1600 target requires the direct
+`SetRPM` service because the stepwise `/engine_speed` fallback stops at 1500;
+the owning wrapper enforces that distinction. A target above 1600 requires a
+separately reviewed interface-specific workflow.
 
-1. Resolve and source the same workspace used by startup.
-2. Wait at most 60 seconds for `/machine_status` and `/hydraulic_lock`; do not wait indefinitely.
-3. Read `/machine_status` with a bounded timeout and require:
-   - `is_armrest_unlocked: true`
-   - `is_radio_estop_unlocked: true`
-   - `is_manual_operation_unlocked: true`
-   - `is_autonomy_switch_on: true`
-4. Call `/hydraulic_lock` only after those gates pass.
-5. Re-read status and require `is_hydraulilock_unlocked: true`; when available, also require `is_autonomous_operation_unlocked: true`.
-6. If the user requested an RPM, use `set-engine-rpm` and verify readback. Do not assume `1600` from a generic startup request.
+1. Wait at most 60 seconds for `/machine_status` and `/hydraulic_lock`.
+2. Read one `machine_msgs/msg/MachineStatus` sample and require all of:
+   `is_armrest_unlocked`, `is_radio_estop_unlocked`,
+   `is_manual_operation_unlocked`, and `is_autonomy_switch_on`.
+3. Call `/hydraulic_lock` with `std_srvs/srv/SetBool {data: true}` only after
+   those gates pass.
+4. Re-read status and require both `is_hydraulilock_unlocked` and
+   `is_autonomous_operation_unlocked`.
+5. If RPM was requested, invoke `set-engine-rpm` with the explicit or standard
+   target and report measured readback.
 
-Bounded readiness pattern:
+Use bounded read-only preflight commands before the authorized service call:
 
 ```bash
-WS="$HOME/ros2_ws"
-[[ -f "$WS/install/setup.bash" ]] || WS="$HOME/moleworks/ros2_ws"
-source /opt/ros/jazzy/setup.bash
-source "$WS/install/setup.bash"
-
-timeout 60 bash -lc 'until ros2 topic list | grep -Eq "^/machine_status$"; do sleep 1; done'
-timeout 60 bash -lc 'until ros2 service list | grep -Eq "^/hydraulic_lock$"; do sleep 1; done'
-status="$(timeout 10 ros2 topic echo --once /machine_status)"
-grep -Fq 'is_armrest_unlocked: true' <<<"$status"
-grep -Fq 'is_radio_estop_unlocked: true' <<<"$status"
-grep -Fq 'is_manual_operation_unlocked: true' <<<"$status"
-grep -Fq 'is_autonomy_switch_on: true' <<<"$status"
-ros2 service call /hydraulic_lock std_srvs/srv/SetBool '{data: true}'
-status="$(timeout 10 ros2 topic echo --once /machine_status)"
-grep -Fq 'is_hydraulilock_unlocked: true' <<<"$status"
+timeout 60 bash -lc 'until ros2 topic list | grep -Fxq /machine_status; do sleep 1; done'
+timeout 60 bash -lc 'until ros2 service list | grep -Fxq /hydraulic_lock; do sleep 1; done'
+status="$(timeout 10 ros2 topic echo /machine_status machine_msgs/msg/MachineStatus --once)"
+grep -F 'is_armrest_unlocked: true' <<<"$status"
+grep -F 'is_radio_estop_unlocked: true' <<<"$status"
+grep -F 'is_manual_operation_unlocked: true' <<<"$status"
+grep -F 'is_autonomy_switch_on: true' <<<"$status"
 ```
 
-Stop and report the failed gate if a prerequisite, service, or readback does not pass. Do not invent alternate unlock commands.
+After explicit authorization and successful gates:
 
-## Verification
+```bash
+timeout 20 ros2 service call /hydraulic_lock std_srvs/srv/SetBool '{data: true}'
+status="$(timeout 10 ros2 topic echo /machine_status machine_msgs/msg/MachineStatus --once)"
+grep -F 'is_hydraulilock_unlocked: true' <<<"$status"
+grep -F 'is_autonomous_operation_unlocked: true' <<<"$status"
+```
 
-After startup, verify the requested managed windows are running their intended launches. For machine-ready requests, report both hydraulic status and measured RPM rather than only successful service calls.
+Stop at the first failed prerequisite, missing endpoint, or failed readback. A
+zero ROS command is not an emergency stop and is not part of startup recovery.
 
-For general interlock or stack diagnosis, use `robot-ros`. For RPM changes, use `set-engine-rpm`.
+## Verify
+
+Verify requested tmux panes, publisher ownership, estimator `STATUS_OK`, and
+the `map` to effective `BASE`/tool TFs using the operator guide. For a
+machine-ready request, report hydraulic state and measured RPM, not only
+successful service calls. Use `ros2-debugging` for read-only diagnosis.

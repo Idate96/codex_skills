@@ -96,29 +96,13 @@ done
 
 ros2 pkg executables mole_lidar_backprojection >/dev/null
 
-config_src="$workspace/src/open3d_slam/ros/open3d_slam_ros/param/param_robosense_rs16.yaml"
-config_dst="$out/param_livox_dense_static.yaml"
-if [[ -f "$config_src" ]]; then
-  cp "$config_src" "$config_dst"
-  python3 - "$config_dst" <<'PY'
-from pathlib import Path
-import sys
-
-path = Path(sys.argv[1])
-text = path.read_text()
-replacements = {
-    "  is_build_dense_map: false": "  is_build_dense_map: true",
-    "  is_attempt_loop_closures: true": "  is_attempt_loop_closures: false",
-    "    map_voxel_size: 0.05": "    map_voxel_size: 0.01",
-    "      cropping_radius_max: 16.0": "      cropping_radius_max: 40.0",
-    "      cropping_radius_min: 2.0": "      cropping_radius_min: 0.0",
-    "  save_dense_submaps: false": "  save_dense_submaps: true",
-}
-for old, new in replacements.items():
-    text = text.replace(old, new, 1)
-path.write_text(text)
-PY
+config_src="$(ros2 pkg prefix --share open3d_slam_ros)/param/param_mole_livox_mid360.yaml"
+config_dst="$out/param_mole_livox_mid360.yaml"
+if [[ ! -f "$config_src" ]]; then
+  echo "Missing installed Mole MID360 Open3D profile: $config_src" >&2
+  exit 1
 fi
+cp "$config_src" "$config_dst"
 
 backprojection_pid=""
 existing_publishers="$(ros2 topic info /mole/colored_point_cloud 2>/dev/null | awk '/Publisher count:/ {print $3; exit}')"

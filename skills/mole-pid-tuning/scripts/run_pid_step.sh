@@ -15,12 +15,17 @@ if (( $# != 4 )); then
 fi
 
 source /opt/ros/jazzy/setup.bash
-tuning_ws="${ROS_WS:-${HOME}/moleworks/ros2_ws}"
-if [[ ! -f "${tuning_ws}/install/setup.bash" ]]; then
+if [[ -n "${MOLE_ROS_WS:-}" ]]; then
+  tuning_ws="${MOLE_ROS_WS}"
+elif [[ -n "${ROS_WS:-}" ]]; then
+  tuning_ws="${ROS_WS}"
+elif [[ -f "${HOME}/ros2_ws/install/setup.bash" ]]; then
   tuning_ws="${HOME}/ros2_ws"
+else
+  tuning_ws="${HOME}/moleworks/ros2_ws"
 fi
 if [[ ! -f "${tuning_ws}/install/setup.bash" ]]; then
-  echo "No built ROS workspace found; set ROS_WS explicitly." >&2
+  echo "No built ROS workspace found; set MOLE_ROS_WS explicitly." >&2
   exit 2
 fi
 source "${tuning_ws}/install/setup.bash"

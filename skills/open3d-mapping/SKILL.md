@@ -19,7 +19,7 @@ Read [references/manual-and-slam.md](references/manual-and-slam.md) only for man
 ## Fast Capture
 
 ```bash
-SKILL=/home/lorenzo/codex_skills/skills/open3d-mapping
+SKILL="${CODEX_HOME:-$HOME/.codex}/skills/open3d-mapping"
 
 # Default 45-second static capture
 "$SKILL/scripts/record_colored_map_fast.sh"
@@ -31,7 +31,7 @@ SKILL=/home/lorenzo/codex_skills/skills/open3d-mapping
 "$SKILL/scripts/record_colored_map_fast.sh" --sync-perseverance
 ```
 
-The wrapper auto-detects `~/ros2_ws` or `~/moleworks/ros2_ws`; set `MOLEWORKS_ROS_WS` to override. It checks required topics, reuses an existing `/mole/colored_point_cloud` publisher instead of starting a duplicate, warms TF, accumulates in `map`, writes PLY/PCD plus run notes, and stops only the temporary colorizer it created.
+The wrapper auto-detects `~/ros2_ws` or `~/moleworks/ros2_ws`; set `MOLEWORKS_ROS_WS` to override. It checks required topics, reuses an existing `/mole/colored_point_cloud` publisher instead of starting a duplicate, copies the installed Mole MID360 Open3D profile, warms TF, accumulates in `map`, writes PLY/PCD plus run notes, and stops only the temporary colorizer it created.
 
 ## Required Preflight
 

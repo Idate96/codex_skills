@@ -1,4 +1,4 @@
 interface:
   display_name: "Dig Bag Recording"
-  short_description: "Split bags for dig runs with compressed camera"
+  short_description: "Canonical split MCAP capture for DIG and Newton"
   default_prompt: "Use $dig-bag-recording to record dig sessions into split bags (camera, lidar, sensors, state, commands, elevation_map) with compressed images."

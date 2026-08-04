@@ -1,90 +1,59 @@
 ---
 name: dig-bag-recording
-description: "Record split Mole DIG/Newton rosbags for sensors, state, commands, LiDAR, camera, maps, and Dig3D observations. Use when capturing a DIG run or preparing replayable run artifacts."
+description: "Record canonical split MCAP runs for Mole DIG/Newton controllers, including sensors, state, commands, LiDAR, compressed camera, excavation maps, actions, and Dig3D observations."
 ---
 
-# Dig Bag Recording
+# DIG Bag Recording
 
-## Quick Start
+This skill owns recording and finalized-artifact verification. It does not launch a controller (`dig-controllers`), start the base stack (`robot-startup`), replay data (`dig-bag-replay`), or upload it (`kleinkram-upload`).
+
+## Quick start
 
 ```bash
-~/git/codex_skills/skills/dig-bag-recording/scripts/dig_split_recording_tmux.sh \
+SKILL_DIR="${CODEX_HOME:-$HOME/.codex}/skills/dig-bag-recording"
+"$SKILL_DIR/scripts/dig_split_recording_tmux.sh" \
   --scenario dig_newton \
+  --controller newton \
   --use-sim-time true \
   --attach
 ```
 
-This creates a single run directory:
+The helper calls the repository-owned `mole_bag_tools rosbag_record.launch.py` and creates one run root with `raw/sensors`, `raw/state`, `raw/commands`, `raw/lidar`, `raw/camera`, and `raw/elevation_map`. Dig3D also enables `raw/dig3d_special_obs`. The launch writes `recording_manifest.json`, `README.txt`, and `derived/`.
 
-- `raw/sensors/`
-- `raw/state/`
-- `raw/commands/`
-- `raw/lidar/`
-- `raw/camera/` (compressed image topics)
-- `raw/elevation_map/`
-- `raw/dig3d_special_obs/` for `dig_3d*` scenarios
+Pass `--controller` explicitly when the scenario tag is ambiguous. Recognized values are `dig3d`, `newton`, `dig`, `dig-ee`, and `ugep`; this selects the namespaced action transport to retain. Otherwise the helper makes a conservative inference from common scenario names. UGEP additionally records its namespaced observation topics and defaults command capture to its isolated `actuator_commands_ugep_dryrun` output; override `--actuator-commands-topic` only when the controller was deliberately launched with a different output.
 
-## Runtime Image and DDS Contract
+## Runtime contract
 
-- Use the published `rslheap/moleworks_ros:latest` image by default. Record the immutable `rslheap/moleworks_ros:sha-<merge-sha>` tag when the run needs exact image provenance.
-- In a fresh remote-robot shell, normal nodes use the runtime DDS CLIENT profile and the ROS 2 CLI daemon uses the observer SUPER_CLIENT profile. Run preflight and inspection commands as plain `ros2 ...` commands.
-- The helper below launches the canonical `mole_bag_tools rosbag_record.launch.py`. That launcher gives each rosbag child the observer profile while leaving its parent and non-recorder processes on runtime CLIENT. When no observer profile exists, such as local DDS, children inherit the environment unchanged.
-- Do not replace the canonical launcher with raw remote `ros2 bag record` or a copied Fast DDS export/unset prefix. If the split stays empty, first confirm that the image/container is current; pull the published image, recreate the container, and start a fresh tmux window.
+- Use the published `rslheap/moleworks_ros:latest` image by default; retain an immutable `sha-<merge-sha>` tag when exact provenance matters.
+- On a discovery-server robot shell, use normal plain `ros2 ...` inspection commands. The canonical launcher assigns the observer DDS profile to rosbag children while leaving normal processes on the runtime client profile.
+- Do not replace the launcher with raw remote `ros2 bag record` or hand-copied DDS exports. If enabled splits stay empty, first verify the deployed image/container and start a fresh recorder window.
+- Current robot-local state, command, LiDAR, and action topics derive from `--robot-namespace` (default `mole`). The primary DIG map is `/excavation_mapping/grid_map`; the canonical recorder also retains `/<robot_namespace>/elevation_map_filter` and the supported excavation-map aliases.
+- Camera recording uses compressed image topics, preferring `/hal/grpc_image_client/Main/image_raw/compressed` while also retaining `/camMainView/image_raw/compressed` under the default camera configuration.
 
 ## Workflow
 
-1. Before recording, confirm the intended real/sim stack and `use_sim_time` choice, check that the
-   required topics are live, and inspect free space under the output filesystem.
-2. Start recording with the helper script.
-3. Run digging action(s).
-4. Stop the recorder with `Ctrl-C` in the left `record` tmux pane and wait for rosbag finalization.
-5. Verify each expected bag has `metadata.yaml`, at least one `.mcap`, and a readable `ros2 bag info`.
+1. Confirm hardware versus simulation and set `--use-sim-time` accordingly.
+2. Check required topics and free space under the output filesystem.
+3. Start the helper before the DIG action.
+4. Stop with `Ctrl-C` in the left `record` pane and wait for every rosbag process to finalize.
+5. Verify each enabled split has `metadata.yaml`, at least one `.mcap`, and readable `ros2 bag info` output.
 
-The helper intentionally owns only workspace setup and tmux orchestration. DDS
-role selection remains inside the current image and the canonical bag launcher;
-callers should not add DDS environment boilerplate.
-
-Useful preflight (adapt the required topics to the scenario):
+Read-only preflight example:
 
 ```bash
 df -h ~/mcap/dig
-timeout 10 ros2 topic list
 timeout 10 ros2 topic echo /mole/state --once
 timeout 10 ros2 topic echo /mole/actuator_commands --once
+timeout 10 ros2 topic echo /excavation_mapping/grid_map --once
 ```
 
-## Defaults
+Defaults are tmux `ros:record`, output root `~/mcap/dig`, the first built workspace among `~/ros2_ws` and `~/moleworks/ros2_ws`, namespace `mole`, and hardware time (`false`). The helper refuses any busy pane by default; `--restart-window` replaces only the managed window and requires explicit restart authority.
 
-- tmux session/window: `ros:record`
-- workspace: first built workspace among `~/ros2_ws` and `~/moleworks/ros2_ws` (or `--ws`)
-- output root: `~/mcap/dig`
-- time: `false` by default for real hardware; pass `--use-sim-time true` for Newton
-- elevation topic: `/mole/elevation_map_filter`
-- compressed camera topic preference:
-  - `/hal/grpc_image_client/Main/image_raw/compressed`
-  - fallback also recorded by estimator utility: `/camMainView/image_raw/compressed`
-
-## Useful Commands
-
-Check recorder processes:
+## Verification
 
 ```bash
-tmux list-panes -t ros:record -F '#{pane_index} #{pane_pid} #{pane_current_command}'
-```
-
-List generated bags:
-
-```bash
-find ~/mcap/dig -maxdepth 3 -type f -name metadata.yaml | sort
-```
-
-Validate one finalized split:
-
-```bash
-find /path/to/run/raw/state -maxdepth 1 -type f -name '*.mcap' -print -quit
+find ~/mcap/dig -maxdepth 4 -type f -name metadata.yaml | sort
 ros2 bag info /path/to/run/raw/state
 ```
 
-## Resource
-
-- Script: `scripts/dig_split_recording_tmux.sh`
+For OCS2 paper-evidence runs, use the OCS2 experiment skill and the repository's explicit `record_ocs2:=true` plus `validate_ocs2_recording` contract; this generic DIG profile intentionally does not claim OCS2 provenance completeness.

@@ -19,6 +19,7 @@ Controllers:
   newton   -> dig_newton_controller.launch.py
   dig      -> dig_controller_cpp.launch.py
   dig-ee   -> dig_ee_controller_cpp.launch.py
+  ugep     -> dig_ugep_controller_cpp.launch.py (manifest required via extra args)
 
 Options:
   --controller NAME     controller key (required)
@@ -26,7 +27,8 @@ Options:
   --window NAME         tmux window name (default: dig)
   --ws PATH             workspace path (default: auto-detect ~/ros2_ws, then ~/moleworks/ros2_ws)
   --use-sim-time BOOL   true|false (default: false)
-  --robot-namespace NS  dig3d namespace (default: mole)
+  --robot-namespace NS  controller namespace (default: mole)
+  --tf-prefix PREFIX    robot-local TF prefix (default: empty)
   --no-activate         don't auto configure/activate (only print commands)
   --run-action          send the action goal after activation
   --restart-window      kill and recreate the tmux window
@@ -47,6 +49,7 @@ RUN_ACTION="false"
 RESTART_WINDOW="false"
 ATTACH="false"
 ROBOT_NAMESPACE="mole"
+TF_PREFIX=""
 CONTROLLER=""
 EXTRA_LAUNCH_ARGS=()
 
@@ -64,6 +67,8 @@ while [[ $# -gt 0 ]]; do
       USE_SIM_TIME="${2:-}"; shift 2 ;;
     --robot-namespace)
       ROBOT_NAMESPACE="${2:-}"; shift 2 ;;
+    --tf-prefix)
+      TF_PREFIX="${2:-}"; shift 2 ;;
     --no-activate)
       AUTO_ACTIVATE="false"; shift ;;
     --run-action)
@@ -105,6 +110,27 @@ fi
 if [[ -z "$ROBOT_NAMESPACE" ]]; then
   echo "--robot-namespace cannot be empty" >&2
   exit 2
+fi
+if [[ ! "$ROBOT_NAMESPACE" =~ ^[A-Za-z_][A-Za-z0-9_]*(/[A-Za-z_][A-Za-z0-9_]*)*$ ]]; then
+  echo "--robot-namespace must be a valid relative ROS namespace" >&2
+  exit 2
+fi
+if [[ -n "$TF_PREFIX" && ! "$TF_PREFIX" =~ ^[A-Za-z_][A-Za-z0-9_]*(/[A-Za-z_][A-Za-z0-9_]*)*$ ]]; then
+  echo "--tf-prefix must contain only ROS frame-prefix characters" >&2
+  exit 2
+fi
+if [[ "$CONTROLLER" == "ugep" ]]; then
+  have_manifest="false"
+  for arg in "${EXTRA_LAUNCH_ARGS[@]}"; do
+    if [[ "$arg" == policy_manifest_path:=* && "$arg" != "policy_manifest_path:=" ]]; then
+      have_manifest="true"
+      break
+    fi
+  done
+  if [[ "$have_manifest" != "true" ]]; then
+    echo "UGEP requires policy_manifest_path:=... after --" >&2
+    exit 2
+  fi
 fi
 
 if [[ -z "$WS" ]]; then
@@ -150,35 +176,61 @@ case "$CONTROLLER" in
     PKG="mole_highlevel_controller_cpp"
     LAUNCH_FILE="dig_3d_controller_cpp.launch.py"
     NODE_NAME="$(qualify_node_name "$ROBOT_NAMESPACE" "dig_3d_controller")"
-    ACTION_NAME="/run_dig_3d"
+    ACTION_NAME="$(qualify_node_name "$ROBOT_NAMESPACE" "run_dig_3d")"
     BASE_LAUNCH_ARGS=(
       "use_sim_time:=$USE_SIM_TIME"
       "activate_controller:=false"
       "run_action:=false"
       "robot_namespace:=$ROBOT_NAMESPACE"
-      "config:=deployment"
     )
     ;;
   newton)
     PKG="mole_highlevel_controller_cpp"
     LAUNCH_FILE="dig_newton_controller.launch.py"
-    NODE_NAME="/dig_newton_controller"
-    ACTION_NAME="/run_dig_newton"
-    BASE_LAUNCH_ARGS=("use_sim_time:=$USE_SIM_TIME" "activate_controller:=false" "run_action:=false")
+    NODE_NAME="$(qualify_node_name "$ROBOT_NAMESPACE" "dig_newton_controller")"
+    ACTION_NAME="$(qualify_node_name "$ROBOT_NAMESPACE" "run_dig_newton")"
+    BASE_LAUNCH_ARGS=(
+      "use_sim_time:=$USE_SIM_TIME"
+      "activate_controller:=false"
+      "run_action:=false"
+      "robot_namespace:=$ROBOT_NAMESPACE"
+    )
     ;;
   dig)
     PKG="mole_highlevel_controller_cpp"
     LAUNCH_FILE="dig_controller_cpp.launch.py"
-    NODE_NAME="/dig_controller"
-    ACTION_NAME="/run_dig"
-    BASE_LAUNCH_ARGS=("use_sim_time:=$USE_SIM_TIME" "activate_controller:=false" "run_action:=false")
+    NODE_NAME="$(qualify_node_name "$ROBOT_NAMESPACE" "dig_controller")"
+    ACTION_NAME="$(qualify_node_name "$ROBOT_NAMESPACE" "run_dig")"
+    BASE_LAUNCH_ARGS=(
+      "use_sim_time:=$USE_SIM_TIME"
+      "activate_controller:=false"
+      "run_action:=false"
+      "robot_namespace:=$ROBOT_NAMESPACE"
+    )
     ;;
   dig-ee|dig_ee)
     PKG="mole_highlevel_controller_cpp"
     LAUNCH_FILE="dig_ee_controller_cpp.launch.py"
-    NODE_NAME="/dig_ee_controller"
-    ACTION_NAME="/run_dig_ee"
-    BASE_LAUNCH_ARGS=("use_sim_time:=$USE_SIM_TIME" "activate_controller:=false" "run_action:=false")
+    NODE_NAME="$(qualify_node_name "$ROBOT_NAMESPACE" "dig_ee_controller")"
+    ACTION_NAME="$(qualify_node_name "$ROBOT_NAMESPACE" "run_dig_ee")"
+    BASE_LAUNCH_ARGS=(
+      "use_sim_time:=$USE_SIM_TIME"
+      "activate_controller:=false"
+      "run_action:=false"
+      "robot_namespace:=$ROBOT_NAMESPACE"
+    )
+    ;;
+  ugep)
+    PKG="mole_highlevel_controller_cpp"
+    LAUNCH_FILE="dig_ugep_controller_cpp.launch.py"
+    NODE_NAME="$(qualify_node_name "$ROBOT_NAMESPACE" "dig_ugep_controller")"
+    ACTION_NAME="$(qualify_node_name "$ROBOT_NAMESPACE" "run_dig_ugep")"
+    BASE_LAUNCH_ARGS=(
+      "use_sim_time:=$USE_SIM_TIME"
+      "activate_controller:=false"
+      "run_action:=false"
+      "robot_namespace:=$ROBOT_NAMESPACE"
+    )
     ;;
   *)
     echo "Unknown controller: $CONTROLLER" >&2
@@ -186,6 +238,12 @@ case "$CONTROLLER" in
     exit 2
     ;;
 esac
+
+# An empty value is the launch-file default. Emitting a bare `tf_prefix:=`
+# through tmux is parsed by the shell as a malformed launch argument.
+if [[ -n "$TF_PREFIX" ]]; then
+  BASE_LAUNCH_ARGS+=("tf_prefix:=$TF_PREFIX")
+fi
 
 tmux_has_session() {
   tmux has-session -t "$SESSION" 2>/dev/null
@@ -274,7 +332,7 @@ start_helpers_if_idle() {
   tmux send-keys -t "$right_pane" "cd \"$WS\" && source install/setup.bash" C-m
   tmux send-keys -t "$right_pane" "echo \"Controller: $CONTROLLER ($NODE_NAME)\"" C-m
   tmux send-keys -t "$right_pane" "echo \"Waiting for $NODE_NAME...\"" C-m
-  tmux send-keys -t "$right_pane" "until ros2 node list --no-daemon --spin-time 2 2>/dev/null | grep -Fxq $NODE_NAME; do sleep 1; done" C-m
+  tmux send-keys -t "$right_pane" "deadline=\$((SECONDS + 60)); until ros2 node list --no-daemon --spin-time 2 2>/dev/null | grep -Fxq $NODE_NAME; do if (( SECONDS >= deadline )); then echo 'Timed out waiting for $NODE_NAME' >&2; exit 1; fi; sleep 1; done" C-m
 
   if [[ "$AUTO_ACTIVATE" == "true" ]]; then
     tmux send-keys -t "$right_pane" "ros2 lifecycle set --no-daemon --spin-time 2 $NODE_NAME configure" C-m

@@ -1,4 +1,4 @@
 interface:
   display_name: "Dig Bag Replay"
-  short_description: "Replay split DIG bags with live mapping"
-  default_prompt: "Use $dig-bag-replay to start split DIG bag replay in the moleworks_ros container with self-filter, live elevation mapping, live excavation mapping, and Foxglove."
+  short_description: "Offline DIG bag playback with Foxglove"
+  default_prompt: "Use $dig-bag-replay to replay recorded DIG splits or a single-scoop bag in a dedicated moleworks_ros container with robot description and Foxglove."

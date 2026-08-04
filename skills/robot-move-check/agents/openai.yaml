@@ -1,4 +1,4 @@
 interface:
   display_name: "Robot Move Check"
   short_description: "Run a bounded real-robot joint direction check"
-  default_prompt: "Use $robot-move-check to perform the requested short joint-motion check with the required operator safety gates."
+  default_prompt: "Use $robot-move-check to run one recorded, guarded PID velocity step for the explicitly requested real-robot joint direction check."

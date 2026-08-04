@@ -1,73 +1,69 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -eq 0 ]]; then
+if [[ $# -ne 1 ]]; then
   echo "Usage: $(basename "$0") <rpm|--current>" >&2
-  echo "  Examples: $(basename "$0") 1500 | $(basename "$0") --current" >&2
+  echo "  Examples: $(basename "$0") 1600 | $(basename "$0") --current" >&2
   exit 1
 fi
 
 if [[ "${1:-}" != "--current" ]]; then
-  if ! awk -v rpm="${1:-}" 'BEGIN { exit !(rpm ~ /^[0-9]+([.][0-9]+)?$/ && rpm >= 900 && rpm <= 2000) }'; then
-    echo "Error: target RPM must be numeric and within the service-defined 900-2000 range." >&2
+  if ! awk -v rpm="${1:-}" 'BEGIN { exit !(rpm ~ /^[0-9]+([.][0-9]+)?$/ && rpm >= 900 && rpm <= 1600) }'; then
+    echo "Error: target RPM must be numeric and within the maintained 900-1600 machine range." >&2
     exit 2
   fi
 fi
 
-if [[ -f /opt/ros/jazzy/setup.bash ]]; then
-  set +u
-  # shellcheck disable=SC1091
-  source /opt/ros/jazzy/setup.bash
-  set -u
-fi
-
-workspace_candidates=()
-if [[ -n "${MOLEWORKS_ROS_WS:-}" ]]; then
-  workspace_candidates+=("$MOLEWORKS_ROS_WS")
-fi
-workspace_candidates+=(
-  "$HOME/ros2_ws"
-  "$HOME/moleworks/ros2_ws"
-  "$HOME/newton_ros2_ws"
-)
-
-ACTIVE_WS=""
-SCRIPT_PATH=""
-FALLBACK_WS=""
-for ws in "${workspace_candidates[@]}"; do
-  if [[ -z "$FALLBACK_WS" && -f "$ws/install/setup.bash" ]]; then
-    FALLBACK_WS="$ws"
-  fi
-  for relative_script in \
-    "high_level_controllers/mole_highlevel_controller_cpp/scripts/set_engine_rpm.py" \
-    "high_level_controllers/mole_highlevel_controller/mole_highlevel_controller/utils/set_engine_rpm.py"; do
-    candidate="$ws/src/moleworks_ros/$relative_script"
-    if [[ -f "$ws/install/setup.bash" && -f "$candidate" ]]; then
-      ACTIVE_WS="$ws"
-      SCRIPT_PATH="$candidate"
-      break 2
-    fi
-  done
-done
-
-if [[ -z "$ACTIVE_WS" ]]; then
-  ACTIVE_WS="$FALLBACK_WS"
-fi
-if [[ -n "$ACTIVE_WS" ]]; then
+source_setup() {
   set +u
   # shellcheck disable=SC1090
-  source "$ACTIVE_WS/install/setup.bash"
+  source "$1"
   set -u
+}
+
+if [[ -f /opt/ros/jazzy/setup.bash ]]; then
+  source_setup /opt/ros/jazzy/setup.bash
+fi
+
+if [[ -n "${MOLEWORKS_ROS_SETUP:-}" ]]; then
+  if [[ ! -f "$MOLEWORKS_ROS_SETUP" ]]; then
+    echo "Error: MOLEWORKS_ROS_SETUP is not a file: $MOLEWORKS_ROS_SETUP" >&2
+    exit 1
+  fi
+  source_setup "$MOLEWORKS_ROS_SETUP"
+else
+  workspace_candidates=(
+    "${MOLEWORKS_ROS_WS:-}"
+    "${MOLE_ROS_WS:-}"
+    "$HOME/ros2_ws"
+    "$HOME/moleworks/ros2_ws"
+    "$HOME/newton_ros2_ws"
+  )
+  for workspace in "${workspace_candidates[@]}"; do
+    if [[ -n "$workspace" && -f "$workspace/install/setup.bash" ]]; then
+      source_setup "$workspace/install/setup.bash"
+      break
+    fi
+  done
+fi
+
+machine_status_once() {
+  timeout 5 ros2 topic echo --once /machine_status
+}
+
+status="$(machine_status_once)" || {
+  echo "Error: no /machine_status sample received within 5 seconds." >&2
+  exit 1
+}
+current_rpm="$(awk '/measured_engine_rpm:/ {print $2; exit}' <<<"$status")"
+if [[ -z "$current_rpm" ]]; then
+  echo "Error: /machine_status did not contain measured_engine_rpm." >&2
+  exit 1
 fi
 
 if [[ "${1:-}" == "--current" ]]; then
-  if [[ -z "$SCRIPT_PATH" ]]; then
-    echo "Error: set_engine_rpm.py not found in any known Moleworks ROS workspace." >&2
-    echo "Set MOLEWORKS_ROS_WS to the workspace root and retry." >&2
-    exit 1
-  fi
-  python3 "$SCRIPT_PATH" "$@"
-  exit $?
+  echo "Current engine RPM: $current_rpm"
+  exit 0
 fi
 
 verify_machine_status_rpm() {
@@ -86,34 +82,36 @@ verify_machine_status_rpm() {
   return 1
 }
 
-if command -v ros2 >/dev/null 2>&1; then
-  timeout 10 ros2 topic echo --once /machine_status >/dev/null
-  diesel_srv="$(timeout 10 ros2 service list 2>/dev/null | rg "/set_diesel_speed$" | head -n1 || true)"
-  if [[ -n "$diesel_srv" ]]; then
-    diesel_type="$(timeout 10 ros2 service type "$diesel_srv" 2>/dev/null || true)"
-    if [[ -n "$diesel_type" ]]; then
-      timeout 20 ros2 service call "$diesel_srv" "$diesel_type" "{target_rpm: $1}"
-      verify_machine_status_rpm "$1"
-      exit $?
-    fi
+service_list="$(timeout 10 ros2 service list 2>/dev/null || true)"
+for rpm_service in /set_diesel_speed /set_rpm; do
+  if ! awk -v service="$rpm_service" '$0 == service { found=1 } END { exit !found }' <<<"$service_list"; then
+    continue
   fi
+  rpm_type="$(timeout 10 ros2 service type "$rpm_service" 2>/dev/null || true)"
+  if [[ -z "$rpm_type" ]] || ! timeout 10 ros2 interface show "$rpm_type" 2>/dev/null | awk '
+      /^---$/ { exit }
+      $2 == "target_rpm" { found=1 }
+      END { exit !found }
+    '; then
+    echo "Error: $rpm_service has no verified target_rpm request field (type: ${rpm_type:-unknown})." >&2
+    exit 1
+  fi
+  timeout 20 ros2 service call "$rpm_service" "$rpm_type" "{target_rpm: $1}"
+  verify_machine_status_rpm "$1"
+  exit $?
+done
 
-  rpm_srv="$(timeout 10 ros2 service list 2>/dev/null | rg "/set_rpm$" | head -n1 || true)"
-  if [[ -n "$rpm_srv" ]]; then
-    rpm_type="$(timeout 10 ros2 service type "$rpm_srv" 2>/dev/null || true)"
-    if [[ -n "$rpm_type" ]]; then
-      timeout 20 ros2 service call "$rpm_srv" "$rpm_type" "{target_rpm: $1}"
-      verify_machine_status_rpm "$1"
-      exit $?
-    fi
+if ros2 pkg executables mole_highlevel_controller_cpp 2>/dev/null | \
+    awk '$2 == "set_engine_rpm" { found=1 } END { exit !found }'; then
+  if awk -v rpm="$1" 'BEGIN { exit !(rpm > 1500) }'; then
+    echo "Error: target $1 RPM requires the direct SetRPM service; the legacy /engine_speed fallback is limited to 1500 RPM." >&2
+    exit 1
   fi
+  timeout 45 ros2 run mole_highlevel_controller_cpp set_engine_rpm "$1"
+  verify_machine_status_rpm "$1"
+  exit $?
 fi
 
-if [[ -z "$SCRIPT_PATH" ]]; then
-  echo "Error: set_engine_rpm.py not found in any known Moleworks ROS workspace." >&2
-  echo "Set MOLEWORKS_ROS_WS to the workspace root and retry." >&2
-  exit 1
-fi
-
-python3 "$SCRIPT_PATH" "$@"
-verify_machine_status_rpm "$1"
+echo "Error: no target-RPM service and no installed mole_highlevel_controller_cpp/set_engine_rpm fallback." >&2
+echo "Verify the low-level/Gravis stack and selected ROS overlay; do not guess a service name." >&2
+exit 1

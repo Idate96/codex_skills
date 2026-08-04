@@ -1,4 +1,4 @@
 interface:
-  display_name: "Move Joint To Position"
+  display_name: "Move Joints To Position"
   short_description: "Move joints to exact targets safely"
-  default_prompt: "Use $robot-move-to-position to move J_BOOM, J_STICK, or other arm joints to specific target positions."
+  default_prompt: "Use $robot-move-to-position to move one or more supported M445 arm joints to explicit targets with the guarded hardware runner."

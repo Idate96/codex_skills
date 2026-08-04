@@ -1,89 +1,124 @@
 ---
 name: ocs2-arm-experiments
-description: "Run Mole OCS2 arm experiments on hardware with safe bringup, cylindrical goals, diagnostics, rosbagging, and publisher-conflict checks. Use for real-robot OCS2 motion tests and recovery."
+description: "Run the Mole OCS2 arm on the real robot: one-command bringup, cylindrical moves, dump/move-leg actions, recording, and fast recovery."
 ---
 
-# OCS2 Arm Experiments
+# OCS2 Arm on Hardware
 
-Use this for real-actuation Mole OCS2 arm experiments: lifecycle bringup, cylindrical end-effector goals, diagnostic recording, staged validation, and recovery.
+Use this only for the real Mole/Menzi arm. Do not start dummy MRT, Newton, a separate ROS domain, or simulation unless the user explicitly asks for simulation.
 
-## Procedure Reference
+## Operating Model
 
-The safety contract below is mandatory. Then read only the task-relevant sections of [references/full-runbook.md](references/full-runbook.md): provenance/logging, hardware preconditions, launch/lifecycle, goal publishing, recording, validation, or recovery. Do not load the entire long runbook for a narrow inspection.
+- The low-level robot stack, estimator, mapping, hydraulics, and autonomy are external prerequisites.
+- One OCS2 launch owns MPC, the arm command publisher, target bridge, and dump/move action nodes.
+- A normal robot tmux shell already has the correct DDS environment. Run ROS commands directly; do not paste discovery-profile exports before every command.
+- `use_sim_time` is always `false` on the robot.
 
-Use `ocs2-tuning-fastloop` when the task is specifically repeatable one-case tuning and limit verification.
+Route full-stack bringup, hydraulic unlock, and base-stack recovery to `$robot-startup`. Route engine
+speed changes to `$set-engine-rpm`. This skill owns only OCS2 launch, lifecycle handover, OCS2 goals,
+OCS2 actions, recording, and OCS2-specific recovery. Use `$robot-move-check` or
+`$robot-move-to-position` only when OCS2 is stopped and direct low-level motion was explicitly requested.
 
-## Runtime Image and DDS Contract
+## One Session Check
 
-- `rslheap/moleworks_ros:latest` is the default runtime image. For a reproducible run, also record the immutable `rslheap/moleworks_ros:sha-<merge-sha>` tag.
-- A fresh remote-robot shell uses the runtime DDS CLIENT profile. Its ROS 2 CLI daemon uses the observer SUPER_CLIENT profile. Run normal `ros2` commands directly; do not prepend per-command Fast DDS exports or discovery-server cleanup.
-- Start recordings through `mole_bag_tools rosbag_record.launch.py`. It gives only its recorder children the observer profile and leaves the controller and provenance collector on the runtime CLIENT profile. Local DDS runs inherit their normal environment.
-- If a robot shell lacks `MOLE_DDS_RUNTIME_PROFILE` or `MOLE_DDS_OBSERVER_PROFILE`, still exports `ROS_DISCOVERY_SERVER`/`FASTDDS_DEFAULT_PROFILES_FILE`, or behaves differently from a new shell, treat its image or container as stale. Pull the published image, recreate the container, and open fresh tmux panes; do not normalize every command by hand.
+Before the first motion of a session, confirm the operator authorized the maneuver, `/machine_status`
+is fresh with hydraulic/autonomy/Gravis-command interlocks unlocked, and
+`/mole/actuator_commands` has no competing publisher. Treat startup as non-motion authorization.
+Repeat this preflight when the ROS graph, controller launch, or machine state changes.
 
-## Safety Contract
+An `auto_handover:=true` launch is actuation-capable because it activates a measured-pose hold. Do
+not run it for a read-only diagnosis or treat permission to inspect/start the base stack as permission
+to activate OCS2.
 
-- Before motion, verify `/machine_status` reports the required hydraulic, autonomy, and Gravis-command readiness.
-- Startup or diagnostic requests do not authorize motion. Require the user's requested live goal or maneuver before publishing it.
-- `/mole/actuator_commands` must have exactly one intended command publisher. Stop competing DIG, scheduler, Foxglove, or stale controller publishers first.
-- A subagent may manage launch, configure/activate, first-policy, and publisher checks only when the user explicitly allows delegation. It must not publish motion goals or actuator commands.
-- Do not switch from `real_collisions` to a blind/no-collision profile unless the user or main agent explicitly authorizes it.
-- Use TF or `mole_m4_print_ee_cyl.py` as the current end-effector source. Do not derive hold targets from `/mole/ocs2/observation.state`.
-- Do not call a stationary arm a true hold until the current target matches the live EE pose and a fresh benchmark segment confirms it.
-- For every commanded segment, capture a goal log, pre/post snapshots, and continuous benchmark diagnostics. Do not run unrecorded motion segments.
-- For dump/open-close maneuvers, judge direction and endpoint using the calibrated `bucket_angle`; raw contact-frame Euler pitch is secondary.
-- Keep the runtime workspace, task file, and reviewed source provenance aligned. Record the exact active task file.
-- Stop goal sources before deactivation or recovery so commands can return to zero.
+Keep one DDS-aware bag running for the session; a raw `ros2 bag record` in the runtime client can discover zero publishers. Sender output is the goal log.
 
-## Workflow
+```bash
+ros2 launch mole_bag_tools rosbag_record.launch.py \
+  bag_path:=/home/lorenzo/ocs2_benchmarks/ocs2_arm/<run_name> append_timestamp:=false \
+  record_sensors:=false record_state:=false record_commands:=false \
+  record_lidar:=false record_camera:=false record_elevation_map:=false \
+  record_ocs2:=true record_dig3d_special_obs:=false \
+  capture_ocs2_provenance:=true require_ocs2_provenance:=true
+```
 
-1. Confirm runtime provenance.
-   - Check the active workspace setup and `ros2 pkg prefix` for `mole_msgs` and `mole_ocs2_arm_controller`.
-   - Record `task.info_path` and copy the exact live task/model sources into any review bundle.
-2. Establish a run directory and start the canonical OCS2 recorder plus the continuous benchmark logger.
-3. Check machine readiness and publisher exclusivity.
-4. Launch OCS2 in the shared container-local tmux session.
-   - Prefer the current machine startup helper.
-   - Use manual launch only for a required custom handover or diagnostic.
-5. Configure the lifecycle controller.
-   - Wait for bootstrap completion and the first fresh policy.
-   - Activate only after the policy and publisher checks pass.
-6. Verify diagnostics.
-   - lifecycle state
-   - `safe_stop_active` and reason
-   - policy age/horizon
-   - command-chain diagnostics
-   - effective realtime scheduling and any requested CPU affinity
-7. Read the live cylindrical EE pose, optionally run the predicted dry check, then send one conservative semantic goal with the direct sender.
-8. Capture the post snapshot and analyze the segment artifacts before the next motion.
-9. Increase motion difficulty in stages: hold, tiny single-axis steps, combined small steps, then longer sweeps.
-10. If commands remain non-zero but the arm does not move, stop the goal source, force zero commands through deactivation, wait, and re-check machine communication before blaming MPC.
+## Start OCS2
 
-## Motion Rules
+Run this in the robot stack's `ocs2` tmux pane:
 
-- Preferred sender: `ros2 run mole_ocs2_arm_controller mole_m4_send_cyl_goal.py`.
-- `--pitch-deg` is the calibrated semantic bucket angle on the current direct sender.
-- Use absolute goals from a freshly read pose for large-theta tests.
-- For large theta, validate progressively (`15 -> 30 -> 45` degrees); attempt `90` only after predicted and executed paths are sane.
-- Do not override command velocity or acceleration limits casually; tune response with the documented acceleration scale and verify runtime diagnostic limits.
-- Record a separate benchmark run per scheduler-driven maneuver leg when clean command-versus-measured plots matter.
+```bash
+ros2 launch mole_ocs2_arm_controller ocs2_arm.launch.py \
+  use_sim_time:=false taskProfile:=real_collisions \
+  launch_target_bridge:=true launch_dump_leg:=true launch_move_leg:=true \
+  auto_handover:=true command_chain_enable:=true
+```
 
-## Recovery Routing
+Use the built overlay selected by the robot stack. After launch, record the output of
+`ros2 pkg prefix mole_ocs2_arm_controller` and the live `task.info_path`; do not review or tune a
+different checkout's task file.
 
-- Missing collision GridMap/SDF: report the blocker; do not silently disable collision constraints.
-- Stale or expired policy, repeated `currentTime` errors, or climbing policy age: restart the full OCS2 launch pane instead of cycling lifecycle transitions repeatedly.
-- Breakaway safe-stop with otherwise fresh policy: follow the documented deactivate/reactivate recovery, then republish only a small goal.
-- Newton was restarted: restart the full ROS-side stack; do not restart only OCS2.
-- Missing tmux pane: recreate it before sending commands.
-- Controller active, commands non-zero, no motion: stop scheduler/goal source, force zero commands for several seconds, then verify machine communication and publisher ownership.
+Expected startup behavior:
 
-## Detailed Procedures
+- The controller bootstraps from the measured pose.
+- The MPC computes one initial SDF from `/excavation_mapping/grid_map`.
+- `auto_handover` configures, waits for a fresh policy, activates, and holds.
+- `/mole/actuator_commands` has one publisher and the hold converges to zero command.
 
-The full runbook contains:
+If startup fails, read the launch error. Do not disable `real_collisions` to make it start.
 
-- delegation boundaries and compact worker status
-- per-segment logging, scheduler-leg analysis, and artifact sync
-- runtime provenance and true-hold checks
-- hardware readiness and competing-publisher cleanup
-- fast and manual launches, lifecycle bootstrap, realtime/CPU checks
-- semantic goal publishing, Foxglove/action alternatives, rosbag recording
-- staged validation, large-theta policy, diagnostics, and safe-stop recovery
+Before the first goal, verify the lifecycle state, one intended actuator-command publisher, a fresh
+policy, and `safe_stop_active=0` on `/mole/ocs2/arm_controller/diagnostics`. The direct goal helper
+does not replace those checks.
+
+## Cylindrical Move
+
+Read the pose when an exact endpoint matters:
+
+```bash
+ros2 run mole_ocs2_arm_controller mole_m4_print_ee_cyl.py --rate 1
+```
+
+For a relative move:
+
+```bash
+ros2 run mole_ocs2_arm_controller mole_m4_send_cyl_goal.py \
+  --call-reset --dtheta-deg 45
+```
+
+The sender defaults to an automatic smooth transition, waits only for the axes explicitly changed by a relative goal, and latches the measured pose as a hold after success. `--call-reset` is required because the current `real_collisions` profile enables the grading-surface path; raw target updates are rejected.
+
+Use `--dr-m`, `--dz-m`, and `--dpitch-deg` only for axes that should move. Use absolute `--r`, `--theta-deg`, `--z`, and `--pitch-deg` when the endpoint is specified in the cylindrical world frame.
+
+A clean 45-degree turn validates the path for 90-degree reversals in the same unchanged session. Do not force 15/30-degree repetitions after that.
+
+## Dump Leg
+
+The dump action recomputes the SDF once at action start, closes the bucket for transport, moves to the target, opens the bucket, restores baseline MPC weights, and finishes in a hold.
+
+```bash
+ros2 run mole_ocs2_arm_controller mole_m4_send_dump_leg_goal.py \
+  --dtheta-deg 90 --dz-m 1.2
+```
+
+Relative mode waits for the `BASE <- ENDEFFECTOR_CONTACT` transform. For an exact known target, use absolute `--r`, `--theta-deg`, and `--z`.
+
+## Move Leg
+
+The move action is trench-aware and recomputes the SDF once at action start:
+
+```bash
+ros2 run mole_ocs2_arm_controller mole_m4_send_move_leg_goal.py \
+  --dtheta-deg 20 --dr-m 0.0 --dz-m 0.3 --dpitch-deg 0.0
+```
+
+Use an operator-selected map target for a real trench move. Do not invent a trench coordinate.
+
+## Fast Recovery
+
+- Goal helper refuses a raw grading target: rerun it with `--call-reset`.
+- Relative helper waits for TF and times out: use the measured absolute pose/target; do not restart DDS repeatedly.
+- Policy becomes stale or controller safe-stops: stop the goal source and restart the full OCS2 launch.
+- Commands remain nonzero after a failed action: cancel the action or stop its client, then publish/latch the measured current pose or deactivate the controller.
+- Missing map/SDF: fix mapping; do not switch to a no-collision profile silently.
+- Base stack, estimator, or machine interlocks are unhealthy: leave OCS2 stopped and route recovery to `$robot-startup` or `$robot-ros`.
+
+Use `$ocs2-tuning-fastloop` only for repeated gain/constraint tuning experiments. It is not the normal robot-motion workflow.

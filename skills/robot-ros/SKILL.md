@@ -1,80 +1,87 @@
 ---
 name: robot-ros
-description: "Operate and debug the Mole/Menzi M4 ROS 2 stack. Use for bringup routing, interlocks, controllers, health checks, command-latch recovery, and robot runbook maintenance."
+description: "Route Mole/Menzi M4 ROS operations to the current owning runbook or narrow skill. Use to orient robot bringup, controllers, interlocks, motion, monitoring, recovery, recording, or code/runbook maintenance without duplicating subsystem procedures."
 ---
 
-# Robot ROS
+# Robot ROS Router
 
-## Overview
+Use this skill to identify the owner, establish the safety boundary, and hand
+off. Do not grow it into a second robot runbook.
 
-Use the repo runbooks and scripts as the single source of truth for operating and debugging the robot stack, and keep operator-facing docs consistent with the current code/topic names.
+## Establish Context Read-Only
 
-## Default Container And DDS Contract
+1. Resolve the workspace that owns the live graph and its
+   `src/moleworks_ros` checkout. Prefer explicit process/tmux evidence over a
+   guessed path.
+2. Read `docs/robot_agent/robot_agent.md`, then the linked operations or
+   troubleshooting guide relevant to the request.
+3. Inspect the existing tmux/process owners, `ROS_DOMAIN_ID`, requested
+   endpoints, and publisher ownership with bounded read-only probes before any
+   restart or control action.
+4. Use the sourced environment that owns the graph. The contributor container
+   is a supported default, but the current robot installation may run directly
+   from its host workspace.
+5. Treat physical motion, hydraulics, ignition, RPM, controller activation,
+   service calls that advance execution, and process replacement as separate
+   authorization boundaries.
 
-Use a freshly pulled or rebuilt `rslheap/moleworks_ros:latest` container. Normal shell processes use Fast DDS CLIENT, while the ROS 2 daemon uses the observer SUPER_CLIENT profile for graph discovery. After sourcing the workspace, run plain `ros2 ...` commands.
+## Route To The Narrow Owner
 
-Do not repeat long DDS environment prefixes. If a shell does not have this contract, treat its image or container as stale: pull or rebuild the image and recreate the container. Do not make command-local exports the operational default.
+| Request | Owner |
+|---|---|
+| Start/restart base robot panes, tool geometry, hydraulics | `robot-startup` |
+| Read or set engine RPM | `set-engine-rpm` |
+| Start/restart only a DIG controller | `dig-controllers` |
+| Direct short joint direction/motion check | `robot-move-check` |
+| Guarded closed-loop arm positioning | `robot-move-to-position` |
+| PID step tuning or LUT recollection | `mole-pid-tuning` / `open-loop-lut-recollection` |
+| OCS2 arm run or action experiment | `ocs2-arm-experiments` |
+| OCS2 tuning iteration | `ocs2-tuning-fastloop` |
+| Terra application start/resume/monitor/stop | `terra-pipeline` |
+| Beam6 manifest generation or handoff preparation | `terra-trench` |
+| Generic topic, node, service, TF, DDS, or tmux diagnosis | `ros2-debugging` |
+| DIG recording or replay | `dig-bag-recording` / `dig-bag-replay` |
+| Estimator bag reprocessing/evaluation | `state-estimator-evaluate-bags` |
+| Estimator-container bringup | `mole-graph-msf-container` |
+| Sparse or camera-colored LiDAR export | `mole-lidar-accumulator` / `open3d-mapping` |
 
-## Workflow (Always Do This First)
+If no narrow skill owns the operation, use the current package README and
+launch/interface source instead of adding procedure here.
 
-1. Resolve the active robot workspace and repo root; prefer `$HOME/ros2_ws` on-machine and fall back to `$HOME/moleworks/ros2_ws` when present.
-2. Treat `<workspace>/src/moleworks_ros/docs/robot_agent/ROBOT_OPERATIONS_GUIDE.md` as the single source of truth for operator commands.
-3. For Menzi M4 machine-specific interlocks (autonomy/hydraulics/ignition), cross-check `~/git/menzi_docs/M4/`.
-4. Prefer the health/monitor scripts under `<workspace>/src/moleworks_ros/mole_utils/scripts/` over ad-hoc commands.
-5. If giving ROS CLI commands, verify they exist for Jazzy (`ros2 <verb> -h`) and match the installed message definitions.
+## Current Documentation Owners
 
-## Common Tasks
+- Operator entrypoint: `docs/robot_agent/robot_agent.md`
+- Bringup/readiness/shutdown: `docs/robot_agent/ROBOT_OPERATIONS_GUIDE.md`
+- First-response diagnosis: `docs/robot_agent/TROUBLESHOOTING_GUIDE.md`
+- Top-level applications: `mole_bringup/README.md` and `mole_bringup/launch/`
+- Low-level ownership/interlocks: `low_level/README.md` plus imported
+  `machine_msgs`/`gravis_bridge` interfaces
+- Perception surface: `perception/mole_perception_bringup/README.md` and its
+  launch file
+- Estimator readiness: `mole_estimator/README.md`
+- Menzi/Gravis raw interface:
+  `docs/src/subsystems/information/menzi_m445x_gravis_rack.md`
 
-### Bringup / Startup
+For network gateway selection on `rslpc`, use the Network section of the
+operations guide and verify `ip route show default`; do not copy gateway or
+netplan edits into this router.
 
-- Open `src/moleworks_ros/docs/robot_agent/ROBOT_OPERATIONS_GUIDE.md` and use the launch commands from the “Quick Reference”.
-- If the user’s question implies different stacks, pick the closest launch entry point:
-  - `mole_bringup nav2_and_moveit.launch.py` for full stack
-  - `mole_bringup nav2.launch.py` for Nav2-only
-  - `mole_bringup moveit.launch.py` for MoveIt-only
-  - `mole_bringup dig.launch.py` for dig stack
+## Command-Acceptance Recovery
 
-### Enable Autonomous Mode / Hydraulic Unlock (Menzi M4)
+When `/machine_status.is_using_gravis_commands` is false, stop the active
+high-level command owner, make the machine physically safe, and follow the
+troubleshooting guide. Inspect publishers on
+`/${ROBOT_NAMESPACE:-mole}/actuator_commands` and
+`/${ROBOT_NAMESPACE:-mole}/current_commands` before acting.
 
-- Do not invent an “unlock” command. Interlock services are machine/LLC specific.
-- Confirm operator-side prerequisites (armrest up; press the radio/antenna button in the Menzi display and confirm with the push button).
-- Verify readiness via `/machine_status` (fields like `is_autonomous_operation_unlocked`, `is_hydraulilock_unlocked`, etc.).
-- Discover services with `ros2 service list | grep -Ei "hydraul|lock|unlock|autonom|ignition|engine"`.
-- For the canonical Menzi docs and exact service names, consult:
-  - `~/git/menzi_docs/M4/M4_operation_workflow.md`
-  - `~/git/menzi_docs/M4/M4_Checklist.md`
+Do not use a hand-written partial zero `MoleActuatorCommands` message as a
+generic recovery step. The current operator guide explicitly keeps raw command
+recovery outside this router; a zero ROS message is not an emergency stop.
 
-### Health Checks / Debugging
+## Maintaining Robot Documentation
 
-- Prefer:
-  - `src/moleworks_ros/mole_utils/scripts/monitor_pipeline_flow.sh`
-  - `src/moleworks_ros/mole_utils/scripts/monitor_perception_stack.sh`
-  - `src/moleworks_ros/mole_utils/scripts/monitor_highlevel_controllers.sh`
-- If a command/topic name seems stale, confirm the authoritative names by searching:
-  - `rg -n "<topic_or_service_or_action>" src/moleworks_ros`
-  - Message types in `src/mole_msgs/msg/` and `src/machine_msgs/msg/`
-  - Launch files under `src/moleworks_ros/*/launch/`
-
-### Gravis Command Latch Recovery
-
-Use this when `/machine_status` shows `is_using_gravis_commands: false` during testing.
-
-1. Stop/interrupt the active command publisher (for example a matrix runner).
-2. Publish zero velocity commands on `/mole/actuator_commands` at 20 Hz for 2 seconds.
-3. Re-check `/machine_status` and only continue when `is_using_gravis_commands: true`.
-4. Restart the interrupted test and skip already-completed cases when possible.
-
-Reference command:
-
-```bash
-timeout --signal=INT 2s ros2 topic pub -r 20 /mole/actuator_commands \
-  mole_msgs/msg/MoleActuatorCommands \
-  "{actuators: [{joint_name: 'J_TURN', mode: 2, velocity: 0.0}, {joint_name: 'J_BOOM', mode: 2, velocity: 0.0}, {joint_name: 'J_STICK', mode: 2, velocity: 0.0}, {joint_name: 'J_TELE', mode: 2, velocity: 0.0}, {joint_name: 'J_EE_PITCH', mode: 2, velocity: 0.0}]}" || [[ $? -eq 124 || $? -eq 130 ]]
-```
-
-## Maintaining Robot-Agent Docs (Avoid Duplication)
-
-When updating operator docs:
-- Update `src/moleworks_ros/docs/robot_agent/ROBOT_OPERATIONS_GUIDE.md` (add/modify content there).
-- Keep `src/moleworks_ros/docs/robot_agent/ROBOT_AGENT_QUICK_REFERENCE.md` as a pointer/alias (do not duplicate content).
-- Validate commands against the current repo (launch args, topic names, message fields, ROS 2 Jazzy CLI).
+Verify every changed launch argument, topic, service, action, message field,
+TF frame, and profile against current code and the installed Jazzy CLI. Update
+the owning package README or robot-agent guide and link to it. Do not recreate
+retired quick-reference aliases or duplicate complete workflows in skills,
+`AGENTS.md`, and operator docs.

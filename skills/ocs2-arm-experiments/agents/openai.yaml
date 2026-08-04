@@ -1,4 +1,4 @@
 interface:
   display_name: "OCS2 Arm Experiments"
-  short_description: "Launch OCS2 arm experiments quickly"
-  default_prompt: "Use $ocs2-arm-experiments to start the requested OCS2 arm test in dry-run, verify command-publisher exclusivity, and proceed through the hardware safety gates."
+  short_description: "Run guarded OCS2 arm motion on hardware"
+  default_prompt: "Use $ocs2-arm-experiments to run the requested real-robot OCS2 arm maneuver with recording, interlock checks, and exclusive command ownership."

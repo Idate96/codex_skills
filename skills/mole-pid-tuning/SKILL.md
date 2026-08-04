@@ -11,6 +11,10 @@ stale measurements/status, invalid raw position/velocity sensor status, locked i
 competing velocity or current publisher, an unsafe start side, a soft-limit approach, or an
 excessive joint-specific velocity.
 
+Use `$robot-startup` for stack/interlock readiness and `$robot-move-to-position` only for guarded
+pre-positioning. This skill owns PID-step execution and interpretation; do not duplicate startup or
+general ROS diagnosis here.
+
 ## Inspect first
 
 Use live parameters as the truth:
@@ -20,7 +24,7 @@ ros2 param dump /mole_pid_joint_controller
 ```
 
 The deployed persistent gain source is
-`$ROS_WS/src/moleworks_ros/low_level/mole_low_level_bringup/config/pid_gains_m445.yaml`;
+`<workspace>/src/moleworks_ros/low_level/mole_low_level_bringup/config/pid_gains_m445.yaml`;
 `mole_pid_joint_controller/params/pid_m445.yaml` is only the controller package default.
 
 ## One-step loop
@@ -30,7 +34,8 @@ The deployed persistent gain source is
 2. Run one low or medium velocity:
 
 ```bash
-/home/lorenzo/codex_skills/skills/mole-pid-tuning/scripts/run_pid_step.sh \
+SKILL_DIR="${CODEX_HOME:-$HOME/.codex}/skills/mole-pid-tuning"
+"$SKILL_DIR/scripts/run_pid_step.sh" \
   --confirm-hardware --confirm-safe-start J_BOOM neg 0.10 4.0
 ```
 

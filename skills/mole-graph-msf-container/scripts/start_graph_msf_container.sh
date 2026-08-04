@@ -14,17 +14,24 @@ else
   CONTAINER_COMMAND="bash -ic 'moleworks_ros'"
 fi
 
+created_window=false
 if tmux has-session -t "${SESSION}" 2>/dev/null; then
-  if ! tmux list-windows -t "${SESSION}" -F '#W' | grep -qx "${WINDOW}"; then
+  if ! tmux list-windows -t "${SESSION}" -F '#W' | grep -Fxq "${WINDOW}"; then
     tmux new-window -t "${SESSION}" -n "${WINDOW}"
+    created_window=true
   fi
 else
   tmux new-session -d -s "${SESSION}" -n "${WINDOW}"
+  created_window=true
 fi
 
 TARGET="${SESSION}:${WINDOW}"
 
-tmux send-keys -t "${TARGET}" "${CONTAINER_COMMAND}" C-m
+if [[ "${created_window}" == true ]]; then
+  tmux send-keys -t "${TARGET}" "${CONTAINER_COMMAND}" C-m
+  echo "Opened the Moleworks ROS container in tmux session '${SESSION}', window '${WINDOW}'."
+else
+  echo "Reusing existing tmux session '${SESSION}', window '${WINDOW}' without sending a command."
+fi
 
-echo "Started or attached to the Moleworks ROS container in tmux session '${SESSION}', window '${WINDOW}'."
 echo "Attach with: tmux attach -t ${SESSION}"

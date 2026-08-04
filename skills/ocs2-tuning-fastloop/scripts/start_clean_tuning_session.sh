@@ -37,7 +37,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "${WORKSPACE}" ]]; then
-  for candidate in "${HOME}/ros2_ws" "${HOME}/moleworks/ros2_ws"; do
+  for candidate in "${MOLE_ROS_WS:-}" "${HOME}/ros2_ws" "${HOME}/moleworks/ros2_ws"; do
+    [[ -n "${candidate}" ]] || continue
     if [[ -f "${candidate}/install/setup.bash" ]]; then
       WORKSPACE="${candidate}"
       break
@@ -45,7 +46,7 @@ if [[ -z "${WORKSPACE}" ]]; then
   done
 fi
 
-BENCH_SCRIPT="${WORKSPACE}/src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_controller/scripts/mole_m4_cyl_accuracy_benchmark.py"
+BENCH_SCRIPT="${WORKSPACE}/src/moleworks_ros/high_level_controllers/ocs2/mole_ocs2_arm_controller/scripts/tuning/mole_m4_cyl_accuracy_benchmark.py"
 
 if [[ ! -f "${WORKSPACE}/install/setup.bash" ]]; then
   echo "Missing workspace setup file: ${WORKSPACE}/install/setup.bash" >&2
@@ -77,7 +78,7 @@ tmux new-window -t "${SESSION}" -n orchestrator
 tmux new-window -t "${SESSION}" -n benchmark_live
 
 tmux send-keys -t "${SESSION}:benchmark_live" \
-  "bash -lc 'source \"${WORKSPACE}/install/setup.bash\" && python3 \"${BENCH_SCRIPT}\" --csv \"${ACTIVE_CSV}\" --append'" C-m
+  "bash -lc 'set +u; source \"${WORKSPACE}/install/setup.bash\"; set -u; exec python3 \"${BENCH_SCRIPT}\" --csv \"${ACTIVE_CSV}\" --append'" C-m
 
 started=0
 for _ in $(seq 1 24); do

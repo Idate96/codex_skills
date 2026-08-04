@@ -1,45 +1,71 @@
 ---
 name: dig-controllers
-description: "Start or restart a Mole DIG controller in tmux when the base stack is already running. Use for Dig3D or Newton controller-only bringup and recovery."
+description: "Start or restart one Mole DIG controller in tmux when the base robot or Newton stack is already running. Covers Dig3D, Newton, legacy DIG/DIG-EE, and UGEP dry-run bringup."
 ---
 
 # DIG Controllers
 
-Use this skill when the base stack is already running. For base stack plus controller in one operation, use `robot-startup --dig-controller ...`.
+This skill owns controller-only launch and lifecycle/action handling. Route elsewhere when the request includes more:
 
-## Preflight
+- base robot stack startup or recovery: `robot-startup`
+- ROS graph, TF, topic, or lifecycle diagnosis: `ros2-debugging`
+- split-bag capture: `dig-bag-recording`
+- offline bag visualization: `dig-bag-replay`
+- OCS2 arm operation or tuning: the applicable OCS2 skill
 
-1. Identify the intended runtime: real robot (`use_sim_time:=false`) or Newton simulation (`use_sim_time:=true`). Do not infer it from a ROS graph alone.
-2. Verify the active workspace, ROS domain, `/clock` behavior, controller launch file, and required map/state topics.
-3. If the controller follows a target surface, require excavation mapping with both `elevation` and `desired_elevation` on `/excavation_mapping/grid_map`.
-4. Check command-publisher exclusivity before activation. On hardware, also require an operator and the robot interlocks.
-5. `--restart-window` kills the managed tmux window; use it only for an authorized restart.
+## Safety and preflight
 
-The helper configures and activates the controller by default. Use `--no-activate` for inspection-only bringup. `--run-action` sends motion and is always explicit opt-in.
+1. Confirm hardware (`use_sim_time:=false`) versus Newton (`use_sim_time:=true`) with the operator; do not infer it only from the graph.
+2. Confirm the built workspace and effective ROS/DDS environment. The current
+   real-robot image is ROS 2 Jazzy: source the selected workspace's
+   `install/setup.bash` and verify `ROS_DISTRO=jazzy`. Do not hard-code a
+   Humble underlay path.
+3. Check required state, TF, and map inputs. Current DIG policies consume `/excavation_mapping/grid_map`; that map must contain live `elevation` and, when the selected policy requires it, `desired_elevation`.
+4. Inspect publishers on `/<robot_namespace>/actuator_commands`. Do not activate into an unexpected competing command owner. On hardware, require the robot interlocks and an operator.
+5. `--restart-window` kills only the managed tmux window. Use it only for an authorized restart.
+
+The helper launches with the controller launch file's own auto-activation disabled, then configures and activates through lifecycle CLI commands. Use `--no-activate` for inspection. Motion remains separate: `--run-action` is explicit opt-in.
+
+## Controller keys
+
+| Key | Launch file | Default node/action under namespace `mole` |
+|---|---|---|
+| `dig3d` | `dig_3d_controller_cpp.launch.py` | `/mole/dig_3d_controller`, `/mole/run_dig_3d` |
+| `newton` | `dig_newton_controller.launch.py` | `/mole/dig_newton_controller`, `/mole/run_dig_newton` |
+| `dig` | `dig_controller_cpp.launch.py` | `/mole/dig_controller`, `/mole/run_dig` |
+| `dig-ee` | `dig_ee_controller_cpp.launch.py` | `/mole/dig_ee_controller`, `/mole/run_dig_ee` |
+| `ugep` | `dig_ugep_controller_cpp.launch.py` | `/mole/dig_ugep_controller`, `/mole/run_dig_ugep` |
+
+UGEP requires a policy manifest supplied after `--`, for example `policy_manifest_path:=...`. Its launch defaults to the isolated `actuator_commands_ugep_dryrun` topic and `allow_live_actuation:=false`; do not override those for hardware without separate explicit authorization.
 
 ## Commands
 
 Real-robot Dig3D:
 
 ```bash
-/home/lorenzo/codex_skills/skills/dig-controllers/scripts/dig_controllers_tmux.sh \
+SKILL_DIR="${CODEX_HOME:-$HOME/.codex}/skills/dig-controllers"
+"$SKILL_DIR/scripts/dig_controllers_tmux.sh" \
   --controller dig3d --use-sim-time false --attach
 ```
 
 Newton simulation:
 
 ```bash
-/home/lorenzo/codex_skills/skills/dig-controllers/scripts/dig_controllers_tmux.sh \
+SKILL_DIR="${CODEX_HOME:-$HOME/.codex}/skills/dig-controllers"
+"$SKILL_DIR/scripts/dig_controllers_tmux.sh" \
   --controller newton --use-sim-time true --attach
 ```
 
 Inspection-only launch:
 
 ```bash
-/home/lorenzo/codex_skills/skills/dig-controllers/scripts/dig_controllers_tmux.sh \
+SKILL_DIR="${CODEX_HOME:-$HOME/.codex}/skills/dig-controllers"
+"$SKILL_DIR/scripts/dig_controllers_tmux.sh" \
   --controller dig3d --use-sim-time false --no-activate --attach
 ```
 
-Supported controller keys are `dig3d`, `newton`, `dig`, and `dig-ee`. The window has a launch pane and a lifecycle/action-helper pane; it prints an action command but does not run it unless `--run-action` is passed.
+Pass supported launch overrides after `--`; the helper already owns `use_sim_time`, `activate_controller`, `run_action`, `robot_namespace`, and `tf_prefix`.
 
-Runtime target application is one-shot per excavation-mapping lifetime. If a different target is required, restart excavation mapping and reapply it through `/excavation_mapping/apply_runtime_profile`; do not route `desired_elevation` through elevation mapping.
+The managed window defaults to `ros:dig`. Its left pane owns the launch; its right pane waits for the namespaced node and handles lifecycle/action commands.
+
+Runtime target profiles are one-shot per excavation-mapping process. To replace an applied profile, restart the owning mapping stack and call `/excavation_mapping/apply_runtime_profile` again. `desired_elevation` belongs to excavation mapping, not elevation mapping.

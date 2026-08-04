@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mole Lidar Accumulator"
+  short_description: "Run Mole pointcloud accumulation and exports"
+  default_prompt: "Use $mole-lidar-accumulator to start accumulation or export a short georeferenced point cloud."

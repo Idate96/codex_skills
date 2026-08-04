@@ -1,4 +1,4 @@
 interface:
   display_name: "Robot Startup"
-  short_description: "Start the real-robot Moleworks ROS stack"
-  default_prompt: "Use $robot-startup to start or restart the real-robot Moleworks ROS tmux stack with the requested controller and RPM setup."
+  short_description: "Start the real-robot ROS prerequisites safely"
+  default_prompt: "Use $robot-startup to start or restart the real-robot Moleworks ROS prerequisites and perform only explicitly authorized machine-ready actions."

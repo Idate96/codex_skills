@@ -18,10 +18,11 @@ from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 
 
 COMMAND_TOPIC = "/mole/actuator_commands"
+EXPECTED_COMMAND_SUBSCRIBER = "mole_pid_joint_controller"
 MEASUREMENTS_TOPIC = "/mole/measurements"
 MACHINE_STATUS_TOPIC = "/machine_status"
 RAW_MEASUREMENTS_TOPIC = "/machine_measurements"
-ARM_JOINTS = ("J_TURN", "J_BOOM", "J_STICK", "J_TELE", "J_EE_PITCH")
+ARM_JOINTS = ("J_TURN", "J_BOOM", "J_STICK", "J_TELE", "J_EE_PITCH", "J_EE_ROLL")
 RAW_JOINT_ALIASES = {"J_DIPPER": "J_STICK"}
 INTERLOCKS = (
     "is_hydraulilock_unlocked",
@@ -29,13 +30,14 @@ INTERLOCKS = (
     "is_using_gravis_commands",
 )
 
-# M445 limits used by mole_sysid, inset by 0.02 for target selection.
+# Match the maintained soft bounds in mole_sysid.robot_tuning.M445_ARM_SAFETY.
 M445_SOFT_LIMITS: Mapping[str, tuple[float, float]] = {
-    "J_TURN": (-3.12, 3.12),
-    "J_BOOM": (-1.39, 0.34),
-    "J_STICK": (0.61, 2.78),
-    "J_TELE": (0.02, 1.584),
-    "J_EE_PITCH": (-0.64, 2.278),
+    "J_TURN": (-3.14, 3.14),
+    "J_BOOM": (-1.33, -0.38),
+    "J_STICK": (0.67, 2.72),
+    "J_TELE": (0.08, 1.524),
+    "J_EE_PITCH": (-0.58, 2.218),
+    "J_EE_ROLL": (-0.596, 0.505),
 }
 M445_MAX_VELOCITIES: Mapping[str, float] = {
     "J_TURN": 0.86,
@@ -43,6 +45,7 @@ M445_MAX_VELOCITIES: Mapping[str, float] = {
     "J_STICK": 0.62,
     "J_TELE": 0.64,
     "J_EE_PITCH": 1.30,
+    "J_EE_ROLL": 0.25,
 }
 
 GRAPH_SETTLE_SEC = 1.0
@@ -63,7 +66,7 @@ class JointMover(Node):
         self.raw_measurements_recv_time: Optional[float] = None
         self.interlocks: Dict[str, bool] = {}
         self.status_recv_time: Optional[float] = None
-        self.command_pub = None
+        self.command_claimed = False
 
         feedback_qos = QoSProfile(
             depth=1,
@@ -88,11 +91,27 @@ class JointMover(Node):
             self._on_status,
             feedback_qos,
         )
+        # Matching the command writers makes competing publishers visible to a
+        # Discovery Server CLIENT before this node claims the command topic.
+        self.command_probe = self.create_subscription(
+            MoleActuatorCommands,
+            COMMAND_TOPIC,
+            lambda _msg: None,
+            feedback_qos,
+        )
+        # Create a disarmed writer so a Discovery Server CLIENT can also see
+        # the expected downstream PID subscription. Never publish until every
+        # preflight passes and command_claimed becomes true.
+        self.command_pub = self.create_publisher(
+            MoleActuatorCommands,
+            COMMAND_TOPIC,
+            feedback_qos,
+        )
 
     def _on_measurements(self, msg: MoleMeasurements) -> None:
         # Replace the complete sample: never mix fresh joints with cached ones.
         self.positions = {
-            str(actuator.joint_name): float(actuator.position)
+            RAW_JOINT_ALIASES.get(str(actuator.joint_name), str(actuator.joint_name)): float(actuator.position)
             for actuator in msg.actuators
         }
         self.measurements_recv_time = time.monotonic()
@@ -184,29 +203,28 @@ class JointMover(Node):
     def publisher_count(self) -> int:
         return int(self.count_publishers(COMMAND_TOPIC))
 
-    def subscriber_count(self) -> int:
-        return int(self.count_subscribers(COMMAND_TOPIC))
+    def expected_subscriber_count(self) -> int:
+        return sum(
+            info.node_name == EXPECTED_COMMAND_SUBSCRIBER
+            for info in self.get_subscriptions_info_by_topic(COMMAND_TOPIC)
+        )
 
     def require_command_subscriber(self) -> None:
-        if self.subscriber_count() < 1:
-            raise RuntimeError(f"No matched command subscriber on {COMMAND_TOPIC}")
+        count = self.expected_subscriber_count()
+        if count != 1:
+            raise RuntimeError(
+                f"Expected exactly one {EXPECTED_COMMAND_SUBSCRIBER} subscriber on "
+                f"{COMMAND_TOPIC}, found {count}"
+            )
 
     def claim_command_topic(self) -> None:
         count = self.publisher_count()
-        if count:
+        if count != 1:
             raise RuntimeError(
-                f"Refusing motion: found {count} existing publisher(s) on {COMMAND_TOPIC}"
+                f"Refusing motion: found {count} publishers on {COMMAND_TOPIC}; "
+                "expected this disarmed script only"
             )
-        command_qos = QoSProfile(
-            depth=1,
-            history=HistoryPolicy.KEEP_LAST,
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-        )
-        self.command_pub = self.create_publisher(
-            MoleActuatorCommands,
-            COMMAND_TOPIC,
-            command_qos,
-        )
+        self.command_claimed = True
 
     def require_exclusive_ownership(self) -> None:
         count = self.publisher_count()
@@ -217,7 +235,7 @@ class JointMover(Node):
             )
 
     def publish_velocity(self, joint_to_velocity: Mapping[str, float]) -> None:
-        if self.command_pub is None:
+        if not self.command_claimed:
             raise RuntimeError("command topic has not been claimed")
         msg = MoleActuatorCommands()
         msg.header.stamp = self.get_clock().now().to_msg()
@@ -356,11 +374,11 @@ def _preflight(
         error = node.safety_error(joints, float(args.max_feedback_age_sec))
         if error:
             raise RuntimeError(f"Safety preflight failed: {error}")
-        if node.publisher_count():
+        if node.publisher_count() != 1:
             raise RuntimeError(
                 f"Refusing motion: another publisher owns {COMMAND_TOPIC}"
             )
-        if node.subscriber_count() >= 1:
+        if node.expected_subscriber_count() == 1:
             subscriber_since = subscriber_since or time.monotonic()
             if time.monotonic() - subscriber_since >= SUBSCRIBER_STABLE_SEC:
                 break
@@ -368,7 +386,7 @@ def _preflight(
             subscriber_since = None
     else:
         raise RuntimeError(
-            f"No command subscriber remained matched on {COMMAND_TOPIC} for "
+            f"No {EXPECTED_COMMAND_SUBSCRIBER} subscriber remained matched on {COMMAND_TOPIC} for "
             f"{SUBSCRIBER_STABLE_SEC:.1f}s"
         )
 
@@ -495,7 +513,7 @@ def _run(
 
 
 def _zero(node: JointMover) -> bool:
-    if node.command_pub is None:
+    if not node.command_claimed:
         return True
     successful = 0
     for attempt in range(ZERO_ATTEMPTS):

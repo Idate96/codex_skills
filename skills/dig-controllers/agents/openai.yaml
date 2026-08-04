@@ -1,4 +1,4 @@
 interface:
   display_name: "DIG Controllers"
-  short_description: "Start DIG controllers in the running robot stack"
+  short_description: "Controller-only DIG launch and lifecycle handling"
   default_prompt: "Use $dig-controllers to start or restart the requested DIG controller in tmux."
