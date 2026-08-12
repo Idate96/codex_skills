@@ -35,9 +35,16 @@ On Euler, `#SBATCH --gpus=rtx_3090:N` resolves to
 ```bash
 module load stack/2024-06 cuda/12.1.1
 
-WORK=/cluster/home/lterenzi/codex_terra_edge_validation   # code only; home is a hard 50 GB cap
-RUNS=/cluster/scratch/lterenzi/codex_terra_edge_runs      # W&B, checkpoints, run logs
-VENV=/cluster/scratch/lterenzi/codex_terra_edge_venv
+TERRA_EULER_USER=${TERRA_EULER_USER:-alesweber}
+HOME_ROOT=/cluster/home/$TERRA_EULER_USER
+SCRATCH_ROOT=/cluster/scratch/$TERRA_EULER_USER
+PROJECT_ROOT=/cluster/project/rsl/$TERRA_EULER_USER
+WORK=$SCRATCH_ROOT/codex_terra_edge_validation   # reproducible code snapshots
+RUNS=$SCRATCH_ROOT/codex_terra_edge_runs         # W&B, checkpoints, run logs
+VENV=${TERRA_REMOTE_VENV:-/cluster/project/rsl/lterenzi/terra_curriculum_20260730_c14bd7d_3ce0e84_py312_jax0426}
+test "$(id -un)" = "$TERRA_EULER_USER"
+test "$HOME" = "$HOME_ROOT"
+test -w "$SCRATCH_ROOT" -a -x "$VENV/bin/python"
 SITE_PACKAGES=$("$VENV/bin/python" - <<'PY'
 import site
 print(site.getsitepackages()[0])
@@ -68,20 +75,28 @@ variants use the same XLA flags.
 
 ## Storage Targets
 
-Verified quotas and purge policy from the RSL Euler guide and `lquota` on 2026-07-20:
+Resolve home/scratch/project paths from the selected account and refresh
+`lquota` before use. Current observations are from 2026-08-12 unless noted:
 
 | Location | Quota | Purge | Use for Terra |
 |---|---|---|---|
-| `/cluster/home/lterenzi` | 45 GB soft / **50 GB hard** | never | Code and small config only. Was 44.2 GB used (88% of hard) on 2026-07-20. |
-| `/cluster/scratch/lterenzi` | 2.5 TB soft / 2.7 TB hard | **files not accessed for ~15 days are deleted** | W&B (`WANDB_DIR`), checkpoints, run logs, the training venv. |
-| `/cluster/work/rsl/lterenzi` | ≤ 200 GB, ~50k inodes | never | Archive of final large checkpoints, tars, Singularity images. Verified writable; 261 GB used, prune first. |
-| `/cluster/project/rsl/lterenzi` | ≤ 75 GB, ~2.5M inodes | never | Long-term venvs and many-small-file trees (high inode). Verified writable; 106 GB used, prune first. |
+| `/cluster/home/$TERRA_EULER_USER` | 45 GB soft / **50 GB hard** | never | Credentials and small config only. `alesweber` was 37.36 GB after cache cleanup. |
+| `/cluster/scratch/$TERRA_EULER_USER` | 2.5 TB soft / 2.7 TB hard | **files not accessed for ~15 days are deleted** | Code snapshots, inputs, W&B, checkpoints, run logs, transient caches. |
+| `/cluster/project/rsl/$TERRA_EULER_USER` | account/group dependent | never | Long-term venvs and archives after live writability/quota checks. |
+| `/cluster/work/rsl/$TERRA_EULER_USER` | account dependent | never | Optional large-file archive only when the path exists and is writable; absent for `alesweber` on 2026-08-12. |
 | `$TMPDIR` (local node scratch) | up to 800 GB | at end of job | Stage dataset/container for a single run's I/O. |
 
 Rules:
 
-- Run artifacts (checkpoints, `WANDB_DIR`, logs) go under `/cluster/scratch/lterenzi/codex_terra_edge_runs/`, NEVER `/cluster/home`. On 2026-07-20 a Terra job died with `Disk quota exceeded` because these were written to home while home was at 44/50 GB; ops moved them to that scratch dir with symlinks from the home workspace.
-- Scratch is purged after ~15 days of no access. Anything needed long-term must be `rsync`'d to `/cluster/work/rsl/lterenzi` (large files) or `/cluster/project/rsl/lterenzi` (venvs), or be cheaply rebuildable. Do not keep the only copy of a final checkpoint on scratch.
+- Run artifacts (checkpoints, `WANDB_DIR`, logs) go under
+  `/cluster/scratch/$TERRA_EULER_USER/codex_terra_edge_runs/`, NEVER home. On
+  2026-07-20 a Terra job died with `Disk quota exceeded` because artifacts were
+  written to home while it was at 44/50 GB.
+- Reproducible code snapshots go under
+  `/cluster/scratch/$TERRA_EULER_USER/codex_terra_edge_validation/`.
+- Scratch is purged after ~15 days of no access. Anything needed long-term must
+  be copied to verified writable project/work storage or be cheaply
+  rebuildable. Do not keep the only copy of a final checkpoint on scratch.
 - The Terra dataset already lives read-only at `/cluster/project/rsl/alesweber/TerraProject/...`; never copy it into home.
 
 ## Mandatory GPU Preflight
@@ -104,7 +119,7 @@ This catches the two important classes of failure that `jax.devices()` alone mis
 ```bash
 squeue -j JOBID -o "%.18i %.9T %.12M %.24j %.20N %.24R"
 sacct -j JOBID --format=JobID,JobName%28,State,ExitCode,Elapsed,Start,End,NodeList%18,AllocTRES%50 -P
-tail -200 /cluster/home/lterenzi/codex_terra_edge_validation/logs/JOBID_*.out
+tail -200 "$RUNS"/CAMPAIGN/runs/REVISION/PHASE/SEED/ARM/slurm_JOBID.out
 ```
 
 Do not rely on `squeue` alone. A job can remain `RUNNING` after a runtime error if the Python
@@ -173,7 +188,7 @@ If state is `crashed` and summary/history are empty, the run produced no trainin
   record as compile/runtime investigation, not a training result.
 - Import fails on an empty `jax` (or similar) namespace package when the venv lives on
   `/cluster/scratch`: the scratch purge deleted files not accessed for ~15 days and left a hollow
-  package tree. Rebuild the venv, and keep long-lived venvs on `/cluster/project/rsl/lterenzi`.
+  package tree. Rebuild the venv, and keep long-lived venvs on verified project storage.
 - `Disk quota exceeded` / `OSError: [Errno 122]` while writing checkpoints or W&B files: home
   (50 GB hard) is full because run artifacts were pointed at `/cluster/home`. Repoint `WANDB_DIR`
-  and checkpoint dirs to `/cluster/scratch/lterenzi/codex_terra_edge_runs/`; check `lquota`.
+  and checkpoint dirs to `/cluster/scratch/$TERRA_EULER_USER/codex_terra_edge_runs/`; check `lquota`.
