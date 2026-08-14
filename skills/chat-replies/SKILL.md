@@ -23,10 +23,18 @@ Use this skill when Lorenzo asks to read or reply in Google Chat, or to pull fil
    - Do not jump to `pageSize: 200` or similar large fetches unless there is a specific reason.
    - Expand the window only if the recent context is unclear, looks truncated, or Lorenzo explicitly asks for deeper history.
    - If the latest message looks blank, inspect `attachment[]` before assuming the sender sent an empty message.
+   - **Always pass `orderBy: "createTime desc"`.** `messages.list` defaults to *ascending* order from
+     the start of the space's history, so a plain `pageSize: 10` on a years-old DM returns messages
+     from years ago, not the recent ones. Reading those as "latest" leads to answering the wrong
+     message. Every read in this skill wants newest-first.
+   - `gws` prints a `Using keyring backend: ...` line before the JSON. Slice from the first `{` before
+     parsing, or `json.load` fails.
+   - Restrict by time with a `filter`, which composes with `orderBy`:
+     `create_time > "2026-08-01T00:00:00Z"` (RFC-3339, and `AND create_time < "..."` for a window).
    - With the local `gws` CLI, Chat list/create commands pass required API parameters through `--params`, not first-class flags:
      ```bash
      SPACE='spaces/SPACE_ID'
-     PARAMS=$(jq -cn --arg parent "$SPACE" '{parent: $parent, pageSize: 10}')
+     PARAMS=$(jq -cn --arg parent "$SPACE" '{parent: $parent, pageSize: 10, orderBy: "createTime desc"}')
      gws chat spaces messages list --params "$PARAMS"
 
      MESSAGE='message body'
@@ -48,7 +56,8 @@ Use this skill when Lorenzo asks to read or reply in Google Chat, or to pull fil
      and verify the top-level message's text and `createTime`.
    - For uploaded files, prefer `attachment[].attachmentDataRef.resourceName` over `attachment[].name` when downloading.
    - `downloadUri` can bounce to an interactive Google sign-in page from CLI usage, so do not rely on it for automation.
-3. Sort messages by `createTime`.
+3. Present and reason over messages newest-first. Verify the top message really is the most recent by
+   its `createTime` before treating it as the latest — if it looks old, `orderBy` was missing.
 4. Read the latest visible message and the recent sequence before it.
 5. Treat consecutive short messages from the same person as potentially one combined thought.
 6. If the user asked to reply, draft against that recent sequence, not just the final line.
@@ -75,7 +84,13 @@ Use this skill when Lorenzo asks to read or reply in Google Chat, or to pull fil
 
 ## Guardrails
 
-- Sort by `createTime`; widen the default 10-message window only when context is incomplete.
+- Read newest-first via `orderBy: "createTime desc"`; widen the default 10-message window only when context is incomplete.
+- Resolving a sender's name needs `directory.readonly` (People API) or `chat.memberships.readonly`
+  (space members). With only `chat.spaces.readonly` you get bare `users/<numeric-id>` and cannot map
+  it to a person. Do not guess a name from context, and never tag a guessed person in a shared space —
+  say the scope is missing and ask, or re-auth first.
+- To @-mention someone, put `<users/USER_ID>` in the message text — the numeric sender ID from
+  `messages.list` works, no display name needed. Confirm the ID belongs to the intended person first.
 - Treat attachment-only messages as content. Download through `attachmentDataRef.resourceName`, never the human-readable attachment name or interactive `downloadUri`.
 - Do not guess collaborator email addresses for follow-up or CCs. Use a local mapping or ask Lorenzo.
 - For meetings, require an attendee, absolute time, and explicit duration; inspect nearby events and patch a matching owned event instead of duplicating it.
