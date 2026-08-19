@@ -53,6 +53,35 @@ python3 "$SKILL_DIR/scripts/move_joints_to_targets.py" \
 
 `J_TURN` always uses the nearest `2*pi`-equivalent error, avoiding a long spin from an unwrapped measured angle.
 
+### Bucket-open positioning for the stock shovel
+
+For the current `shovel` geometry, `J_EE_PITCH` and the OCS2 semantic bucket
+angle have the same sign slope: decreasing `J_EE_PITCH` opens the bucket and
+increasing it closes the bucket. Robot measurements on 2026-08-04 gave the
+approximate mapping
+
+```text
+semantic_bucket_angle_deg ~= degrees(J_EE_PITCH) - 91.6
+```
+
+Thus `J_EE_PITCH=0.20 rad` produced about `-79.8 deg` (open), while
+`J_EE_PITCH=1.89 rad` produced about `+16.6 deg` (closed). Treat this as a
+geometry-specific measured mapping, not a universal tool convention. Verify
+the endpoint with:
+
+```bash
+ros2 run mole_ocs2_arm_controller mole_m4_print_ee_cyl.py --timeout 15
+```
+
+Bucket rotation moves `ENDEFFECTOR_CONTACT` substantially. Re-read cylindrical
+radius after opening before extending `J_TELE`; do not add telescope extension
+from the pre-open radius alone.
+
+On the current Jazzy Discovery Server CLIENT image, `/machine_status` is
+observed near 1 Hz. If the default freshness gate refuses before motion, use
+`--max-feedback-age-sec 2.0` only after confirming that cadence and a fresh
+sample; this still stops after two missed updates.
+
 ## Built-in M445 Limits
 
 | Joint | Soft minimum | Soft maximum | Max velocity |

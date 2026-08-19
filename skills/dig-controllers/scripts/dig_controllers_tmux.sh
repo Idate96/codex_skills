@@ -331,17 +331,18 @@ start_helpers_if_idle() {
 
   tmux send-keys -t "$right_pane" "cd \"$WS\" && source install/setup.bash" C-m
   tmux send-keys -t "$right_pane" "echo \"Controller: $CONTROLLER ($NODE_NAME)\"" C-m
-  tmux send-keys -t "$right_pane" "echo \"Waiting for $NODE_NAME...\"" C-m
-  tmux send-keys -t "$right_pane" "deadline=\$((SECONDS + 60)); until ros2 node list --no-daemon --spin-time 2 2>/dev/null | grep -Fxq $NODE_NAME; do if (( SECONDS >= deadline )); then echo 'Timed out waiting for $NODE_NAME' >&2; exit 1; fi; sleep 1; done" C-m
+  tmux send-keys -t "$right_pane" "echo \"Waiting for $NODE_NAME lifecycle service...\"" C-m
+  tmux send-keys -t "$right_pane" "deadline=\$((SECONDS + 60)); until ros2 service list --no-daemon --spin-time 4 2>/dev/null | grep -Fxq $NODE_NAME/get_state; do if (( SECONDS >= deadline )); then echo 'Timed out waiting for $NODE_NAME/get_state' >&2; exit 1; fi; sleep 1; done" C-m
 
   if [[ "$AUTO_ACTIVATE" == "true" ]]; then
-    tmux send-keys -t "$right_pane" "ros2 lifecycle set --no-daemon --spin-time 2 $NODE_NAME configure" C-m
-    tmux send-keys -t "$right_pane" "ros2 lifecycle set --no-daemon --spin-time 2 $NODE_NAME activate" C-m
-    tmux send-keys -t "$right_pane" "ros2 lifecycle get --no-daemon --spin-time 2 $NODE_NAME" C-m
+    tmux send-keys -t "$right_pane" "ros2 service call $NODE_NAME/change_state lifecycle_msgs/srv/ChangeState '{transition: {id: 1}}'" C-m
+    tmux send-keys -t "$right_pane" "ros2 service call $NODE_NAME/change_state lifecycle_msgs/srv/ChangeState '{transition: {id: 3}}'" C-m
+    tmux send-keys -t "$right_pane" "ros2 service call $NODE_NAME/get_state lifecycle_msgs/srv/GetState '{}'" C-m
   else
     tmux send-keys -t "$right_pane" "echo \"Manual lifecycle (optional):\"" C-m
-    tmux send-keys -t "$right_pane" "echo \"  ros2 lifecycle set $NODE_NAME configure\"" C-m
-    tmux send-keys -t "$right_pane" "echo \"  ros2 lifecycle set $NODE_NAME activate\"" C-m
+    tmux send-keys -t "$right_pane" "echo \"  ros2 service call $NODE_NAME/change_state lifecycle_msgs/srv/ChangeState '{transition: {id: 1}}'\"" C-m
+    tmux send-keys -t "$right_pane" "echo \"  ros2 service call $NODE_NAME/change_state lifecycle_msgs/srv/ChangeState '{transition: {id: 3}}'\"" C-m
+    tmux send-keys -t "$right_pane" "echo \"  ros2 service call $NODE_NAME/change_state lifecycle_msgs/srv/ChangeState '{transition: {id: 4}}'\"" C-m
   fi
 
   tmux send-keys -t "$right_pane" "echo \"Send goal (when ready): ros2 action send_goal --feedback $ACTION_NAME mole_highlevel_msgs/action/RunAction \\\"{}\\\"\"" C-m

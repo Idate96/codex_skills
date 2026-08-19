@@ -51,6 +51,7 @@ SESSION="ros"
 WS="${HOME}/ros2_ws"
 OWNER_ONLY="false"
 ATTACH="false"
+FOXGLOVE_START_DELAY_SEC=5
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -88,6 +89,18 @@ esac
 case "$VISUALIZATION" in
   none|rviz|foxglove|rviz_foxglove) ;;
   *) echo "Unsupported --visualization: $VISUALIZATION" >&2; exit 2 ;;
+esac
+OWNER_VISUALIZATION="$VISUALIZATION"
+START_FOXGLOVE="false"
+case "$VISUALIZATION" in
+  foxglove)
+    OWNER_VISUALIZATION="none"
+    START_FOXGLOVE="true"
+    ;;
+  rviz_foxglove)
+    OWNER_VISUALIZATION="rviz"
+    START_FOXGLOVE="true"
+    ;;
 esac
 if ! is_bool "$AUTOSTART"; then
   echo "--autostart must be true|false" >&2
@@ -140,6 +153,27 @@ print(document["effective_config"]["base_graph"]["recompute_terrain_sdf_on_targe
   }
   if [[ "$stage_auto_recompute" != "False" ]]; then
     echo "Stage must set effective_config.base_graph.recompute_terrain_sdf_on_target=false." >&2
+    exit 2
+  fi
+fi
+
+FOXGLOVE_PORT="8765"
+if [[ "$START_FOXGLOVE" == "true" && "$APPLICATION" == "normal" ]]; then
+  FOXGLOVE_PORT="$(python3 -c '
+import sys
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    print(yaml.safe_load(stream)["visualization"]["foxglove_port"])
+' "$PROFILE")" || {
+    echo "Could not read visualization.foxglove_port from $PROFILE" >&2
+    exit 2
+  }
+fi
+if [[ "$START_FOXGLOVE" == "true" ]]; then
+  if [[ ! "$FOXGLOVE_PORT" =~ ^[0-9]+$ ]] \
+      || (( 10#$FOXGLOVE_PORT < 1 || 10#$FOXGLOVE_PORT > 65535 )); then
+    echo "Invalid Foxglove port: $FOXGLOVE_PORT" >&2
     exit 2
   fi
 fi
@@ -253,7 +287,7 @@ if [[ "$OWNER_ONLY" == "false" ]]; then
   ensure_window estimator
 
   LOW_LEVEL_CMD="$(base_prefix) && ros2 launch mole_low_level_bringup bringup.launch.py \
-use_sim_time:=false on_machine:=true activate_trajectory_controller:=false \
+use_sim_time:=false on_machine:=true \
 endeffector_type:=$(shell_quote "$EFFECTIVE_TOOL") \
 robot_namespace:=$(shell_quote "$ROBOT_NAMESPACE")${TF_ARG}"
 
@@ -269,12 +303,12 @@ if [[ "$APPLICATION" == "normal" ]]; then
   OWNER_CMD="$(base_prefix) && ros2 launch mole_bringup terra.launch.py \
 profile:=$(shell_quote "$PROFILE") runtime_mode:=$RUNTIME_MODE \
 robot_namespace:=$(shell_quote "$ROBOT_NAMESPACE")${TF_ARG} \
-autostart:=$AUTOSTART visualization:=$VISUALIZATION"
+autostart:=$AUTOSTART visualization:=$OWNER_VISUALIZATION"
 else
   OWNER_CMD="$(base_prefix) && ros2 launch mole_bringup trench.launch.py \
 stage_manifest:=$(shell_quote "$STAGE_MANIFEST") runtime_mode:=$RUNTIME_MODE \
 robot_namespace:=$(shell_quote "$ROBOT_NAMESPACE")${TF_ARG} \
-autostart:=$AUTOSTART visualization:=$VISUALIZATION"
+autostart:=$AUTOSTART visualization:=$OWNER_VISUALIZATION"
   if [[ -n "$HANDOFF_BAG" ]]; then
     OWNER_CMD+=" handoff_bag:=$(shell_quote "$HANDOFF_BAG")"
   fi
@@ -282,8 +316,26 @@ fi
 
 start_owner "$OWNER_CMD"
 
+if [[ "$START_FOXGLOVE" == "true" ]]; then
+  sleep "$FOXGLOVE_START_DELAY_SEC"
+  ensure_window foxglove
+  FOXGLOVE_ENV=""
+  if [[ -n "${MOLE_DDS_OBSERVER_PROFILE:-}" ]]; then
+    FOXGLOVE_ENV="export FASTRTPS_DEFAULT_PROFILES_FILE=$(shell_quote "$MOLE_DDS_OBSERVER_PROFILE") ROS_AUTOMATIC_DISCOVERY_RANGE=SYSTEM_DEFAULT && unset FASTDDS_DEFAULT_PROFILES_FILE ROS_DISCOVERY_SERVER RMW_IMPLEMENTATION CYCLONEDDS_URI && "
+  fi
+  USE_SIM_TIME="false"
+  if [[ "$RUNTIME_MODE" == "simulation" ]]; then
+    USE_SIM_TIME="true"
+  fi
+  FOXGLOVE_CMD="$(base_prefix) && ${FOXGLOVE_ENV}ros2 launch foxglove_bridge foxglove_bridge_launch.xml port:=$FOXGLOVE_PORT use_sim_time:=$USE_SIM_TIME"
+  start_if_idle foxglove "$FOXGLOVE_CMD"
+fi
+
 echo "Terra tmux session ready: $SESSION"
 echo "Owner: $APPLICATION ($RUNTIME_MODE), autostart=$AUTOSTART"
+if [[ "$START_FOXGLOVE" == "true" ]]; then
+  echo "Foxglove: separate $SESSION:foxglove window on port $FOXGLOVE_PORT"
+fi
 echo "Attach with: tmux attach -t $SESSION"
 
 if [[ "$ATTACH" == "true" ]]; then

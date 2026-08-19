@@ -24,7 +24,14 @@ This skill owns controller-only launch and lifecycle/action handling. Route else
 4. Inspect publishers on `/<robot_namespace>/actuator_commands`. Do not activate into an unexpected competing command owner. On hardware, require the robot interlocks and an operator.
 5. `--restart-window` kills only the managed tmux window. Use it only for an authorized restart.
 
-The helper launches with the controller launch file's own auto-activation disabled, then configures and activates through lifecycle CLI commands. Use `--no-activate` for inspection. Motion remains separate: `--run-action` is explicit opt-in.
+The helper launches with the controller launch file's own auto-activation disabled, then configures and activates through lifecycle services. Use `--no-activate` for inspection. Motion remains separate: `--run-action` is explicit opt-in.
+
+The current Jazzy robot image uses an ordinary Fast DDS Discovery Server client
+profile. Short-lived graph-oriented commands such as `ros2 lifecycle get` can
+intermittently report `Node not found` even while known services and actions
+communicate normally. The helper therefore waits for and calls the controller's
+known lifecycle services directly. Do not switch DDS profiles during a live run
+because of one failed global graph lookup.
 
 ## Controller keys
 
@@ -67,5 +74,15 @@ SKILL_DIR="${CODEX_HOME:-$HOME/.codex}/skills/dig-controllers"
 Pass supported launch overrides after `--`; the helper already owns `use_sim_time`, `activate_controller`, `run_action`, `robot_namespace`, and `tf_prefix`.
 
 The managed window defaults to `ros:dig`. Its left pane owns the launch; its right pane waits for the namespaced node and handles lifecycle/action commands.
+
+Manual lifecycle recovery uses the known services directly (`1=configure`,
+`3=activate`, `4=deactivate`):
+
+```bash
+ros2 service call /mole/dig_3d_controller/change_state \
+  lifecycle_msgs/srv/ChangeState '{transition: {id: 3}}'
+ros2 service call /mole/dig_3d_controller/get_state \
+  lifecycle_msgs/srv/GetState '{}'
+```
 
 Runtime target profiles are one-shot per excavation-mapping process. To replace an applied profile, restart the owning mapping stack and call `/excavation_mapping/apply_runtime_profile` again. `desired_elevation` belongs to excavation mapping, not elevation mapping.

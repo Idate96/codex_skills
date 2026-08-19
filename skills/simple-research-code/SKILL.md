@@ -55,7 +55,7 @@ For Terra on the robot, define one canonical prerequisite procedure with the eff
 ```bash
 ros2 launch mole_low_level_bringup bringup.launch.py \
   use_sim_time:=false on_machine:=true \
-  activate_trajectory_controller:=false endeffector_type:=<effective-tool> \
+  endeffector_type:=<effective-tool> \
   robot_namespace:=<robot-namespace> tf_prefix:=<tf-prefix>
 ros2 launch mole_estimator mole_estimator.launch.py \
   use_sim_time:=false urdf_xacro_endeffector_type:=<effective-tool> \

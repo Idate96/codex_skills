@@ -28,6 +28,7 @@ high-level graph. On the machine, start only low-level control and
 - Use the same reviewed effective tool for low-level, estimator, and the Terra profile or trench stage.
 - Keep exactly one public Terra/trench owner. Stop it before changing profile, stage, or owner type.
 - `/mole/terra_executor/restart` starts or restarts execution; it is not an abort service.
+- While Terra is waiting at the non-motion manual-navigation gate, do not fuzzy-correct an ambiguous operator phrase such as `we top now` into a stop request. Treat it as a possible position update, keep the gate closed, inspect the reported distance, and ask one short clarification only if the intent remains unclear. Stop only for an explicit `stop`, `halt`, `shutdown`, emergency-stop request, or an unsafe condition.
 - For an unsafe motion, use the physical emergency stop and machine procedure. For a controlled stop, make the machine safe and press `Ctrl-C` once in the owner pane.
 
 ## Tmux Start
@@ -71,14 +72,41 @@ Add `--handoff-bag /path/to/bag` only for a reviewed trench handoff. If
 low-level and the estimator already run under another maintained startup
 workflow, add `--owner-only` to avoid duplicate prerequisites.
 
-The script uses three inspectable windows in tmux session `ros`:
+The script uses three core windows in tmux session `ros`:
 
 - `low_level`: machine low-level control, unless simulation or `--owner-only`
 - `estimator`: machine estimator, unless simulation or `--owner-only`
 - `terra_owner`: the sole `terra.launch.py` or `trench.launch.py` owner
 
+When `--visualization foxglove` or `rviz_foxglove` is selected, the script adds
+a dedicated `foxglove` window. The Terra owner receives `none` or `rviz`,
+respectively, and the separate bridge uses the observer DDS profile and the
+profile's configured port. The wrapper starts it last, after a short grace for
+the application graph. Restarting that window does not restart perception,
+mapping, planning, or control. The window remains part of the one canonical
+Terra workflow; do not start another bridge beside it.
+
 It starts only idle windows and never kills an existing process. Make the owner
 safe and stop it manually before relaunching a changed configuration.
+
+## Single Local Workspace
+
+Use the packaged `local_workspace.yaml` path for workspace-planner-only DIG
+experiments. Terra owns perception and, after the first finite map arrives,
+authors the configured workspace from the current `BASE` pose and freezes both
+runtime geometry and the generated waypoint pair in `map`. Keep machine
+`autostart=false`. Do not add a preparation service or defer target application:
+the visible target is what lets the operator move the cabin/bucket for complete
+coverage without driving the base.
+
+After the coverage sweep, require a stable `map <- BASE` transform. Then start
+recording and call `/mole/terra_executor/restart`. With
+`plan.navigation.kind: manual`, Terra starts no Nav2 process and sends no
+chassis command; `/mole/manual_navigation_done` is the explicit operator gate
+and checks that the base remains near the map pose captured at registration. If
+estimator drift makes the check fail, do not navigate or widen the tolerance.
+Stop the run, recover the estimator, and restart the owner so the one-shot
+runtime profile and plan are registered together again.
 
 ## Terrain SDF Refresh
 
@@ -128,7 +156,26 @@ Record the run before releasing execution. Then, only with operator approval:
 
 ```bash
 ros2 service call /mole/terra_executor/restart std_srvs/srv/Trigger "{}"
+# Wait until Terra reports an active manual gate and an in-tolerance pose.
+ros2 service call /mole/manual_navigation_done std_srvs/srv/Trigger "{}"
 ```
+
+Do not derive the gate service from the restart service hierarchy: the endpoint
+is `/<robot_namespace>/manual_navigation_done`, not
+`/<robot_namespace>/terra_executor/manual_navigation_done`. After calling it,
+require the owner log to report `Manual navigation completion accepted` before
+assuming execution advanced.
+
+## Failure Triage
+
+When Terra stops after a scoop starts, read the first executor failure and the
+latest Dig3D termination blocker before changing geometry or restarting. A
+`Dig action timed out after <N>s` failure means the executor deadline expired;
+it is not evidence that a safety margin fired. Check whether Dig3D was still
+publishing commands and which completion gate remained false (for example
+`curl`, `back_clearance`, or `finish_pose`). Preserve the recording and report
+that blocker before deciding whether to change the action timeout or controller
+termination logic.
 
 ## Recording
 

@@ -13,11 +13,12 @@ Create (or update) a tmux session with standard Moleworks robot windows (in orde
 
 Optionally add:
   - dig
+  - nav2 (reuse already-running low-level, estimator, and perception panes)
 
 Run this from the sourced environment that owns the robot ROS graph.
 
 Usage:
-  robot_startup_tmux.sh [--session NAME] [--ws PATH] [--robot-namespace NS] [--tf-prefix PREFIX] [--endeffector-type TYPE] [--mapping-profile PROFILE] [--design-map-name NAME] [--excavation-mapping-upstream-layer LAYER] [--no-perception] [--no-estimator] [--estimator-config PATH] [--no-elevation-mapping] [--dig-controller NAME] [--no-foxglove] [--restart] [--attach] [--keep-continuum-restore]
+  robot_startup_tmux.sh [--session NAME] [--ws PATH] [--robot-namespace NS] [--tf-prefix PREFIX] [--endeffector-type TYPE] [--mapping-profile PROFILE] [--design-map-name NAME] [--excavation-mapping-upstream-layer LAYER] [--no-perception] [--no-estimator] [--estimator-config PATH] [--no-elevation-mapping] [--dig-controller NAME] [--nav2-only] [--nav2-overlay-ws PATH] [--no-foxglove] [--restart] [--attach] [--keep-continuum-restore]
 
 Options:
   --session NAME   tmux session name (default: ros)
@@ -33,6 +34,8 @@ Options:
   --estimator-config PATH  optional config YAML to pass to mole_estimator (default: package default)
   --no-elevation-mapping  disable elevation mapping in the perception launch
   --dig-controller NAME  optional DIG controller launch, left inactive (dig3d|newton|dig|dig-ee)
+  --nav2-only     add/start only the nav2 pane, reusing verified low_level, estimator, and perception panes
+  --nav2-overlay-ws PATH  optional built development overlay sourced after the image Nav2 underlay (requires --nav2-only)
   --no-foxglove   do not start the standalone Foxglove bridge
   --restart        kill existing session and recreate
   --attach         attach to the session after setup
@@ -57,6 +60,9 @@ ESTIMATOR_CONFIG=""
 ENABLE_ELEVATION_MAPPING="true"
 DIG_CONTROLLER=""
 DIG_WINDOW="dig"
+NAV2_ONLY="false"
+NAV2_OVERLAY_WS=""
+NAV2_WINDOW="nav2"
 WINDOW_ORDER=()
 PRE_FOXGLOVE_WINDOWS=()
 FOXGLOVE_START_DELAY_SEC=5
@@ -89,6 +95,10 @@ while [[ $# -gt 0 ]]; do
       ENABLE_ELEVATION_MAPPING="false"; shift ;;
     --dig-controller)
       DIG_CONTROLLER="${2:-}"; shift 2 ;;
+    --nav2-only)
+      NAV2_ONLY="true"; shift ;;
+    --nav2-overlay-ws)
+      NAV2_OVERLAY_WS="${2:-}"; shift 2 ;;
     --no-foxglove)
       LAUNCH_FOXGLOVE="false"; shift ;;
     --restart)
@@ -190,22 +200,42 @@ if [[ -n "$DIG_CONTROLLER" ]]; then
   fi
 fi
 
-WINDOW_ORDER=(low_level)
-PRE_FOXGLOVE_WINDOWS=(low_level)
-if [[ "$LAUNCH_PERCEPTION" == "true" ]]; then
-  WINDOW_ORDER+=(perception)
-  PRE_FOXGLOVE_WINDOWS+=(perception)
-fi
-if [[ "$LAUNCH_ESTIMATOR" == "true" ]]; then
-  WINDOW_ORDER+=(estimator)
-  PRE_FOXGLOVE_WINDOWS+=(estimator)
-fi
-if [[ -n "$DIG_CONTROLLER" ]]; then
-  WINDOW_ORDER+=("$DIG_WINDOW")
-  PRE_FOXGLOVE_WINDOWS+=("$DIG_WINDOW")
-fi
-if [[ "$LAUNCH_FOXGLOVE" == "true" ]]; then
-  WINDOW_ORDER+=(foxglove)
+if [[ "$NAV2_ONLY" == "true" ]]; then
+  if [[ "$RESTART" == "true" ]]; then
+    echo "--nav2-only cannot be combined with --restart because it reuses the existing robot session" >&2
+    exit 2
+  fi
+  if [[ -n "$DIG_CONTROLLER" ]]; then
+    echo "--nav2-only cannot be combined with --dig-controller" >&2
+    exit 2
+  fi
+  LAUNCH_ESTIMATOR="false"
+  LAUNCH_PERCEPTION="false"
+  LAUNCH_FOXGLOVE="false"
+  WINDOW_ORDER=("$NAV2_WINDOW")
+  PRE_FOXGLOVE_WINDOWS=("$NAV2_WINDOW")
+else
+  if [[ -n "$NAV2_OVERLAY_WS" ]]; then
+    echo "--nav2-overlay-ws requires --nav2-only" >&2
+    exit 2
+  fi
+  WINDOW_ORDER=(low_level)
+  PRE_FOXGLOVE_WINDOWS=(low_level)
+  if [[ "$LAUNCH_PERCEPTION" == "true" ]]; then
+    WINDOW_ORDER+=(perception)
+    PRE_FOXGLOVE_WINDOWS+=(perception)
+  fi
+  if [[ "$LAUNCH_ESTIMATOR" == "true" ]]; then
+    WINDOW_ORDER+=(estimator)
+    PRE_FOXGLOVE_WINDOWS+=(estimator)
+  fi
+  if [[ -n "$DIG_CONTROLLER" ]]; then
+    WINDOW_ORDER+=("$DIG_WINDOW")
+    PRE_FOXGLOVE_WINDOWS+=("$DIG_WINDOW")
+  fi
+  if [[ "$LAUNCH_FOXGLOVE" == "true" ]]; then
+    WINDOW_ORDER+=(foxglove)
+  fi
 fi
 
 if [[ -z "$WS" ]]; then
@@ -228,6 +258,19 @@ fi
 if [[ ! -f "$WS/install/setup.bash" ]]; then
   echo "Missing $WS/install/setup.bash (did you build + source the workspace?)" >&2
   exit 2
+fi
+if [[ "$NAV2_ONLY" == "true" ]]; then
+  if [[ ! -f /opt/nav2_underlay/setup.bash ]]; then
+    echo "--nav2-only requires the image-pinned /opt/nav2_underlay" >&2
+    exit 2
+  fi
+  if [[ -n "$NAV2_OVERLAY_WS" ]]; then
+    NAV2_OVERLAY_WS="$(realpath -m "$NAV2_OVERLAY_WS")"
+    if [[ ! -f "$NAV2_OVERLAY_WS/install/local_setup.bash" ]]; then
+      echo "Missing $NAV2_OVERLAY_WS/install/local_setup.bash (build the focused Nav2 overlay first)" >&2
+      exit 2
+    fi
+  fi
 fi
 
 tmux_has_session() {
@@ -306,13 +349,19 @@ tmux_reorder_windows() {
 
 start_low_level() {
   local cmd
-  cmd="cd \"$WS\" && source install/setup.bash && ros2 launch mole_low_level_bringup bringup.launch.py use_sim_time:=false on_machine:=true activate_trajectory_controller:=false endeffector_type:=$(printf '%q' "$ENDEFFECTOR_TYPE") robot_namespace:=$(printf '%q' "$ROBOT_NAMESPACE") tf_prefix:=$(printf '%q' "$TF_PREFIX")"
+  cmd="cd \"$WS\" && source install/setup.bash && ros2 launch mole_low_level_bringup bringup.launch.py use_sim_time:=false on_machine:=true endeffector_type:=$(printf '%q' "$ENDEFFECTOR_TYPE") robot_namespace:=$(printf '%q' "$ROBOT_NAMESPACE")"
+  if [[ -n "$TF_PREFIX" ]]; then
+    cmd+=" tf_prefix:=$(printf '%q' "$TF_PREFIX")"
+  fi
   tmux_send_to_active_pane "low_level" "$cmd"
 }
 
 start_perception() {
   local cmd
-  cmd="cd \"$WS\" && source install/setup.bash && ros2 launch mole_perception_bringup bringup.launch.py use_sim_time:=false on_machine:=true enable_lidar:=true enable_robot_self_filter:=true enable_elevation_mapping:=$ENABLE_ELEVATION_MAPPING mapping_profile:=$(printf '%q' "$MAPPING_PROFILE") endeffector_type:=$(printf '%q' "$ENDEFFECTOR_TYPE") robot_namespace:=$(printf '%q' "$ROBOT_NAMESPACE") tf_prefix:=$(printf '%q' "$TF_PREFIX")"
+  cmd="cd \"$WS\" && source install/setup.bash && ros2 launch mole_perception_bringup bringup.launch.py use_sim_time:=false on_machine:=true enable_lidar:=true enable_robot_self_filter:=true enable_elevation_mapping:=$ENABLE_ELEVATION_MAPPING mapping_profile:=$(printf '%q' "$MAPPING_PROFILE") endeffector_type:=$(printf '%q' "$ENDEFFECTOR_TYPE") robot_namespace:=$(printf '%q' "$ROBOT_NAMESPACE")"
+  if [[ -n "$TF_PREFIX" ]]; then
+    cmd+=" tf_prefix:=$(printf '%q' "$TF_PREFIX")"
+  fi
   if [[ -n "$DESIGN_MAP_NAME" ]]; then
     cmd+=" design_map_name:=$(printf '%q' "$DESIGN_MAP_NAME")"
   fi
@@ -347,9 +396,27 @@ start_dig() {
     -- "${extra_launch_args[@]}"
 }
 
+start_nav2() {
+  local cmd
+  cmd="cd \"$WS\" && source /opt/ros/jazzy/setup.bash && source /opt/nav2_underlay/setup.bash && source install/local_setup.bash"
+  if [[ -n "$NAV2_OVERLAY_WS" ]]; then
+    cmd+=" && source $(printf '%q' "$NAV2_OVERLAY_WS/install/local_setup.bash")"
+  fi
+  cmd+=" && ros2 launch mole_bringup nav2_on_robot.launch.py use_sim_time:=false on_machine:=true launch_rviz:=false activate_controller:=false endeffector_type:=$(printf '%q' "$ENDEFFECTOR_TYPE") robot_namespace:=$(printf '%q' "$ROBOT_NAMESPACE")"
+  if [[ -n "$TF_PREFIX" ]]; then
+    cmd+=" tf_prefix:=$(printf '%q' "$TF_PREFIX")"
+  fi
+  tmux_send_to_active_pane "$NAV2_WINDOW" "$cmd"
+}
+
 start_foxglove() {
   local cmd
-  cmd="cd \"$WS\" && source install/setup.bash && ros2 launch foxglove_bridge foxglove_bridge_launch.xml"
+  cmd="cd \"$WS\" && source install/setup.bash"
+  if [[ -n "${MOLE_DDS_OBSERVER_PROFILE:-}" ]]; then
+    cmd+=" && export FASTRTPS_DEFAULT_PROFILES_FILE=$(printf '%q' "$MOLE_DDS_OBSERVER_PROFILE") ROS_AUTOMATIC_DISCOVERY_RANGE=SYSTEM_DEFAULT"
+    cmd+=" && unset FASTDDS_DEFAULT_PROFILES_FILE ROS_DISCOVERY_SERVER RMW_IMPLEMENTATION CYCLONEDDS_URI"
+  fi
+  cmd+=" && ros2 launch foxglove_bridge foxglove_bridge_launch.xml"
   tmux_send_to_active_pane "foxglove" "$cmd"
 }
 
@@ -362,7 +429,13 @@ start_estimator() {
   fi
 
   # Prefer /usr/local/lib first so estimator picks the locally installed GTSAM runtime when present.
-  cmd="cd \"$WS\" && source install/setup.bash && export LD_LIBRARY_PATH=\"/usr/local/lib:${LD_LIBRARY_PATH:-}\" && ros2 launch mole_estimator mole_estimator.launch.py use_sim_time:=false urdf_xacro_endeffector_type:=$(printf '%q' "$ENDEFFECTOR_TYPE") robot_namespace:=$(printf '%q' "$ROBOT_NAMESPACE") tf_prefix:=$(printf '%q' "$TF_PREFIX")${cfg_arg}"
+  cmd="cd \"$WS\" && source install/setup.bash && export LD_LIBRARY_PATH=\"/usr/local/lib:${LD_LIBRARY_PATH:-}\" && ros2 launch mole_estimator mole_estimator.launch.py use_sim_time:=false urdf_xacro_endeffector_type:=$(printf '%q' "$ENDEFFECTOR_TYPE") robot_namespace:=$(printf '%q' "$ROBOT_NAMESPACE")${cfg_arg}"
+  if [[ -n "$TF_PREFIX" ]]; then
+    cmd+=" tf_prefix:=$(printf '%q' "$TF_PREFIX")"
+  fi
+  if [[ -n "$DESIGN_MAP_NAME" ]]; then
+    cmd+=" design_map:=$(printf '%q' "$DESIGN_MAP_NAME")"
+  fi
   tmux_send_to_active_pane "estimator" "$cmd"
 }
 
@@ -374,6 +447,7 @@ start_window() {
     foxglove) start_foxglove ;;
     estimator) start_estimator ;;
     dig) start_dig ;;
+    nav2) start_nav2 ;;
   esac
 }
 
@@ -439,6 +513,12 @@ detect_managed_role_in_window() {
     echo "perception"
     return 0
   fi
+  if echo "$ps_out" | grep -Fq "mole_bringup robot.launch.py" &&
+    echo "$ps_out" | grep -Fq "launch_low_level:=false" &&
+    echo "$ps_out" | grep -Fq "launch_perception:=true"; then
+    echo "perception"
+    return 0
+  fi
   if echo "$ps_out" | grep -Fq "mole_estimator mole_estimator.launch.py"; then
     echo "estimator"
     return 0
@@ -449,6 +529,11 @@ detect_managed_role_in_window() {
   fi
   if echo "$ps_out" | grep -Fq "foxglove_bridge foxglove_bridge_launch.xml"; then
     echo "foxglove"
+    return 0
+  fi
+  if echo "$ps_out" | grep -Fq "mole_bringup nav2_on_robot.launch.py" ||
+    echo "$ps_out" | grep -Fq "mole_nav2_bringup bringup.launch.py"; then
+    echo "nav2"
     return 0
   fi
 
@@ -477,6 +562,29 @@ preflight_existing_managed_windows() {
   done
 }
 
+preflight_nav2_prerequisite_windows() {
+  local detected_role prerequisite
+  if [[ "$NAV2_ONLY" != "true" ]]; then
+    return 0
+  fi
+  if ! tmux_has_session; then
+    echo "--nav2-only requires an existing '$SESSION' session with robot prerequisites" >&2
+    return 1
+  fi
+  for prerequisite in low_level estimator perception; do
+    if ! tmux_has_window "$prerequisite"; then
+      echo "--nav2-only requires the existing $SESSION:$prerequisite pane" >&2
+      return 1
+    fi
+    detected_role="$(detect_managed_role_in_window "$prerequisite")"
+    if [[ "$detected_role" != "$prerequisite" ]]; then
+      echo "--nav2-only prerequisite $SESSION:$prerequisite has role ${detected_role:-unknown}" >&2
+      return 1
+    fi
+  done
+}
+
+preflight_nav2_prerequisite_windows
 if [[ "$RESTART" == "true" ]]; then
   tmux_kill_session_if_exists
 else
@@ -490,7 +598,9 @@ tmux_disable_auto_rename "$SESSION"
 for win in "${WINDOW_ORDER[@]}"; do
   tmux_ensure_window "$win"
 done
-tmux_reorder_windows
+if [[ "$NAV2_ONLY" != "true" ]]; then
+  tmux_reorder_windows
+fi
 
 if [[ "$RESTART" == "true" ]]; then
   for win in "${PRE_FOXGLOVE_WINDOWS[@]}"; do
@@ -539,7 +649,9 @@ else
   fi
 fi
 
-tmux_reorder_windows
+if [[ "$NAV2_ONLY" != "true" ]]; then
+  tmux_reorder_windows
+fi
 
 if [[ "$ATTACH" == "true" ]]; then
   exec tmux attach -t "$SESSION"

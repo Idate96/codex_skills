@@ -1,4 +1,4 @@
 interface:
   display_name: "Robot Startup"
-  short_description: "Start the real-robot ROS prerequisites safely"
-  default_prompt: "Use $robot-startup to start or restart the real-robot Moleworks ROS prerequisites and perform only explicitly authorized machine-ready actions."
+  short_description: "Start robot prerequisites or Nav2 safely"
+  default_prompt: "Use $robot-startup to start the real-robot prerequisites or add Nav2 safely to verified running components."

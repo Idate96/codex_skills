@@ -1,9 +1,14 @@
 ---
 name: ralpha-loop
-description: "Run an implement-test-review loop until one persistent reviewer reports no findings. Use when the user requests strict iterative coding, repeated review, or a clean-review completion gate."
+description: "Run an implement-test-review loop until one persistent reviewer reports no findings. Use only when the user explicitly requests strict iterative coding, repeated review, or a clean-review completion gate; do not use for routine or small changes."
 ---
 
 # Ralpha Loop
+
+This workflow is opt-in and intentionally heavyweight. For a small or routine change, make the
+minimal edit, run one focused check, and continue. Do not spawn a reviewer unless the user asked for
+strict iteration or a clean-review gate. Optimize for execution speed when that gate was not asked
+for.
 
 Execute a deterministic loop:
 1. Implement or patch.

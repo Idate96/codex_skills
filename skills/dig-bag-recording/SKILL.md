@@ -56,4 +56,39 @@ find ~/mcap/dig -maxdepth 4 -type f -name metadata.yaml | sort
 ros2 bag info /path/to/run/raw/state
 ```
 
+## Post-run scoop extraction
+
+Use the repository-owned analyzer to turn one finalized campaign run into replayable scoop bags:
+
+```bash
+: "${RUN_ROOT:?Set RUN_ROOT to the finalized run directory}"
+ros2 run mole_bag_tools analyze_dig_trenching_session \
+  --run-root "$RUN_ROOT" \
+  --write-splits \
+  --split-excavation-map-snapshots-only
+```
+
+The default map topic is `/excavation_mapping/grid_map`. The analyzer resolves
+`--command-topic` across the canonical raw splits. For isolated Dig3D tests where
+other controllers keep `/mole/actuator_commands` continuously alive, add:
+
+```bash
+--command-topic /dig_3d/policy_action_stamped
+```
+
+This writes `derived/scoop_bags/scoop_XXX`. Run `ros2 bag info` on every child
+bag before discarding the source. For command-versus-motion, bottom tracking,
+current activity, and joint jitter diagnostics, run:
+
+```bash
+ros2 run mole_bag_tools analyze_dig_policy_motion \
+  --input-root "$RUN_ROOT" \
+  --force
+```
+
+If the source run must be discarded, first relocate the verified `derived/`
+artifacts outside that run directory, preserve its manifest, and move the source
+to recoverable trash. Never delete the only copy before all split metadata and
+MCAP files pass `ros2 bag info`.
+
 For OCS2 paper-evidence runs, use the OCS2 experiment skill and the repository's explicit `record_ocs2:=true` plus `validate_ocs2_recording` contract; this generic DIG profile intentionally does not claim OCS2 provenance completeness.

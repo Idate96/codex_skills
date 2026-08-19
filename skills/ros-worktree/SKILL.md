@@ -1,128 +1,129 @@
 ---
 name: ros-worktree
-description: "Create an isolated ROS 2 workspace backed by Git worktrees. Use for safe builds, container tests, image validation, and PR-ready changes without disturbing the main workspace."
+description: "Create a minimal isolated ROS 2 workspace from one or more Git worktrees. Use for safe package builds, coordinated cross-repository changes, container tests, and verified publication without disturbing a dirty live workspace."
 ---
 
-# ROS Worktree (Isolated Workspace) Workflow
+# ROS Worktree
 
-## Goal
+Use a tiny colcon workspace containing only the repositories needed for the task. Do not copy a full `src/` tree.
 
-Create a new ROS2 workspace directory (example: `~/moleworks/ros2_ws_menzi_base`) that is safe to mutate and build in, while keeping `~/moleworks/ros2_ws` untouched.
-
-## Create A New Workspace (Fast Path: Copy `src/`)
-
-Pick a suffix/name and copy only `src/`.
+## 1. Confirm the environment
 
 ```bash
-SRC_WS=~/moleworks/ros2_ws
-DST_WS=~/moleworks/ros2_ws_SUFFIX
+if test -e /.dockerenv || test -e /run/.containerenv; then
+  echo "Already inside a container"
+else
+  echo "Running on the host"
+fi
 
-test -d "$SRC_WS/src"
-test ! -e "$DST_WS"  # fail fast if destination already exists
-
-# Keep the destination inside the expected workspace parent.
-case "$(realpath -m "$DST_WS")" in
-  "$(realpath -m ~/moleworks)"/*) ;;
-  *) echo "Unexpected destination: $DST_WS" >&2; exit 2 ;;
-esac
-
-mkdir -p "$DST_WS/src"
-rsync -a "$SRC_WS/src/" "$DST_WS/src/"
+BASE_WS="${ROS_WS:-$HOME/ros2_ws}"
+test -f "$BASE_WS/install/setup.bash"
 ```
 
-## Replace Specific Repos With Git Worktrees (Recommended)
+Do not start or enter another container when the current shell is already the intended container. Keep the dirty live workspace read-only.
 
-Rationale: keep a canonical clone in `~/git/REPO` and put a *worktree checkout* in `~/git/.worktrees/REPO_SUFFIX`. Then symlink that into the new workspace. This keeps PRs easy and avoids interfering with ongoing work elsewhere.
+## 2. Create direct worktrees
 
-### Example: `moleworks_ros` worktree + symlink into the new workspace
+Set explicit repositories, remote bases, and paths. Add a worktree for every repository that will change, including floating dependencies.
 
 ```bash
-MOLEWORKS_ROS_GIT=~/git/moleworks_ros
-MOLEWORKS_ROS_WT=~/git/.worktrees/moleworks_ros_SUFFIX
+set -euo pipefail
+TASK=short-task-name
+ROOT="$HOME/moleworks/.worktrees/$TASK"
+WS="$HOME/moleworks/ros2_ws_$TASK"
 
-test -d "$MOLEWORKS_ROS_GIT/.git"
-test -d "$DST_WS/src"
+APP_REPO="$BASE_WS/src/application_repo"
+DEP_REPO="$BASE_WS/src/dependency_repo"  # Omit when unnecessary.
+APP_WT="$ROOT/application_repo"
+DEP_WT="$ROOT/dependency_repo"
 
-# Move the copied repo aside after proving it is inside the isolated destination.
-test -d "$DST_WS/src/moleworks_ros"
-COPIED_REPO="$(realpath -m "$DST_WS/src/moleworks_ros")"
-case "$COPIED_REPO" in
-  "$(realpath -m "$DST_WS")"/src/*) ;;
-  *) echo "Refusing unexpected source path: $COPIED_REPO" >&2; exit 2 ;;
-esac
-test -z "$(git -C "$COPIED_REPO" status --porcelain)"
-mkdir -p "$DST_WS/_replaced_sources"
-mv "$COPIED_REPO" "$DST_WS/_replaced_sources/moleworks_ros"
+test ! -e "$ROOT"
+test ! -e "$WS"
+mkdir -p "$ROOT" "$WS/src"
 
-# Create a genuinely new branch and worktree checkout.
-cd "$MOLEWORKS_ROS_GIT"
-git fetch origin
-test ! -e "$MOLEWORKS_ROS_WT"
-! git show-ref --verify --quiet refs/heads/MY_BRANCH
-! git show-ref --verify --quiet refs/remotes/origin/MY_BRANCH
-git worktree add -b MY_BRANCH "$MOLEWORKS_ROS_WT" origin/main
+git -C "$DEP_REPO" fetch origin dependency_branch
+git -C "$DEP_REPO" worktree add -b "work/$TASK-dep" "$DEP_WT" origin/dependency_branch
+git -C "$APP_REPO" fetch origin main
+git -C "$APP_REPO" worktree add -b "work/$TASK" "$APP_WT" origin/main
 
-# Symlink the worktree into the workspace.
-ln -s "$MOLEWORKS_ROS_WT" "$DST_WS/src/moleworks_ros"
+ln -s "$DEP_WT" "$WS/src/dependency_repo"
+ln -s "$APP_WT" "$WS/src/application_repo"
 ```
 
-Notes:
-- Use the same pattern for other repos you plan to change (e.g. `holistic_fusion`, `menzi_docker`, etc.).
-- Prefer new branch names; avoid force-push.
-- Never use `git worktree add -B` here: it can reset an existing local branch. To reuse an existing
-  branch, first inspect its current worktree/remote state, then use `git worktree add PATH BRANCH`.
-- Do not delete the moved copy until the isolated workspace builds and its source links are verified.
-- If you need a clean build, clean `build/ install/ log` in the workspace, not the git repos (see below).
+Branch from fetched remote refs, never a possibly stale local branch. Never use `git worktree add -B`.
 
-## Clean Build Artifacts (Recommended Before Testing New Images)
+## 3. Build and test only the intended packages
 
-Keep the workspace git state intact; just reset build outputs.
+Always enter the exact isolated workspace before invoking colcon. The current directory owns `build/`, `install/`, and `log/`.
 
 ```bash
-cd "$DST_WS"
-ts="$(date +%Y%m%d_%H%M%S)"
-mkdir -p "_old_build_${ts}"
-for d in build install log; do
-  if test -e "$d"; then
-    mv "$d" "_old_build_${ts}/"
-  fi
-done
+cd "$WS"
+test "$(pwd -P)" = "$(realpath "$WS")"
+source /opt/ros/jazzy/setup.bash
+source "$BASE_WS/install/setup.bash"
+
+BASE_PATHS=("$DEP_WT/graph_package" "$APP_WT")
+PACKAGES=(dependency_package application_package)
+
+colcon list --base-paths "${BASE_PATHS[@]}"
+colcon build --base-paths "${BASE_PATHS[@]}" --packages-select "${PACKAGES[@]}"
+source "$WS/install/setup.bash"
+colcon test --packages-select "${PACKAGES[@]}" --return-code-on-test-failure
+colcon test-result --verbose
 ```
 
-## Add `COLCON_IGNORE` For Non-ROS / Heavy Packages (If Needed)
+Use `--packages-up-to TARGET` instead of `--packages-select` only when workspace dependencies should be included.
 
-If `colcon` errors while identifying Python packages (common for ML repos) or you simply want faster builds, ignore them.
+## 4. Publish in dependency order
+
+Push a shared branch directly only when the user explicitly requests it. Otherwise push task branches for review.
+
+Immediately before each push: fetch the target branch, require it to be an ancestor of `HEAD`, push normally, then verify the remote hash. Publish floating dependencies before their consumer.
 
 ```bash
-# Example: Segment Anything repo isn't a ROS package and can break colcon discovery.
-touch "$DST_WS/src/segment-anything-2-real-time-ros-2/COLCON_IGNORE"
+push_checked() {
+  wt=$1
+  target=$2
+  git -C "$wt" fetch origin "$target"
+  git -C "$wt" merge-base --is-ancestor "origin/$target" HEAD
+  git -C "$wt" push origin "HEAD:$target"
+  test "$(git -C "$wt" rev-parse HEAD)" = \
+       "$(git -C "$wt" ls-remote origin "refs/heads/$target" | awk '{print $1}')"
+}
 
-# Example: optional stack that may not be needed for most bringup builds.
-# touch "$DST_WS/src/isaac_ros_nvblox/COLCON_IGNORE"
+push_checked "$DEP_WT" dependency_branch
+push_checked "$APP_WT" main
 ```
 
-## Build/Test In Docker Against The New Workspace
+Never force-push in this workflow.
 
-### Generic `docker run` pattern
+## 5. Detach runtime installs before cleanup
 
-Mount the workspace into the container (so builds are deterministic and don't touch other workspaces).
+Never keep a runtime `--symlink-install` that points into a temporary worktree. Before removing worktrees, either rebuild the deployed packages without `--symlink-install` into their permanent workspace or rebuild them from permanent source.
+
+Then run the mandatory check:
 
 ```bash
-docker run --rm -it \
-  -v "$DST_WS:/workspaces/ros2_ws" \
-  -w /workspaces/ros2_ws \
-  IMAGE \
-  bash -lc 'set -ex; source /opt/ros/jazzy/setup.bash; colcon build --packages-up-to PKG'
+SKILL_DIR="${CODEX_HOME:-$HOME/.codex}/skills/ros-worktree"
+"$SKILL_DIR/scripts/assert_no_temp_links.sh" "$BASE_WS/install" "$ROOT"
 ```
 
-If `colcon` tries to crawl everything under `src/`, restrict it:
+Do not continue if it reports a link. This check examines both raw and resolved link targets, including broken links.
+
+## 6. Clean up exact paths
+
+After remote-hash verification and the runtime-link check:
 
 ```bash
-colcon build --base-paths src/moleworks_ros src/holistic_fusion/ros2 --packages-up-to PKG
+cd /
+git -C "$DEP_REPO" worktree remove "$DEP_WT"
+git -C "$APP_REPO" worktree remove "$APP_WT"
+git -C "$DEP_REPO" worktree prune
+git -C "$APP_REPO" worktree prune
+
+test "$(realpath -m "$WS")" = "$(realpath -m "$HOME/moleworks/ros2_ws_$TASK")"
+gio trash "$WS"
+rmdir "$ROOT"
 ```
 
-### Moleworks-specific: use `moleworks_ros/docker/docker_launch.sh`
-
-If you are testing `moleworks_ros` images, prefer the repo scripts. They mount your full `$HOME`, so the new workspace is visible automatically.
-
-Important: the container bashrc typically auto-sources only `~/ros2_ws` or `/workspaces/ros2_ws`. If your worktree is `~/moleworks/ros2_ws_SUFFIX`, you must `source ~/moleworks/ros2_ws_SUFFIX/install/setup.bash` in each shell before running `ros2 launch`/`ros2 run`.
+Delete local task branches only after their commits are verified remotely or merged. Report what was removed and whether it is recoverable.
