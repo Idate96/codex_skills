@@ -139,6 +139,7 @@ def main() -> int:
             {
                 "parent": parent,
                 "pageSize": args.page_size,
+                "orderBy": "createTime desc",
                 "filter": f'create_time > "{cutoff_rfc3339}"',
             }
         )
@@ -156,7 +157,9 @@ def main() -> int:
             )
             continue
 
-        messages = [normalize_message(m) for m in messages_resp.get("messages", [])]
+        raw = messages_resp.get("messages", [])
+        messages = [normalize_message(m) for m in raw]
+        # Fetched newest-first; present oldest-first so a thread reads in order.
         messages.sort(key=lambda m: m.get("createTime") or "")
         if not messages:
             continue
@@ -164,6 +167,7 @@ def main() -> int:
         conversations.append(
             {
                 "space": parent,
+                "truncated": len(raw) >= args.page_size,
                 "label": collaborators.get(parent, {}).get("name") or space.get("displayName"),
                 "spaceType": space.get("spaceType"),
                 "displayName": space.get("displayName"),

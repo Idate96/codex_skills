@@ -1,6 +1,6 @@
 ---
 name: terra-rl
-description: "Run Terra RL training across `terra` and `terra-baselines`. Use for validation, Euler Slurm, W&B comparison, PPO configuration, JAX/CUDA preflight, first-update smoke tests, and failure diagnosis."
+description: "Run Terra RL training across `terra` and `terra-baselines`. Use for validation, Euler Slurm, W&B comparison, PPO configuration, JAX/CUDA preflight, first-update smoke tests, checkpointed 24h/120h continuation, and failure diagnosis."
 ---
 
 # Terra RL
@@ -9,7 +9,7 @@ Use this skill for Terra policy training work spanning:
 
 - `/home/lorenzo/moleworks/terra`
 - `/home/lorenzo/moleworks/terra-baselines`
-- Euler workspace `/cluster/home/lterenzi/codex_terra_edge_validation`
+- Euler account-selected workspaces under `/cluster/scratch/<account>/`
 - W&B project `aless-weber-eth/mixed-agents`
 
 ## Core Rule
@@ -34,9 +34,14 @@ Use these environments by default:
 - Local 24 GB GPU tests: `/home/lorenzo/moleworks/.venv-terra-gpu-uv`. Use this for one-GPU
   first-update smoke tests, CUDA runtime checks, and env-capacity sweeps on the local RTX 4090.
   Do not use the CPU-only `.venv-terra-uv` to decide GPU memory fit.
-- Euler training: `WORK=/cluster/home/lterenzi/codex_terra_edge_validation` with
-  `VENV=/cluster/scratch/lterenzi/codex_terra_edge_venv`. Use this for real Slurm jobs and W&B
-  training runs.
+- Euler training: select `TERRA_EULER_USER` explicitly. The current default is
+  `alesweber` via SSH host `euler-alesweber`; `euler-lterenzi` is the legacy
+  fallback. Derive `WORK=/cluster/scratch/$TERRA_EULER_USER/codex_terra_edge_validation`
+  and `RUNS=/cluster/scratch/$TERRA_EULER_USER/codex_terra_edge_runs`. Use a
+  pinned project-stored venv supplied by the campaign; the current V8 runtime
+  `/cluster/project/rsl/lterenzi/terra_curriculum_20260730_c14bd7d_3ce0e84_py312_jax0426`
+  is group-readable by `alesweber`. Record the account and exact venv in every
+  run contract.
 
 Always set:
 
@@ -64,12 +69,45 @@ Use only verified NVIDIA GeForce RTX 3090 or RTX 4090 allocations unless the use
 7. Launch a production Slurm/W&B job only when the user requested real training and the smoke evidence is real: update 1 completed, not only dataset/model initialization. A status, diagnosis, or config-review request does not authorize a new expensive run.
 8. For A/B comparisons, verify each side independently past update 1. Do not count a Slurm
    `RUNNING` job as healthy until the log shows completed updates.
-9. For performance/architecture work, ask Oracle with the relevant diffs and measured logs, not
-   only at final review. Ask it to look for missed code hotspots, algorithmic options, profiling
-   strategy, data layout changes, JAX/XLA architecture issues, and RL-level speed/learning
-   tradeoffs; then verify recommendations locally before retaining changes.
+9. For performance/architecture work, obtain an independent review with the relevant diffs and
+   measured logs, not only at final review. In Codex, use a credential-free Codex subagent by
+   default. Invoke Claude, Opus, Oracle, or another model/provider only when the user explicitly
+   requests it in the current task. Ask the reviewer to look for missed code hotspots, algorithmic
+   options, profiling strategy, data layout changes, JAX/XLA architecture issues, and RL-level
+   speed/learning tradeoffs; then verify recommendations locally before retaining changes. Never
+   put passwords, tokens, private keys, or other credentials in a delegated prompt.
 10. Keep `docs/EXPERIMENTS_RUNNING.md` and `docs/EXPERIMENTS_LOG.md` current with job ids, W&B ids,
    exact failure signatures, and whether W&B has real history.
+
+## Checkpointed Training Duration
+
+- Treat minute-scale/update-1 jobs as runtime smokes only. Unless explicitly
+  named as a shorter diagnostic, give a behavioral screen at least one healthy
+  24-hour allocation before making a negative or saturation claim.
+- Configure an absolute update target safely beyond what one allocation can
+  finish. Wall time may end a segment; it must not make a promising run stop
+  early merely because the update target was too small.
+- Save and validate a rolling checkpoint at least every 500 updates. A Slurm
+  timeout with a finite, loadable checkpoint is `CONTINUABLE`, not a failed
+  experiment. Evaluate the latest complete checkpoint in a separate job when
+  the hard timeout prevents post-training commands from running.
+- Continue with `--resume_from`, never `--warm_start_from`. Preserve model
+  parameters, optimizer state/step, global `next_update`, schedule position,
+  environment protocol, and adaptive sampler state. Set `total_timesteps` for
+  the absolute final update target, not for an additional segment length.
+- Reuse the W&B run ID with `resume=must` only when the checkpoint is at or
+  beyond the last logged `train/update`. Otherwise create a linked continuation
+  run so replay from an older checkpoint cannot create backward/duplicate
+  history. Record every Slurm segment and checkpoint hash in the ledger.
+- Promote a promising recipe to the 120-hour queue and continue while fixed
+  held-out exact, macro, or worst-condition performance is still improving.
+  Stop on a held-out plateau across multiple checkpoints, not on wall time or
+  online training success alone. Report updates, transitions, and GPU-hours.
+
+Current Terra resumes restart RNG, live environment state, and action history,
+so continuation is statistically continuous but not bit-exact. Read
+[references/euler-runtime.md](references/euler-runtime.md) before implementing
+segmented jobs.
 
 ## Current ResMap64 R1/R2 Launch
 
@@ -148,16 +186,29 @@ Read [references/euler-runtime.md](references/euler-runtime.md) for the current 
 
 ### Storage targets
 
-`/cluster/home/lterenzi` is a hard 50 GB cap (44.2 GB used on 2026-07-20, over the 45 GB soft quota). On 2026-07-20 a Terra job died with `Disk quota exceeded` because `WANDB_DIR` and checkpoints were written under home; ops moved them to `/cluster/scratch/lterenzi/codex_terra_edge_runs/` with symlinks from the home workspace. Home is for code and small files only.
+Resolve storage from the selected Unix account; do not embed a historical
+username in a new launcher. All Euler homes have a 50 GB hard cap. On
+2026-07-20 a Terra job died with `Disk quota exceeded` because `WANDB_DIR` and
+checkpoints were written under home. Home is now for credentials and small
+configuration only.
 
 | Artifact | Path | Caveat |
 |---|---|---|
-| Checkpoints, `WANDB_DIR`, run logs | `/cluster/scratch/lterenzi/codex_terra_edge_runs/` (symlink from the home workspace) | NEVER write these to `/cluster/home`. Scratch: files not accessed for ~15 days are purged. |
-| Final large checkpoints, tars | `/cluster/work/rsl/lterenzi` (200 GB, few big files) | Verified writable 2026-07-20; already 261 GB used, prune first. |
-| venvs, many-small-file trees | `/cluster/project/rsl/lterenzi` (75 GB, high inode) | Verified writable 2026-07-20; already 106 GB used, prune first. |
+| Reproducible code snapshots | `/cluster/scratch/$TERRA_EULER_USER/codex_terra_edge_validation/` | Keep out of home; rebuild or restage after scratch purge. |
+| Checkpoints, `WANDB_DIR`, run logs | `/cluster/scratch/$TERRA_EULER_USER/codex_terra_edge_runs/` | NEVER write these to `/cluster/home`. Scratch files inactive for ~15 days are purged. |
+| Final checkpoints, tars, venvs | Writable `/cluster/project/rsl/$TERRA_EULER_USER/` or account work storage | Verify live: `alesweber` has project storage but no `/cluster/work/rsl/alesweber` as of 2026-08-12. |
 | Dataset (read-only) | `/cluster/project/rsl/alesweber/TerraProject/...` | Existing project space; do not copy into home. |
 
-Scratch is purged when a file has not been accessed for ~15 days. Anything needed long-term (final checkpoints, venvs) must be `rsync`'d to work/project or be rebuildable — a venv left on scratch was already corrupted by the purge (empty `jax` namespace package, import fails). Do not put the training venv or final artifacts on scratch and expect them to survive.
+Before staging, verify the named SSH alias returns the selected `id -un`, its
+`$HOME`, scratch writability, project/runtime readability, and current `lquota`.
+Use a staging-only launcher mode when available; it may make read-only Slurm
+association/partition/GPU-inventory queries, but must not call W&B or create a
+job.
+A new account needs its own finite update-1 smoke because private scratch makes
+another account's smoke artifacts unavailable. Scratch is purged after
+inactivity, so anything needed long-term must be copied to persistent storage
+or be rebuildable. Do not put the training venv or only final artifact copy on
+scratch.
 
 ## Local Performance And Failure History
 
