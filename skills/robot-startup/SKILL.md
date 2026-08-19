@@ -9,6 +9,31 @@ Use the bundled tmux wrapper for direct robot bringup. Use `terra-pipeline` for
 a Terra application, `dig-controllers` when the prerequisites already run, and
 `set-engine-rpm` for RPM-only work.
 
+## Fast Path (default for a bare "robot startup")
+
+A bare startup request on the machine means: start the default stack now. Do
+not survey the host, scan the network, or ask which tool is mounted. Run:
+
+```bash
+~/.claude/skills/robot-startup/scripts/robot_startup_tmux.sh --ws "$ROBOT_WS"
+```
+
+The machine is `rslpc`: workspace `/home/lorenzo/ros2_ws`, ROS 2 Jazzy, static
+`enp6s0` `192.168.19.30/24`, machine-side hosts `192.168.19.1` and
+`192.168.19.6`. The shell runs inside the robot container (PID 1 is
+`entrypoint.sh`); the Gravis HAL, including the Septentrio GNSS driver under
+`/hal/septentrio_gnss_driver/*`, runs outside it and is never ours to restart.
+
+Defaults are `mole`, empty TF prefix, `shovel`, `mapping_profile:=local`,
+windows `low_level`, `perception`, `estimator`, `foxglove`. Take them silently.
+Ask only when the user names a different tool, profile, or namespace, or when a
+busy pane's configuration does not match the selected one.
+
+Bringup preflight is exactly two checks: `tmux ls` for an existing `ros`
+session, and `ros2 topic list` for an existing graph owner. Everything else in
+this skill is diagnosis to reach for when something has already failed, not a
+gate to clear first. Report the result after launching, not before.
+
 For repeated manual-navigation Terra debugging where perception must survive
 controller or planner rebuilds, use the enumerated `terra_research.launch.py`
 components described below. This is the only supported split Terra graph.
@@ -100,6 +125,55 @@ Use `local` for a standalone live local map. `site` and `analytical` are
 design-backed and require an explicit saved design map. Do not load a site map
 silently.
 
+### Site datum (required before any saved map is reusable)
+
+The `map` frame is anchored wherever the estimator initializes unless a fixed
+GNSS reference is supplied, so saved surveys will not align across sessions.
+On a site with a reference config, launch the estimator with it:
+
+```bash
+ros2 launch mole_estimator mole_estimator.launch.py use_sim_time:=false \
+  urdf_xacro_endeffector_type:=shovel robot_namespace:=mole \
+  config_overlay:=<install>/mole_estimator/share/mole_estimator/config/mole_estimator_reference_hongg_lower_field.yaml
+ros2 param get /mole/mole_estimator_node gnss_params.useGnssReference   # must be True
+```
+
+Configs exist for `hongg_lower_field`, `hongg_upper_field`, `dfab_pavilion`,
+and `arche`; `config_overlay` merges over the base config, and `design_map:=`
+resolves the same overlay by site name. Verified 2026-08-19 on the lower field:
+without it the `hong0521_v3` survey sat 3.2 m low and no translation fit could
+recover it; with it the same survey aligned at +0.022 m median with no shift,
+and the anchoring reproduced to 1 cm in x/y across a full stack restart.
+
+Check `gnss_params.useGnssReference` before diagnosing any map-alignment
+problem — it is one command and it is the usual cause.
+
+### Lower-field local-workspace testing
+
+Load the premade site surface rather than waiting on live accumulation, then
+apply the target geometry at runtime:
+
+- Load **surface only** (`<name>_surface`, a single `elevation` layer). Do not
+  load the `_design` artifact; the target belongs to the runtime profile so the
+  workspace planner owns it.
+- `/excavation_mapping/load_excavation_map` demands the live geometry exactly
+  (size, resolution, centre) and the full layer set — `elevation`,
+  `desired_elevation`, `dig_zone`, `dump_zone`, `original_elevation`,
+  `obstacles`, `dug_zone`, `dumped_zone`. It **FATALs and kills the node** on
+  mismatch, so resample the survey into the live geometry and set
+  `desired_elevation = elevation` (neutral) before calling it. A successful load
+  logs `runtime_target=false`, leaving the one-shot target slot free.
+- Merge live over survey (live lidar wins where finite, survey fills holes).
+  This removes the near-field coverage gaps that otherwise make
+  `apply_runtime_profile` retry and time out; with it applied the trench target
+  applied first try in ~1 s.
+- Saved map artifacts live in `mole_maps/maps/<name>/` and are **git-lfs**
+  pointers; run `git lfs pull --include="maps/<name>/**"` first or you will read
+  an 854-byte text stub instead of the map.
+- Save a new survey with `/excavation_mapping/save_map`
+  (`mole_excavation_mapping/srv/SaveGridMap`), using `include_layers: [elevation]`
+  to keep the artifact surface-only.
+
 For Terra's single local-workspace experiment, let the Terra owner start
 perception and apply the configured target as soon as the first finite map is
 available. The target is authored from the current `BASE` pose and frozen in
@@ -171,6 +245,11 @@ the maintained 900-1600 RPM envelope. The 1600 target requires the direct
 the owning wrapper enforces that distinction. A target above 1600 requires a
 separately reviewed interface-specific workflow.
 
+Order matters: unlock hydraulics **before** setting or verifying RPM. With
+hydraulics locked, `SetRPM` accepts the call and echoes the requested value
+while the engine stays at idle, so a pre-unlock readback fails misleadingly.
+Run step 5 only after step 4 passes.
+
 1. Wait at most 60 seconds for `/machine_status` and `/hydraulic_lock`.
 2. Read one `machine_msgs/msg/MachineStatus` sample and require all of:
    `is_armrest_unlocked`, `is_radio_estop_unlocked`,
@@ -212,6 +291,24 @@ Verify requested tmux panes, publisher ownership, estimator `STATUS_OK`, and
 the `map` to effective `BASE`/tool TFs using the operator guide. For a
 machine-ready request, report hydraulic state and measured RPM, not only
 successful service calls. Use `ros2-debugging` for read-only diagnosis.
+
+## Known Blocker: Estimator Stuck At STATUS_INITIALIZING With RTK Fixed
+
+If `/mole/state` stays `0` and the estimator logs `Skipping GNSS position+heading
+without ground-based corrections (NavSatFix status=0)`, compare the driver's own
+solution with what it publishes:
+
+```bash
+timeout 5 ros2 topic echo /hal/septentrio_gnss_driver/pvtgeodetic --once | grep -E '^mode|^error|nr_sv|mean_corr_age'
+timeout 5 ros2 topic echo /hal/septentrio_gnss_driver/navsatfix --once | sed -n '/^status:/,+2p'
+```
+
+`pvtgeodetic.mode: 4` is RTK fixed and must map to `NavSatFix.status.status: 2`
+(`STATUS_GBAS_FIX`). When the receiver reports 4 but NavSatFix carries 0, the
+HAL driver's mapping is at fault, not the estimator and not the GNSS antenna;
+`gnss_measurement_gate.hpp` accepts only `STATUS_GBAS_FIX`, so every position is
+dropped before the covariance and heading checks run. That driver lives outside
+the container, so fix it at its owner. Do not relax the gate to work around it.
 
 ## Focused Rebuild Handoff
 

@@ -19,6 +19,16 @@ Use the bundled wrapper so workspace discovery, service selection, valid-range c
   service. Targets above 1600 require a separately reviewed machine-specific
   workflow.
 - Report measured readback. A successful service call without readback is not completion.
+- Hydraulics must be unlocked before the throttle will follow an RPM command.
+  With `is_hydraulilock_unlocked: false` the `SetRPM` service still accepts the
+  call and echoes back the requested `final_rpm`, but the engine stays at idle
+  (~890-900) and the readback fails. Verify RPM *after* the hydraulic unlock,
+  not before, and do not treat a pre-unlock readback failure as a machine
+  fault. Observed 2026-08-19 after a Gravis PC restart: `SetRPM` returned
+  `success=True, final_rpm=1600.0` while `measured_engine_rpm` stayed 900; the
+  same command reached 1600 immediately once `/hydraulic_lock` was set true.
+- `measured_engine_poti` reads 0 even at a commanded 1600 RPM. It does not track
+  the autonomous throttle path, so a zero there is not evidence of a fault.
 
 ## Commands
 
