@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <profiles>
+    <transport_descriptors>
+      <transport_descriptor>
+        <transport_id>cat323_test_shm</transport_id>
+        <type>SHM</type>
+        <segment_size>16777215</segment_size>
+      </transport_descriptor>
+    </transport_descriptors>
+    <participant profile_name="cat323_map_transport_temporary" is_default_profile="true">
+      <rtps>
+        <builtin>
+          <discovery_config>
+            <discoveryProtocol>CLIENT</discoveryProtocol>
+            <discoveryServersList>
+              <RemoteServer prefix="44.53.00.5f.45.50.52.4f.53.49.4d.41">
+                <metatrafficUnicastLocatorList>
+                  <locator><udpv4><address>127.0.0.1</address><port>11811</port></udpv4></locator>
+                </metatrafficUnicastLocatorList>
+              </RemoteServer>
+            </discoveryServersList>
+          </discovery_config>
+        </builtin>
+        <userTransports><transport_id>cat323_test_shm</transport_id></userTransports>
+        <propertiesPolicy>
+          <properties>
+            <property><name>fastdds.max_message_size</name><value>1400</value></property>
+          </properties>
+        </propertiesPolicy>
+        <flow_controller_descriptor_list>
+          <flow_controller_descriptor>
+            <name>cat323_map_paced</name>
+            <scheduler>FIFO</scheduler>
+            <max_bytes_per_period>8192</max_bytes_per_period>
+            <period_ms>5</period_ms>
+          </flow_controller_descriptor>
+        </flow_controller_descriptor_list>
+      </rtps>
+    </participant>
+    <data_writer profile_name="cat323_map_writer_defaults" is_default_profile="true">
+      <qos><publishMode><kind>ASYNCHRONOUS</kind><flow_controller_name>cat323_map_paced</flow_controller_name></publishMode></qos>
+      <historyMemoryPolicy>PREALLOCATED_WITH_REALLOC</historyMemoryPolicy>
+    </data_writer>
+    <data_reader profile_name="cat323_map_reader_defaults" is_default_profile="true">
+      <historyMemoryPolicy>PREALLOCATED_WITH_REALLOC</historyMemoryPolicy>
+    </data_reader>
+  </profiles>
+</dds>

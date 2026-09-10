@@ -1,0 +1,4 @@
+interface:
+  display_name: "Gravis CAT323"
+  short_description: "Operate CAT323 high-level ROS on the integration x86"
+  default_prompt: "Use $gravis-cat323 to operate the CAT323 integration workspace and inspect native Gravis state, mapping, and machine readiness."

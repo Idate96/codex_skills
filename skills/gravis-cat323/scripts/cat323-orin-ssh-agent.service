@@ -1,0 +1,23 @@
+[Unit]
+Description=Persistent CAT323 Orin SSH agent for gravis_ugep
+RequiresMountsFor=/home/integration/.ssh /home/integration/gravis_ws/.ssh-agent
+ConditionPathExists=/home/integration/.ssh/cat323_orin_a
+
+[Service]
+Type=simple
+User=integration
+Group=integration
+UMask=0077
+Environment=SSH_AUTH_SOCK=/home/integration/gravis_ws/.ssh-agent/orin.sock
+ExecStartPre=/usr/bin/rm -f /home/integration/gravis_ws/.ssh-agent/orin.sock
+ExecStart=/usr/bin/ssh-agent -D -a /home/integration/gravis_ws/.ssh-agent/orin.sock
+ExecStartPost=/bin/bash -c 'for attempt in {1..50}; do if test -S /home/integration/gravis_ws/.ssh-agent/orin.sock; then /usr/bin/ssh-add /home/integration/.ssh/cat323_orin_a && exit 0; fi; sleep 0.1; done; exit 1'
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/integration/gravis_ws/.ssh-agent
+
+[Install]
+WantedBy=multi-user.target

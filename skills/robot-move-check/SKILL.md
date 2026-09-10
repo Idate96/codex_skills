@@ -1,50 +1,63 @@
 ---
 name: robot-move-check
-description: "Run one guarded Mole/Menzi M445 joint-velocity step through the PID controller. Use for short real-robot direction checks with an operator present, bounded motion, recording, and automatic zero-command cleanup."
+description: "Quickly command Mole/Menzi M4 joint velocities on `/mole/actuator_commands`. Use for short, direct real-robot motion and direction checks with an operator present."
 ---
 
 # Robot Move Check
 
-Use the maintained `mole_sysid_pid_step` runner for an explicitly requested signed joint velocity and
-duration. It owns the velocity-step operation, safety gates, bag, analysis, and two-second zero flush.
-Do not recreate it with `ros2 topic pub`. Use `$robot-move-to-position` for an explicit position target,
-`$open-loop-lut-recollection` for current commands, and an OCS2 skill for OCS2 motion.
+Use direct JOINTVELOCITY commands only for an explicitly requested, short real-hardware motion check. Keep an operator at the controls and preserve a clear stop path.
 
 ## Required Preflight
 
-Before running a nonzero step:
+Before publishing a nonzero command:
 
-1. Require an operator, clear workspace, working emergency stop, and explicit joint, signed velocity,
-   and duration. Do not infer a maneuver from an earlier run.
-2. Keep `mole_pid_joint_controller` running as the sole `/mole/current_commands` publisher. Stop any
-   OCS2, DIG, trajectory, teleop, or other `/mole/actuator_commands` publisher.
-3. Inspect the requested joint position. For bounded joints, use `$robot-move-to-position` first when
-   more travel is needed in the requested direction.
-4. Confirm the active overlay resolves `mole_sysid_pid_step`.
+1. Resolve and source the active robot workspace (`~/ros2_ws` on-machine, otherwise `~/moleworks/ros2_ws` when present).
+2. Confirm `/machine_status` shows the required autonomy and hydraulic interlocks unlocked.
+3. Confirm `/mole/joint_states` is fresh, inspect the requested joint position, and verify the commanded direction moves away from its limit.
+4. Inspect `/mole/actuator_commands` publishers. Stop if another controller owns the topic unless the user explicitly requested that handoff and the controller is safely deactivated.
+5. Require an explicit joint, signed velocity, and duration. Do not infer them from an earlier run.
 
-The runner then rechecks processed and raw sensor validity, feedback freshness, hydraulic/autonomy/
-Gravis interlocks, command ownership, and the expected PID subscriber throughout the step. It applies
-the maintained M445 joint-specific position, velocity, and predictive stopping limits.
-
-## Run One Step
+Use bounded readbacks during the preflight:
 
 ```bash
-WS="${MOLE_ROS_WS:-$HOME/ros2_ws}"
-[[ -f "$WS/install/setup.bash" ]] || WS="$HOME/moleworks/ros2_ws"
-source "$WS/install/setup.bash"
-
-OUT_ROOT="$HOME/mcap/pid_direction_checks"
-mkdir -p "$OUT_ROOT"
-ros2 run mole_sysid mole_sysid_pid_step \
-  --confirm-hardware --confirm-safe-start \
-  --joint J_BOOM --direction pos --abs-velocity 0.10 \
-  --step-s 1.0 --output-root "$OUT_ROOT"
+timeout 10 ros2 topic echo /machine_status --once
+timeout 10 ros2 topic echo /mole/joint_states --once
+timeout 10 ros2 topic info /mole/actuator_commands --verbose
 ```
 
-Choose `pos` for positive joint velocity and `neg` for negative joint velocity. The runner refuses
-velocities above the joint-specific cap; use a conservative value below the cap for direction checks.
+Interpret the exact interlock fields using the active robot runbook; do not guess field names from an
+older machine-status schema.
 
-Read the printed `TRIAL_RESULT` YAML and its bag/analysis paths. A nonzero exit, aborted trial, missing
-bag, or incomplete zero flush is not a successful check. If motion direction is unexpected, use the
-operator stop path and do not retry with the opposite sign until the command/measurement mapping is
-understood.
+Do not use a one-shot nonzero command: it may remain latched. Do not leave an unbounded publisher running.
+
+## Bounded Command
+
+Adapt `JOINT`, `VELOCITY`, and `DURATION_SEC` to the user's explicit request. Keep the zero burst in the `EXIT` trap:
+
+```bash
+set -euo pipefail
+WS="$HOME/ros2_ws"
+[[ -f "$WS/install/setup.bash" ]] || WS="$HOME/moleworks/ros2_ws"
+[[ -f "$WS/install/setup.bash" ]] || { echo "No built robot workspace found" >&2; exit 2; }
+source /opt/ros/jazzy/setup.bash
+source "$WS/install/setup.bash"
+
+: "${JOINT:?Set the explicitly requested joint, for example J_BOOM}"
+: "${VELOCITY:?Set the explicitly requested signed velocity}"
+: "${DURATION_SEC:?Set the explicitly requested duration in seconds}"
+
+zero_cmd() {
+  ros2 topic pub -r 20 -t 10 /mole/actuator_commands \
+    mole_msgs/msg/MoleActuatorCommands \
+    "{actuators: [{joint_name: '$JOINT', mode: 2, velocity: 0.0}]}" >/dev/null
+}
+trap zero_cmd EXIT INT TERM
+
+timeout --signal=INT "${DURATION_SEC}s" ros2 topic pub -r 10 /mole/actuator_commands \
+  mole_msgs/msg/MoleActuatorCommands \
+  "{actuators: [{joint_name: '$JOINT', mode: 2, velocity: $VELOCITY}]}" || [[ $? -eq 124 || $? -eq 130 ]]
+```
+
+Afterward, repeat the bounded joint-state, publisher, and `/machine_status` readbacks and verify the
+joint velocity returned to zero. If the command publisher, state feedback, or zero burst is uncertain,
+stop the test and use the operator E-stop path.

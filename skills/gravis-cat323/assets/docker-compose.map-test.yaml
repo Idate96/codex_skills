@@ -1,0 +1,17 @@
+# Add to the existing Gravis Compose files only for a CAT323 transport test.
+services:
+  amg:
+    volumes:
+      - type: bind
+        source: ${CAT323_MAP_TRANSPORT_BUNDLE:?Set the absolute bundle path on the Orin host}
+        target: /run/cat323-map-transport
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${CAT323_MAP_TRANSPORT_BUNDLE:?Set the absolute bundle path on the Orin host}/patched-launch.py
+        target: /amg/install/lib/python3.12/site-packages/autonomy_visualization/launch.py
+        read_only: true
+        bind:
+          create_host_path: false
+    command: [python3, /run/cat323-map-transport/launch_amg.py]

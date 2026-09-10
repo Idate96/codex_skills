@@ -1,0 +1,4 @@
+interface:
+  display_name: "Moleworks PR Stack Maintenance"
+  short_description: "Restack, verify, and merge Moleworks PRs"
+  default_prompt: "Use $moleworks-pr-stack-maintenance to inspect, restack, verify, and merge this Moleworks PR stack safely."

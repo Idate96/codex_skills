@@ -1,4 +1,4 @@
 interface:
   display_name: "Robot Startup"
-  short_description: "Start robot prerequisites or Nav2 safely"
-  default_prompt: "Use $robot-startup to start the real-robot prerequisites or add Nav2 safely to verified running components."
+  short_description: "Start the real-robot Moleworks ROS stack"
+  default_prompt: "Use $robot-startup to start or restart the real-robot Moleworks ROS tmux stack with the requested controller and RPM setup."

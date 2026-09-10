@@ -1,6 +1,6 @@
 ---
 name: simple-research-code
-description: Write, simplify, or review greenfield research code for maximum experiment iteration speed. Use when production hardening, API stability, legacy compatibility, broad configuration, and exhaustive testing are out of scope; prefer one direct supported path, loud failures, narrow APIs, and a small claim-driven test budget. For single-operator ROS research launch refactors, assume one public launch starts and owns the complete application stack, including its sensor acquisition and perception, while only an exactly enumerated low-level robot prerequisite pre-exists; avoid attach/reuse modes and duplicate graph guards.
+description: Write, simplify, or review greenfield research code for maximum experiment iteration speed. Use when production hardening, API stability, legacy compatibility, broad configuration, and exhaustive testing are out of scope; prefer one direct supported path, loud failures, narrow APIs, and a small high-value test set. For single-operator ROS research launch refactors, assume one public launch starts and owns the complete application stack, including its sensor acquisition and perception, while only an exactly enumerated low-level robot prerequisite pre-exists; avoid attach/reuse modes and duplicate graph guards.
 ---
 
 # Simple Research Code
@@ -55,7 +55,7 @@ For Terra on the robot, define one canonical prerequisite procedure with the eff
 ```bash
 ros2 launch mole_low_level_bringup bringup.launch.py \
   use_sim_time:=false on_machine:=true \
-  endeffector_type:=<effective-tool> \
+  activate_trajectory_controller:=false endeffector_type:=<effective-tool> \
   robot_namespace:=<robot-namespace> tf_prefix:=<tf-prefix>
 ros2 launch mole_estimator mole_estimator.launch.py \
   use_sim_time:=false urdf_xacro_endeffector_type:=<effective-tool> \
@@ -90,38 +90,6 @@ Write and run the smallest test set that makes the result trustworthy:
 - Add a regression test when a bug was costly or is plausible to reintroduce.
 
 Keep tests fast, deterministic, and targeted. Do not pursue coverage targets, compatibility matrices, duplicated test layers, exhaustive edge cases, or mocks for trivial glue. During iteration, run the narrowest relevant tests; run broader suites only when required by the repository or justified by integration risk.
-
-### Default Research Test Budget
-
-- Derive tests from the research claim and its few load-bearing failure modes,
-  not from the number of functions or branches in the patch.
-- For a small implementation, default to one to four new contract tests total.
-  Do not create one test per helper, metric, constant, rename, or permutation.
-- Combine related assertions in one readable contract test when they share the
-  same setup and failure meaning.
-- Add no new unit test for trivial wiring, serialization, or third-party API
-  calls when a syntax check plus the existing end-to-end path already covers
-  the realistic failure.
-- Treat recipe aliases, resolved-config field diffs, parser choices, and other
-  declarative wiring as launch-time preflight evidence, not permanent unit
-  tests. Save the compact diff or receipt with the experiment when pairing is
-  scientifically important; add a regression test only after that wiring has
-  caused a costly or plausibly recurring silent failure.
-- Use at most one new integration smoke for logging, UI, launch, or plumbing
-  changes. It should check the externally useful result, not every internal
-  field.
-- Do not build test-only frameworks, fixture hierarchies, compatibility
-  matrices, or golden-file machinery for a short-lived experiment.
-- Run focused tests while iterating. Run a broader existing suite once before
-  handoff only when the change touches a shared execution path or repository
-  policy requires it; do not rerun it after every small edit.
-- Stop testing when the remaining plausible failures would not change the
-  research conclusion or prevent the intended run.
-
-Increase this budget only for code where a silent error would invalidate the
-experiment or create meaningful risk: reward/termination semantics, simulator
-dynamics, numerical kernels, data-split leakage, benchmark accounting, or
-hardware/destructive control.
 
 Use a time-boxed evidence funnel:
 
