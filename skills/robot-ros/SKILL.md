@@ -1,6 +1,6 @@
 ---
 name: robot-ros
-description: "Route Mole/Menzi M4 ROS operations to the current owning runbook or narrow skill. Use to orient robot bringup, controllers, interlocks, motion, monitoring, recovery, recording, or code/runbook maintenance without duplicating subsystem procedures."
+description: "Route Mole/Menzi M4 ROS operations to the current owning runbook or narrow skill. Use to orient robot bringup, controllers, interlocks, motion, GPS gateway and RTK recovery, monitoring, recovery, recording, or code/runbook maintenance without duplicating subsystem procedures."
 ---
 
 # Robot ROS Router
@@ -31,6 +31,7 @@ off. Do not grow it into a second robot runbook.
 |---|---|
 | Start/restart base robot panes, tool geometry, hydraulics | `robot-startup` |
 | Read or set engine RPM | `set-engine-rpm` |
+| Menzi GPS gateway, Internet sharing, or RTK correction recovery | [GPS gateway procedure](references/gps-gateway.md) |
 | Start/restart only a DIG controller | `dig-controllers` |
 | Direct short joint direction/motion check | `robot-move-check` |
 | Guarded closed-loop arm positioning | `robot-move-to-position` |
@@ -47,6 +48,11 @@ off. Do not grow it into a second robot runbook.
 
 If no narrow skill owns the operation, use the current package README and
 launch/interface source instead of adding procedure here.
+
+The Menzi Septentrio receiver at `192.168.19.4` has its own gateway; changing
+rslpc's default route does not change it. The linked GPS procedure includes a
+helper with backup and readback. A normal startup request does not imply
+changing the receiver's network configuration.
 
 ## Current Documentation Owners
 

@@ -292,6 +292,11 @@ the `map` to effective `BASE`/tool TFs using the operator guide. For a
 machine-ready request, report hydraulic state and measured RPM, not only
 successful service calls. Use `ros2-debugging` for read-only diagnosis.
 
+If Menzi GNSS has no RTK corrections, use the
+[GPS gateway procedure](../robot-ros/references/gps-gateway.md). Check the
+receiver's gateway separately from rslpc's route. Changing the GPS gateway is
+an explicit network/RTK recovery operation, not an automatic startup step.
+
 ## Known Blocker: Estimator Stuck At STATUS_INITIALIZING With RTK Fixed
 
 If `/mole/state` stays `0` and the estimator logs `Skipping GNSS position+heading
