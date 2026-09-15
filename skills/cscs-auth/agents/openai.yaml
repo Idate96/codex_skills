@@ -1,0 +1,3 @@
+interface:
+  display_name: "CSCS Authentication"
+  short_description: "CSCS login using ETH Zurich and Chrome OTP"
