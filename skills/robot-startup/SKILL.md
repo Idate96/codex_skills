@@ -85,4 +85,9 @@ Stop and report the failed gate if a prerequisite, service, or readback does not
 
 After startup, verify the requested managed windows are running their intended launches. For machine-ready requests, report both hydraulic status and measured RPM rather than only successful service calls.
 
+If Menzi GNSS has no RTK corrections, use the
+[GPS gateway procedure](../robot-ros/references/gps-gateway.md). Check the
+receiver's gateway separately from rslpc's route. Changing the GPS gateway is
+an explicit network/RTK recovery operation, not an automatic startup step.
+
 For general interlock or stack diagnosis, use `robot-ros`. For RPM changes, use `set-engine-rpm`.

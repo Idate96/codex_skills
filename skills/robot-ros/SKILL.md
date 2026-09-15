@@ -1,6 +1,6 @@
 ---
 name: robot-ros
-description: "Operate and debug real-robot Moleworks ROS 2 stacks. Route Gravis CAT323 to its integration workflow; use the M4 runbook for Menzi bringup, interlocks, controllers, health checks, and command-latch recovery."
+description: "Operate and debug real-robot Moleworks ROS 2 stacks, including Menzi GPS gateway and RTK correction recovery. Route Gravis CAT323 to its integration workflow; use the M4 runbook for Menzi bringup, interlocks, controllers, and health checks."
 ---
 
 # Robot ROS
@@ -20,6 +20,15 @@ For Gravis **CAT323** or the `integration@10.27.0.13` x86, use [gravis-cat323](.
 5. If giving ROS CLI commands, verify they exist for Jazzy (`ros2 <verb> -h`) and match the installed message definitions.
 
 ## Common Tasks
+
+### GPS Gateway / RTK Correction Recovery (Menzi M4)
+
+For GPS Internet sharing, receiver gateway changes, or missing RTK corrections,
+read [GPS gateway and RTK recovery](references/gps-gateway.md). The Septentrio
+receiver at `192.168.19.4` has its own gateway; changing rslpc's default route
+does not change it. The bundled helper reads status and changes only the
+receiver's current gateway, with backup and readback. A normal startup request
+does not imply changing the receiver's network configuration.
 
 ### Bringup / Startup
 
