@@ -301,6 +301,16 @@ Verify `policy_id` and `ugep_model_sha256` in the loaded controller; earlier
 September 17 scoops used E19, not V41. Preserve CAT323 runtime morphology,
 kinematics, torque limits and nominal volume conversion when selecting the actor.
 
+The experimental CAT323 `fill_aware_pullup` profile changes only the policy's
+distance input after sustained fullness: at most +1.0 m, ramped at 0.15 m/s,
+reset each goal. Check `controller_status` fields `pullup_distance_m` and
+`policy_pullup_distance_m` separately. The physical 3.43 m request and 2.93 m
+proximity trigger stay fixed; fullness still must not trigger handover. Source
+and timing details belong to the controller's `docs/ugep_controller.md`.
+Recorded V41 input replay supports the direction of this change, but it has no
+closed-loop hardware validation; verify the feature is present in the deployed
+checkout and loaded parameters after reprovisioning.
+
 UGEP's separate-file `VerticalExtractionController` takes over on an
 already-curled payload after an observed cut. Fullness alone must not trigger
 handover: let the learned policy initiate normal curl. Independently, proximity recovery
