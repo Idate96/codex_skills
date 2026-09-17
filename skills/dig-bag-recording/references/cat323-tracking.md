@@ -59,6 +59,69 @@ velocity, duration/travel bounds, controller parameter dump, exact deployed mode
 and helper result JSON alongside the bag. Record enough state before the pulse to define
 a baseline. Keep the post-command observation even if immediate motion looks small.
 
+## Explicit terrain capture after a scoop
+
+Keep one continuous recording across scoops if convenient; save one action-client
+receipt per attempt under `provenance/scoop-<number>.json`. After the operator clears
+the bucket from the cut and explicitly requests terrain capture, run:
+
+```bash
+source /workspaces/gravis_ws/evidence/cat323-env.bash
+export FASTRTPS_DEFAULT_PROFILES_FILE="$MOLE_DDS_OBSERVER_PROFILE"
+python3 /workspaces/gravis_ws/codex_skills/skills/dig-bag-recording/scripts/capture_cat323_post_scoop.py \
+  --run-dir /workspaces/gravis_ws/bags/ugep_v41_multiref_20260917_session10 \
+  --attempt-file provenance/scoop-10.json \
+  --note 'Bucket clear; operator requested POST terrain'
+```
+
+Use the normal clean ROS/workspace shell. The receipt is mandatory and must belong
+to this run; the helper never guesses the latest scoop. It requires one accepted goal
+with its UUID and a final action result. Canceled and aborted attempts are accepted,
+and their actual result is preserved. This is useful when the operator considers an
+aborted action a useful scoop. Invocation asserts only that the operator has cleared
+the cut; the helper does not move the machine or automatically capture on completion.
+It refuses to assign terrain to an older attempt if another accepted goal appears in
+this CAT recording root, including a newer attempt still running or a scoop in a
+sibling recording after changing policy. It checks the selected receipt directory
+and `<run-dir>/../*/provenance/scoop*.json`. Keep all CAT field runs under the same
+recording root (currently `/workspaces/gravis_ws/bags`). Capture before the next scoop
+and update `--attempt-file` for every attempt.
+
+The command waits at most 30 seconds for a **source stamp later than the explicit
+request** on the local `/excavation_mapping/grid_map`. It saves the complete received
+GridMap, including all published layers and its original header, to a new directory:
+
+```text
+<run>/post_scoop_surfaces/<attempt>-<capture-time>/
+  map/                 # finalized one-message MCAP plus metadata.yaml
+  assignment.json      # run, scoop number, goal UUID, action result/times, map stamps
+  attempt.json         # original action receipt copy
+  README.md            # human-readable assignment and operator note
+```
+
+It reads the saved MCAP back and verifies the exact captured message. An old latched
+map does not satisfy freshness, and future source stamps fail visibly. A timeout or
+invalid map exits nonzero and keeps `capture_status: failed` plus `diagnostic.txt`;
+do not use that directory as verified POST evidence. Every invocation creates a new
+directory without overwriting earlier captures or changing the recording. This
+checks source timing and artifact integrity, not cut visibility, map accuracy, new
+sensor integration, or excavation volume.
+
+The existing `/excavation_mapping/save_map` (`mole_excavation_mapping/srv/SaveGridMap`)
+service remains available for general saves, but the deployed implementation replaces
+the source header with save time. Therefore this helper writes the fresh canonical
+message directly. The newer main-branch `/dig_campaign_monitor/capture_post_map`
+service belongs to that monitor's own action/PRE/POST workflow; it is not needed for
+the custom CAT323 one-scoop action client.
+
+When postprocessing, match by `assignment.json` goal UUID and copy this **entire
+capture directory** into the matching scoop's output, for example
+`<processed-scoop>/post_scoop_surfaces/<attempt>-<capture-time>/`. Upload it with that
+scoop. The POST capture can occur after the action's time window: attach it separately
+even when cutting the original bag to the action interval. Paths inside the capture
+directory are relative; the original recording path remains an identifying note.
+Do not infer a PRE surface or volume difference from this POST snapshot alone.
+
 ## Recorded splits
 
 | Split | Contents |

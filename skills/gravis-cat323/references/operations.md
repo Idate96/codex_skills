@@ -295,26 +295,29 @@ automatic selection. This feature selects existing banks; it is not calibrated
 hardware acceptance or a LUT/gain retune. Record both clearance and native
 `joint_commands` to verify actual bank selection.
 
-The CAT323 launch pins V41 corrected-fleet Sobol, `ugep_v41_sobol_20260911_s214_5999`
-(actor SHA256 `72498abf031f1811d84178b505fe61a878f444f975ed7f63aafb2985f42814f9`).
-Verify `policy_id` and `ugep_model_sha256` in the loaded controller; earlier
-September 17 scoops used E19, not V41. Preserve CAT323 runtime morphology,
-kinematics, torque limits and nominal volume conversion when selecting the actor.
+The CAT323 launch defaults to the final V41 specialist,
+`ugep_v41_cat323spec_s214_5999` (actor SHA256
+`f1483fdcd7b554c2729991035f0c06737ddd1919146a540aff9de79121d02b10`).
+The September 17 Multi-Ref comparison explicitly passes
+`policy_manifest_path:=<package-share>/models/ugep_policies/manifests/ugep_v41_multiref_20260911_s214_5999_gravis_cat323.yaml`.
+Its loaded policy ID is `ugep_v41_multiref_20260911_s214_5999`, actor SHA256
+`b56fb648c68e9c530cc22162ceb09ef5f8fd17833368bf0950a829105038018c`.
+Use `ros2 pkg prefix --share mole_highlevel_controller_cpp` for the package share.
+Verify the loaded ID/hash. Both deployment manifests retain Armeno morphology,
+kinematics, torque limits and nominal volume; do not substitute the similarly
+named M445 manifest. Configure inactive before authorizing a scoop.
 
-The experimental CAT323 `fill_aware_pullup` profile changes only the policy's
-distance input after sustained fullness: at most +1.0 m, ramped at 0.15 m/s,
-reset each goal. Check `controller_status` fields `pullup_distance_m` and
-`policy_pullup_distance_m` separately. The physical 3.43 m request and 2.93 m
-proximity trigger stay fixed; fullness still must not trigger handover. Source
-and timing details belong to the controller's `docs/ugep_controller.md`.
-Recorded V41 input replay supports the direction of this change, but it has no
-closed-loop hardware validation; verify the feature is present in the deployed
-checkout and loaded parameters after reprovisioning.
+For this comparison, `gravis_pullup_distance_m:=3.43` and
+`fill_aware_pullup.enabled: false` keep the traditional fixed distance.
+The optional experimental shift has a workspace-wide +12.0 m ceiling, configured at 0.30 m/s,
+capped against current bucket reach minus 0.3 m, and reset each goal. It is
+not enabled in these trials. Check `controller_status` fields
+`pullup_distance_m` and `policy_pullup_distance_m` separately. Source and
+timing details belong to the controller's `docs/ugep_controller.md`.
 
-UGEP's separate-file `VerticalExtractionController` takes over on an
-already-curled payload after an observed cut. Fullness alone must not trigger
-handover: let the learned policy initiate normal curl. Independently, proximity recovery
-triggers 0.5 m inside the requested pull-up distance (2.93 m for a 3.43 m request).
+UGEP's separate-file `VerticalExtractionController` takes over only 0.5 m
+inside the requested pull-up distance (2.93 m for a 3.43 m request). The
+policy owns normal curl and lift; neither fullness nor curl triggers handover.
 It finishes curl while lifting and, if inside, moves outward beyond the requested
 pull-up distance. Normal volume scaling stays unchanged. The lift uses the arm
 plane; modest cabin inclination is not grounds for rejecting it. Remaining lift
@@ -323,15 +326,22 @@ CAT323 profile enables it. Success also requires restoring the requested reach.
 The explicit `vertical_extraction_active` request selects native AIR on **boom,
 dipper and pitch**, even while emerging from soil, independently of the normal
 boom-only geometry selector. All ordinary command guards remain. The controller
-adds progress, tracking, maximum-lift and timeout bounds; see the owning
+adds measured-progress, maximum-lift and timeout bounds; see the owning
 `high_level_controllers/mole_highlevel_controller_cpp/docs/ugep_controller.md`.
-The first September 17 extraction scoop failed before handover: curl-only
-admission delayed six seconds after full, then a 3.5-degree inclination tripped
-an overly strict world-vertical gate. The correction removes that gate and
-adds proximity recovery while preserving policy-initiated normal curl; the subsequent V41 scoop entered extraction and lifted 0.69 m, then
-aborted on map-registration TF freshness/alignment. Full completion is not yet
-validated. Keep the 0.15 s TF/state gates; diagnose the source before retesting.
+The former 0.15 m horizontal / 0.25 rad integrated-curl tracking abort was
+removed after specialist scoop08 coasted 0.151 m inward in 0.14 s following
+premature curl-triggered handover. Bounded feedback corrects those errors;
+actual collision, joint, terrain and sensor-validity checks still apply.
+Scoop09 (specialist) and scoop10 (Multi-Ref) were operator-observed good scoops,
+but both action results were aborts after native `J_EE_ROLL` validity was lost
+and the adapter stopped publishing measurements. Preserve that distinction
+in comparisons. Full measured completion remains unvalidated. Do not relax
+the 0.15 s TF/state limits to hide native sensor faults.
 Do not start Gravis's separate native `PullUp` action in parallel with UGEP.
+
+CAT323 RPM is set manually by the operator. Read native `measured_engine_rpm`
+immediately before the goal (these trials used about 1650 RPM). Do not invoke
+M4 RPM services or native `/engine_speed` automatically.
 
 The September 17 SOIL baseline at roughly 900 RPM delivered a -0.02 rad/s,
 2 s boom-up command but established no meaningful lift. Native recovery was
@@ -377,3 +387,20 @@ The readiness helper requires two distinct fresh status stamps, `is_using_gravis
 Verify the helper's stop/zero behavior and scope before execution. A successful requested step needs actual state/command evidence and an end-state check; a prevented step is reported as no motion sent. Map receipt alone is insufficient authorization or readiness for soil interaction.
 
 When wrapping a launch in a noninteractive Bash background job, preserve signal handling: the integration test used `env --default-signal=INT --default-signal=TERM ros2 launch ... &` so `kill -INT` reached ROS shutdown cleanly. Verify child exit and publisher disappearance before restoring bringup; stopping only the wrapper is insufficient. A short helper startup timeout previously missed otherwise healthy state, so wait for fresh adapter samples before invoking the existing bounded helper rather than weakening its freshness gate.
+
+### Resume after the September 17 field session
+
+The ROS branch's `docs/information/gravis_cat323_field_handoff.md` records the
+final policy, configuration, recording paths, operator notes and unresolved
+faults. The last controller used original V41 Sobol, explicitly selected through
+`ugep_v41_sobol_20260911_s214_5999_gravis_cat323.yaml`; do not confuse it with the
+specialist launch default. All five CAT deployment manifests now contain the
+corrected workspace descriptor from side commit `53de959b`. Validate the loaded
+47-value morphology descriptor against the installed `gravis_cat323/runtime_inputs.yaml`;
+old recordings before corrected Multi-Ref attempt29 used the previous descriptor.
+
+The session ended with recording finalized, controller inactive, native gateway
+stopped and hydraulic lock verified. Recheck live state on resumption. Use a
+clean environment when launching tmux commands: inherited worktree paths can
+silently select old installed packages. Source the intended Jazzy/workspace
+setup and DDS profile explicitly.

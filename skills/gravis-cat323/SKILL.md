@@ -40,6 +40,7 @@ local image tags, unchecked Python bytecode, or an assumed installed patch.
 
 - Software bringup does not authorize hydraulic unlock or motion. Use the user's existing explicit authorization; do not ask again for the same established test scope.
 - CAT323 status fields use numeric values; unsupported armrest/radio fields may be `-1`. Do not apply the Menzi M4 boolean prerequisites or interpret an unsupported field as unlocked.
+- The CAT323 operator sets engine RPM manually. Read back native `measured_engine_rpm`; do not use the M4 RPM workflow or call the native `/engine_speed` service. A discovered service is not evidence that remote RPM control is appropriate for this machine.
 - For motion require fresh `/machine_status` with `is_using_gravis_commands == 1` and `is_autonomous_operation_unlocked == 1`, operator readiness/E-stop control, and exclusive native/internal command ownership. A successful service response alone does not prove readiness.
 - The verified native `/hydraulic_lock` interface is `std_srvs/srv/SetBool`: `data: true` releases the lock; `false` locks. Check the current interface/source before a user-authorized call, then verify fresh `is_hydraulilock_unlocked == 1` and `is_autonomous_operation_unlocked == 1`. See the reference for source evidence and contradictory free-text diagnostics.
 - Use the repository's CAT323 bounded joint-step helper. Do not send the M4 five-joint zero-command latch sequence: CAT323 has different joints and command routing. Preserve the signed CAT323 boom direction; do not infer positive velocity means up.
