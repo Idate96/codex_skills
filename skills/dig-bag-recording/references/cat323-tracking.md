@@ -81,6 +81,11 @@ The telemetry split also includes `/mole/dig_ugep/bucket_clearance`
 Compare its measurement/map stamps, validity and clearance with the native
 boom interaction type in `/joint_commands`. The signal is available during
 active UGEP control, not an independent manual pulse.
+It also carries the vertical-extraction phase flag, target map height and
+remaining lift. During that explicit phase verify AIR on all three arm slots;
+outside it the geometry selector changes only boom. Policy inference pauses
+during extraction, so absence of new policy-action samples in that phase is
+expected; the native/internal executed command streams must continue.
 
 For an isolated boom pulse with the UGEP controller inactive, the generic
 scoop verifier reports missing UGEP commanded velocity and may report missing

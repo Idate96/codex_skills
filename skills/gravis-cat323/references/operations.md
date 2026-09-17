@@ -289,11 +289,24 @@ The maintained contract and thresholds are in
 `low_level/mole_gravis_cat323_adapter/README.md` in `moleworks_ros`; verify the
 installed profile/binary after reprovisioning. Whole padded bucket clearance,
 source-stamp freshness, dynamic TF validity, dwell and hysteresis govern the
-switch; dipper/pitch retain SOIL. Native bank changes reset both PID integrators,
+switch; dipper/pitch retain SOIL during the policy phase. Native bank changes reset both PID integrators,
 and AIR/SOIL share the LUT. A fixed `interaction_type:=0` diagnostic bypasses
 automatic selection. This feature selects existing banks; it is not calibrated
 hardware acceptance or a LUT/gain retune. Record both clearance and native
 `joint_commands` to verify actual bank selection.
+
+UGEP's separate-file `VerticalExtractionController` can take over after an
+observed cut, payload and curled-pose dwell. It latches horizontal position/curl
+and computes remaining lift from the measured clearance/completion deficits;
+it does not add a fixed lift to every scoop. The CAT323 profile enables it.
+The explicit `vertical_extraction_active` request selects native AIR on **boom,
+dipper and pitch**, even while emerging from soil, independently of the normal
+boom-only geometry selector. All ordinary command guards remain. The controller
+adds progress, tracking, maximum-lift and timeout bounds; see the owning
+`high_level_controllers/mole_highlevel_controller_cpp/docs/ugep_controller.md`.
+Software tests and recorded admission timing are verified; the physical
+handover and closed-loop lifting behavior still require an authorized trial.
+Do not start Gravis's separate native `PullUp` action in parallel with UGEP.
 
 The September 17 SOIL baseline at roughly 900 RPM delivered a -0.02 rad/s,
 2 s boom-up command but established no meaningful lift. Native recovery was
