@@ -295,17 +295,32 @@ automatic selection. This feature selects existing banks; it is not calibrated
 hardware acceptance or a LUT/gain retune. Record both clearance and native
 `joint_commands` to verify actual bank selection.
 
-UGEP's separate-file `VerticalExtractionController` can take over after an
-observed cut, payload and curled-pose dwell. It latches horizontal position/curl
-and computes remaining lift from the measured clearance/completion deficits;
-it does not add a fixed lift to every scoop. The CAT323 profile enables it.
+The CAT323 launch pins V41 corrected-fleet Sobol, `ugep_v41_sobol_20260911_s214_5999`
+(actor SHA256 `72498abf031f1811d84178b505fe61a878f444f975ed7f63aafb2985f42814f9`).
+Verify `policy_id` and `ugep_model_sha256` in the loaded controller; earlier
+September 17 scoops used E19, not V41. Preserve CAT323 runtime morphology,
+kinematics, torque limits and nominal volume conversion when selecting the actor.
+
+UGEP's separate-file `VerticalExtractionController` takes over on an
+already-curled payload after an observed cut. Fullness alone must not trigger
+handover: let the learned policy initiate normal curl. Independently, proximity recovery
+triggers 0.5 m inside the requested pull-up distance (2.93 m for a 3.43 m request).
+It finishes curl while lifting and, if inside, moves outward beyond the requested
+pull-up distance. Normal volume scaling stays unchanged. The lift uses the arm
+plane; modest cabin inclination is not grounds for rejecting it. Remaining lift
+comes from measured bucket/terrain clearance, not a fixed extra motion. The
+CAT323 profile enables it. Success also requires restoring the requested reach.
 The explicit `vertical_extraction_active` request selects native AIR on **boom,
 dipper and pitch**, even while emerging from soil, independently of the normal
 boom-only geometry selector. All ordinary command guards remain. The controller
 adds progress, tracking, maximum-lift and timeout bounds; see the owning
 `high_level_controllers/mole_highlevel_controller_cpp/docs/ugep_controller.md`.
-Software tests and recorded admission timing are verified; the physical
-handover and closed-loop lifting behavior still require an authorized trial.
+The first September 17 extraction scoop failed before handover: curl-only
+admission delayed six seconds after full, then a 3.5-degree inclination tripped
+an overly strict world-vertical gate. The correction removes that gate and
+adds proximity recovery while preserving policy-initiated normal curl; the subsequent V41 scoop entered extraction and lifted 0.69 m, then
+aborted on map-registration TF freshness/alignment. Full completion is not yet
+validated. Keep the 0.15 s TF/state gates; diagnose the source before retesting.
 Do not start Gravis's separate native `PullUp` action in parallel with UGEP.
 
 The September 17 SOIL baseline at roughly 900 RPM delivered a -0.02 rad/s,
