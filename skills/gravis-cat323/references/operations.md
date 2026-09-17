@@ -10,6 +10,41 @@ Inspect the existing `gravis_ugep` container before creating anything. The works
 
 Build evidence and source inventory are under `/home/integration/gravis_ws/evidence/`. They establish what was built then; use current source status and focused build checks for later edits. Do not replace the active installation while a controller is running.
 
+## Native Gravis startup with gtask
+
+When the operator authorizes starting the native stack, use `gtask` on **Orin A**,
+not the integration x86. Normal startup is `gtask amg:run`; its installed owner is
+`/etc/gravisrobotics/amg/Taskfile.yml`. Check `gtask --summary amg:run`, Docker
+state, the active machine configuration, and the image of the previous deployment
+before starting. Keep the foreground task in a persistent Orin tmux window.
+`amg:run` starts its native dependencies and stops that Compose stack when it exits.
+
+The package default can differ from the deployed image. On 2026-09-17,
+`deploy.env` defaulted to `v2.3.5`, whereas the existing deployment used
+`gravisrobotics/amg:debug-v3.1.0-rc1`. The authorized startup preserved the latter:
+
+```bash
+gtask amg:run AMG_BASE_IMAGE=gravisrobotics/amg:debug-v3.1.0-rc1
+```
+
+This is historical image evidence, not a permanent version pin. Verify the current
+image on each startup. The active rack was `rk-2609-507835`, machine `armeno`.
+The 2026-09-17 session is `cat323-native:amg` on Orin, with its log at
+`/tmp/cat323-native-20260917.log`. Startup does not authorize hydraulic unlock or
+controller activation. Recheck native status, command ownership and advancing
+canonical maps afterward. The initial 20-second check passed without the override, but the subsequent
+scoop aborted when a missed snapshot pushed source age to 3.039 s. Use the
+[versioned paced-map recovery path](map-transport-test.md) before policy tests;
+that short check was insufficient evidence of continuous freshness.
+
+If the user requests a mapping scan before starting the controller, launch only
+the state adapter (command gateway disabled) and the CAT323 excavation mapping
+child in the integration `bringup` window, plus Foxglove. The generic CAT323 full
+wrapper also starts the UGEP process even with activation disabled; do not use it
+for a literal controller-not-started pause. After a checkout update, rebuild and
+verify package prefixes; remove superseded historical worktree overlays from the
+active environment after preserving the old environment file.
+
 ## Persistent Orin SSH
 
 On 2026-09-10 the user requested permanent container SSH access independent of the laptop. The dedicated Ed25519 private key stays on x86 at `/home/integration/.ssh/cat323_orin_a` with mode 0600. Its fingerprint is `SHA256:rJcZhGwDJoHklsSchk5WjldMWHAcYlMC7sqXcNmn45M`. The public key was appended to `/home/nvidia/.ssh/authorized_keys` on Orin with `restrict,pty,from="10.27.0.13"`; existing keys were preserved. This permits interactive login from the x86 LAN address and disables SSH forwarding for that key. It does not authorize native service changes or motion.
@@ -121,7 +156,7 @@ After a native AMG stack restart, existing DDS clients may retain stale discover
 
 ## Selected-map fragmentation and temporary pacing
 
-For reusable normal-versus-test startup, see [Optional CAT323 map transport test](map-transport-test.md). The maintained helper offers `prepare`, `status`, `check-maps` and guarded `restore`. The local test bundle adds an optional Compose overlay without editing permanent Orin files; it targets AMG's actual Python launch block. The details below record the initial transport diagnosis and still-running temporary replacement.
+For policy startup and recovery after native updates, use [CAT323 selected-map transport and recovery](map-transport-test.md). The maintained helper offers `prepare`, `status`, `check-maps` and guarded `restore`. The local test bundle adds an optional Compose overlay without editing permanent Orin files; it targets AMG's actual Python launch block. The details below are historical evidence from the initial transport diagnosis and temporary replacement; do not assume that supervisor still exists.
 
 On 2026-09-10, packet headers showed the selected-map writer advancing at 1 Hz while x86 received incomplete maps. Approximately 65 kB UDP datagrams required IP fragmentation across the Orin MTU of 1466 and x86 MTU of 1500. Paired captures confirmed fragments present in Orin's outgoing capture but absent at x86. The 10 Gb/s sender to 1 Gb/s receiver transition suggested burst loss; it did not identify the exact dropping component. Discovery and fresh small messages did not establish complete map delivery.
 

@@ -10,7 +10,10 @@ description: "Record split Mole DIG/Newton or Gravis CAT323 rosbags for state, c
 For **Gravis CAT323 on integration x86**, read [references/cat323-tracking.md](references/cat323-tracking.md)
 and use `scripts/cat323_tracking_recording.py`. It records native and Mole command/state paths,
 LLC tracking telemetry, TF, and the existing canonical excavation map with wall-clock time.
-Keep the native estimator and elevation mapping running; recording does not authorize machine actions.
+For learned-policy scoops or camera requests, use `--camera` and verify a recorded
+complete H265 keyframe before the goal. The reference covers camera dependencies
+and post-goal completeness checks. Keep the native estimator and elevation mapping
+running; recording does not authorize machine actions.
 
 The workflow below is the existing **Mole/M4 or Newton** split recorder. Its defaults are not CAT323 defaults.
 

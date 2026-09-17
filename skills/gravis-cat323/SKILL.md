@@ -25,7 +25,14 @@ Machine skills persist as a full committed catalog at `/workspaces/gravis_ws/cod
 
 Do not use the M4 startup wrapper, M4 low-level controller, Mole estimator, or another elevation mapper on this machine. The deployed excavation-mapping default is `gravis_selected_snapshot`: consume only the native postprocessed selected `elevation` layer, preserving filled cells without raw-map support, cloud gating, or an additional BASE-plane mask. Preserve source-stamp freshness, frame, resolution, and lattice checks. The older raw/cloud-supported mode is optional; inspect the active mode before diagnosing mapping or adding subscriptions.
 
-For the optional map-transport test, read [references/map-transport-test.md](references/map-transport-test.md). The preferred native integration is just the XML profile and per-publisher launch hook, selected through Gravis's existing command override; normal startup keeps its configuration. Before that native change is installed, the local Compose overlay and `scripts/cat323_map_transport.py` helper support the current unmodified image. Preparation/status are read-only on Orin; test startup is separate. Consult the current handoff before touching a temporary replacement supervisor. Transport verification is separate from motion readiness.
+For policy tests across the Orin-to-x86 link, restore and verify the small-packet,
+paced selected-map profile before motion. Read
+[references/map-transport-test.md](references/map-transport-test.md) for the
+versioned patch generator/XML, disposable native-image rebuild, `gtask` startup,
+and actual publisher-environment checks. A short fresh-map probe does not prove
+continuous freshness; retain the 3 s guard and check under recording load.
+Reprovisioned hosts and updated AMG images must not rely on old `/tmp` files,
+local image tags, unchecked Python bytecode, or an assumed installed patch.
 
 ## Machine actions
 

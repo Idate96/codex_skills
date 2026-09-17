@@ -20,16 +20,16 @@ Do not interrupt an existing recording or reuse an existing output directory.
 mkdir -p /workspaces/gravis_ws/evidence/ik_tracking_20260910
 tmux list-windows -t moleworks_ros -F '#{window_name}'
 tmux new-window -d -t moleworks_ros -n record-tracking \
-  'bash -lc "source /workspaces/gravis_ws/evidence/cat323-env.bash && export FASTRTPS_DEFAULT_PROFILES_FILE=/workspaces/gravis_ws/evidence/dds-observer-lan-only.xml && exec python3 /workspaces/gravis_ws/codex_skills/skills/dig-bag-recording/scripts/cat323_tracking_recording.py record --run-dir /workspaces/gravis_ws/evidence/ik_tracking_20260910/bag_tracking"'
+  'bash -lc "source /workspaces/gravis_ws/evidence/cat323-env.bash && export FASTRTPS_DEFAULT_PROFILES_FILE=/workspaces/gravis_ws/evidence/dds-observer-lan-only.xml && exec python3 /workspaces/gravis_ws/codex_skills/skills/dig-bag-recording/scripts/cat323_tracking_recording.py record --camera --run-dir /workspaces/gravis_ws/evidence/ik_tracking_20260910/bag_tracking"'
 ```
 
 The parent output directory must exist; `bag_tracking` must not exist. Choose a new
 run name for each recording. The helper checks free space (default minimum 1 GiB), saves
 a topic graph snapshot and its exact topic/command/environment manifest, and starts four
-recorders. It refuses to overwrite an existing run. `plan --run-dir PATH` prints the
+recorders, plus the main-camera recorder when `--camera` is selected. It refuses to overwrite an existing run. `plan --run-dir PATH` prints the
 recording commands without creating files or subscribing.
 
-Inspect `processes.json` and the four `recorder-*.log` files. All recorders must reach
+Inspect `processes.json` and the selected `recorder-*.log` files. All selected recorders must reach
 `Listening for topics`; check subscriptions to `/mole/measurements`, `/machine_status`,
 `/joint_states`, and `/tf` before motion. `status: recording` confirms recorder startup,
 not machine readiness or message freshness. The recorder continues discovery every
@@ -47,7 +47,7 @@ python3 /workspaces/gravis_ws/codex_skills/skills/dig-bag-recording/scripts/cat3
 
 `stop` keeps recording **eight additional seconds** to capture delayed/settling movement,
 then signals only the saved supervisor whose PID, Linux process start tick, and command
-line still match. The supervisor sends SIGINT to the process groups of its own four
+line still match. The supervisor sends SIGINT to the process groups of its own selected
 recorders and waits up to 25 seconds for finalization. It does not force-kill a stalled
 recorder or touch another tmux window/process. Inspect `processes.json` on a finalization
 timeout. Ctrl-C in the recorder pane also finalizes immediately, without the extra
@@ -67,6 +67,7 @@ a baseline. Keep the post-command observation even if immediate motion looks sma
 | `raw/commands` | `/mole/actuator_commands_ugep`, native `/joint_commands`, LLC `/machine_lowlevel_controller/raw_commands_in` and `raw_commands_out` |
 | `raw/telemetry` | Native joint/cylinder desired/measured velocity and LUT/PID terms for Boom, Dipper, EndeffectorPitch; `/mole/dig_ugep/*` observations, policy output, allocated joint command, depth shield/status; action feedback/status, lifecycle transitions, parameter events, ROS logs |
 | `raw/elevation_map` | `/excavation_mapping/grid_map` and its upstream fusion event |
+| `raw/camera` (`--camera`) | Native `/hal/perception/main/compressed_video` (`foxglove_msgs/msg/CompressedVideo`, H265) and `/hal/perception/main/camera_info` |
 
 Native LLC scalar topics use `std_msgs/msg/Float32` and this exact pattern:
 `/velocityCtrl/{term}/{joint}`, where joints are `Boom`, `Dipper`, `EndeffectorPitch`
@@ -100,7 +101,9 @@ reader can multiply large Orin-to-x86 transfers. The repository's
 `recording_profile:=gravis_cat323_ugep` currently adds native map inputs automatically,
 so this helper uses explicit topic lists instead.
 
-This tracking profile also omits LiDAR, cameras, and extra elevation maps. If the user
+Without `--camera`, this tracking profile omits cameras. Both modes omit LiDAR
+and extra elevation maps. For learned-policy scoops or a user camera request,
+select `--camera`; M445 JPEG/image topic names are not CAT323 camera topics. If the user
 requests perception replay, extend the recording deliberately with the available
 bandwidth in mind; this small profile is not a full sensor-reconstruction dataset.
 All ordinary streams use BEST_EFFORT subscriptions, compatible with native and adapter
@@ -109,7 +112,7 @@ TRANSIENT_LOCAL subscriptions to receive their latched state.
 
 ## Verify completeness
 
-`stop` automatically verifies all four finalized bags; verification can be repeated:
+`stop` automatically verifies all selected finalized bags; verification can be repeated:
 
 ```bash
 python3 /workspaces/gravis_ws/codex_skills/skills/dig-bag-recording/scripts/cat323_tracking_recording.py \
@@ -125,3 +128,47 @@ telemetry absence remains visible in the report. `--allow-no-commands` is only f
 recording deliberately made without a motion attempt. Do not use it to hide missing
 command evidence from an attempted motion. Completeness verifies available evidence;
 it does not prove tracking quality, sample rate, map freshness, or successful motion.
+
+## Camera and durable setup
+
+A wiped x86 image needs the camera message package before recording:
+
+```bash
+sudo apt-get update
+sudo apt-get install ros-jazzy-foxglove-msgs
+```
+
+Omit `sudo` inside the root container. The helper fails before starting a camera
+recording if the message type cannot be loaded. A discovered video topic or a
+running native pipeline does not prove recorded frames. Verify camera message
+counts and source stamps under the same DDS/recording load. The camera split is
+managed by the same supervisor and finalized by the normal `stop` command.
+
+H265 joining mid-GOP can record packets that are not independently decodable.
+Before sending a goal, wait for complete VPS/SPS/PPS and an IDR to reach the bag:
+
+```bash
+python3 /workspaces/gravis_ws/codex_skills/skills/dig-bag-recording/scripts/check_cat323_camera.py \
+  --bag-dir /path/to/run/raw/camera
+```
+
+This reads flushed MCAP data without another camera subscription. A nonzero exit
+means the keyframe is not yet present; rerun after more data arrives. Also verify
+fresh video continues. After an attempt, pass `--before-unix-s <goal-start>` to
+prove the keyframe preceded it. This check does not certify lossless video; decode
+representative footage and report missing-reference warnings separately. In the
+2026-09-17 first attempt, video packets preceded the goal but the first complete
+IDR followed its abort, so the attempt footage was not independently decodable.
+
+Keep the exact controller and mapping parameter dumps, native image digest,
+CAT323 runtime URDF/morphology/torque files, actor hash, target service request and
+readback with each run. Save the action client's goal UUID, feedback, and **final
+result**: feedback/status topics do not include the result-service response.
+If rosbag reports missing action schemas, preserve installed `RunAction.action`/
+`.idl`, `GoalStatusArray`, `GoalStatus`, `GoalInfo`, UUID and Time definitions.
+
+Before native or x86 rebuilds, use the versioned CAT323
+[map transport recovery procedure](../../gravis-cat323/references/map-transport-test.md).
+Live topic inventories can change with Gravis updates: verify CAT323 joint names,
+types, QoS and actual post-goal samples instead of copying M445 assumptions.
+Idle policy/LLC topics can correctly have no samples before a goal.

@@ -68,6 +68,29 @@ class TransportTests(unittest.TestCase):
         fresh[10]["age_s"] = 3.01
         self.assertFalse(maps.summarize(fresh, 30)["passed"])
 
+    def test_fresh_publications_can_expire_between_deliveries(self):
+        rows = [{"stamp_ns": (i + 1) * 1_000_000_000, "receipt_s": float(i), "age_s": 2.2} for i in range(30)]
+        report = maps.summarize(rows, 30, end_s=30)
+        self.assertEqual(report["invalid_or_stale_publications"], 0)
+        self.assertFalse(report["passed"])
+        self.assertAlmostEqual(report["max_held_source_age_s"], 3.2)
+        rows = [{**row, "age_s": 1.3} for row in rows]
+        self.assertTrue(maps.summarize(rows, 30, end_s=30)["passed"])
+        self.assertFalse(maps.summarize(rows, 30, end_s=32)["passed"])
+
+    def test_image_context_preserves_base_identity_and_does_not_overwrite(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "bundle"
+            metadata = {"image_id": "sha256:" + "a" * 64, "image_user": "ubuntu"}
+            prepare.prepare(FIXTURE, "base", output, metadata)
+            dockerfile = (output / "Dockerfile").read_text()
+            self.assertIn("FROM " + metadata["image_id"], dockerfile)
+            self.assertIn("__pycache__/launch.*.pyc", dockerfile)
+            self.assertTrue(dockerfile.endswith("USER ubuntu\n"))
+            with self.assertRaises(ValueError):
+                prepare.prepare(FIXTURE, "base", output, {**metadata, "image_id": "mutable:latest"})
+            self.assertEqual((output / "Dockerfile").read_text(), dockerfile)
+
     def test_default_keeps_native_nodes_and_parameters(self):
         original = evaluate(FIXTURE)
         patched = evaluate(prepare.patch_launch(FIXTURE))

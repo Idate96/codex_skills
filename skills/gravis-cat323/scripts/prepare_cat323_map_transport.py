@@ -6,6 +6,7 @@ import ast
 import difflib
 import hashlib
 import json
+import re
 from pathlib import Path
 import shlex
 import subprocess
@@ -98,7 +99,7 @@ print(json.dumps({{'launch':launch,'base_profile_sha256':hashlib.sha256(profile)
 native=json.loads(subprocess.run(['docker','exec',{container!r},'python3','-c',{script!r}],capture_output=True,text=True,check=True).stdout)
 info=json.loads(subprocess.run(['docker','inspect',{container!r}],capture_output=True,text=True,check=True).stdout)[0]
 labels=info['Config']['Labels']
-native['metadata']={{'image':info['Config']['Image'],'image_id':info['Image'],'command':info['Config']['Cmd'],'compose_files':labels['com.docker.compose.project.config_files'].split(','),'compose_directory':labels['com.docker.compose.project.working_dir'],'compose_project':labels['com.docker.compose.project'],'bind_mounts':[{{'source':m['Source'],'target':m['Destination'],'read_only':not m['RW']}} for m in info['Mounts'] if m['Type']=='bind']}}
+native['metadata']={{'image':info['Config']['Image'],'image_id':info['Image'],'image_user':info['Config'].get('User',''),'command':info['Config']['Cmd'],'compose_files':labels['com.docker.compose.project.config_files'].split(','),'compose_directory':labels['com.docker.compose.project.working_dir'],'compose_project':labels['com.docker.compose.project'],'bind_mounts':[{{'source':m['Source'],'target':m['Destination'],'read_only':not m['RW']}} for m in info['Mounts'] if m['Type']=='bind']}}
 print(json.dumps(native))
 """
     command = shlex.join(["python3", "-"])
@@ -134,6 +135,21 @@ def prepare(source, base_hash, output, metadata=None):
         "docker-compose.map-test.yaml": (SKILL / "assets/docker-compose.map-test.yaml").read_bytes(),
         "README.md": (SKILL / "references/map-transport-test.md").read_bytes(),
     }
+    if metadata is not None:
+        image_id = metadata.get("image_id", "")
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
+            raise ValueError("Require the inspected immutable native image ID")
+        image_user = metadata.get("image_user", "") or "root"
+        if not re.fullmatch(r"[A-Za-z0-9_.:-]+", image_user):
+            raise ValueError("Unsupported native image user")
+        files["Dockerfile"] = (
+            f"FROM {image_id}\n"
+            f"COPY patched-launch.py {LAUNCH_PATH}\n"
+            "COPY selected-map-fastdds.xml /amg/install/share/autonomy_visualization/config/selected-map-fastdds.xml\n"
+            "USER root\n"
+            "RUN rm -f /amg/install/lib/python3.12/site-packages/autonomy_visualization/__pycache__/launch.*.pyc\n"
+            f"USER {image_user}\n"
+        ).encode()
     for name, content in files.items():
         path = output / name
         if path.exists() and path.read_bytes() != content:

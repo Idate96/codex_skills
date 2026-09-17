@@ -47,6 +47,13 @@ SPLITS = {
         "/excavation_mapping/grid_map", "/excavation_mapping/upstream_fusion_event",
     ],
 }
+CAMERA_TOPICS = ["/hal/perception/main/compressed_video", "/hal/perception/main/camera_info"]
+
+
+def split_topics(camera=False):
+    return {**SPLITS, **({"camera": CAMERA_TOPICS} if camera else {})}
+
+
 REQUIRED_STATE = [
     "/mole/measurements", "/machine_measurements", "/machine_status", "/joint_states",
     "/tf", "/tf_static", "/excavation_mapping/grid_map",
@@ -84,7 +91,7 @@ def same_process(saved):
     return saved is not None and process_identity(saved["pid"]) == saved
 
 
-def plan(run_dir):
+def plan(run_dir, camera=False):
     qos_path = run_dir / "qos-overrides.yaml"
     token = uuid.uuid4().hex[:8]
     return {
@@ -95,15 +102,15 @@ def plan(run_dir):
             "--include-unpublished-topics", "--polling-interval", "100",
             "--max-cache-size", "16777216", "--qos-profile-overrides-path", str(qos_path),
             "--topics", *topics,
-        ] for split, topics in SPLITS.items()
+        ] for split, topics in split_topics(camera).items()
     }
 
 
-def qos_overrides():
+def qos_overrides(camera=False):
     result = {
         topic: {"history": "keep_last", "depth": 100, "reliability": "best_effort",
                 "durability": "volatile"}
-        for topics in SPLITS.values() for topic in topics
+        for topics in split_topics(camera).values() for topic in topics
     }
     for topic in ("/tf_static", "/robot_description", "/excavation_mapping/grid_map"):
         result[topic] = {"history": "keep_last", "depth": 10, "reliability": "reliable",
@@ -115,7 +122,11 @@ def verify(run_dir, allow_no_commands=False):
     counts = {}
     results = {}
     errors = []
-    for split, expected_topics in SPLITS.items():
+    manifest = json.loads((run_dir / "recording-plan.json").read_text())
+    expected = manifest["split_topics"]
+    if (run_dir / "raw/camera").exists():
+        expected["camera"] = CAMERA_TOPICS
+    for split, expected_topics in expected.items():
         bag_dir = run_dir / "raw" / split
         metadata_path = bag_dir / "metadata.yaml"
         result = {"path": str(bag_dir), "expected_topics": expected_topics}
@@ -139,6 +150,8 @@ def verify(run_dir, allow_no_commands=False):
         if not result["readable"]:
             errors.append(f"{split}: ros2 bag info failed")
     required = REQUIRED_STATE + ([] if allow_no_commands else REQUIRED_MOTION)
+    if "camera" in expected:
+        required += CAMERA_TOPICS
     for topic in required:
         if counts.get(topic, 0) == 0:
             errors.append(f"missing required samples: {topic}")
@@ -160,19 +173,23 @@ def record(args):
     run_dir = args.run_dir.resolve()
     if shutil.disk_usage(run_dir.parent).free < args.min_free_gib * 1024**3:
         raise RuntimeError(f"Less than {args.min_free_gib:g} GiB free in output filesystem")
+    if args.camera:
+        from rosidl_runtime_py.utilities import get_message
+        get_message("foxglove_msgs/msg/CompressedVideo")
     run_dir.mkdir(exist_ok=False)
     (run_dir / "raw").mkdir()
-    commands = plan(run_dir)
+    topics = split_topics(args.camera)
+    commands = plan(run_dir, args.camera)
     write_json(run_dir / "recording-plan.json", {
-        "machine": "gravis_cat323", "time": "wall_clock", "split_topics": SPLITS,
+        "machine": "gravis_cat323", "time": "wall_clock", "split_topics": topics,
         "commands": commands, "created_unix_s": time.time(),
         "environment": {key: os.environ.get(key) for key in (
             "ROS_DOMAIN_ID", "RMW_IMPLEMENTATION", "FASTRTPS_DEFAULT_PROFILES_FILE",
             "FASTDDS_DEFAULT_PROFILES_FILE", "ROS_DISCOVERY_SERVER", "AMENT_PREFIX_PATH",
         )},
     })
-    (run_dir / "qos-overrides.yaml").write_text(yaml.safe_dump(qos_overrides(), sort_keys=False))
-    # Graph inspection only; the only data subscriptions are the four allowlisted recorders.
+    (run_dir / "qos-overrides.yaml").write_text(yaml.safe_dump(qos_overrides(args.camera), sort_keys=False))
+    # Graph inspection only; data subscriptions are limited to the selected split topics.
     graph = subprocess.run(["ros2", "topic", "list", "-t", "--include-hidden-topics"],
                            capture_output=True, text=True, timeout=15)
     (run_dir / "topics-before.txt").write_text(graph.stdout + graph.stderr)
@@ -203,7 +220,7 @@ def record(args):
                 raise RuntimeError("A recorder exited early; inspect recorder logs")
             if state["status"] == "starting":
                 ready = all("Listening for topics" in (run_dir / f"recorder-{split}.log").read_text()
-                            for split in SPLITS)
+                            for split in topics)
                 if ready:
                     state["status"] = "recording"
                     write_json(run_dir / "processes.json", state)
@@ -256,6 +273,8 @@ def main():
     for mode in ("plan", "record", "stop", "verify"):
         command = sub.add_parser(mode)
         command.add_argument("--run-dir", required=True, type=Path)
+        if mode in ("plan", "record"):
+            command.add_argument("--camera", action="store_true", help="Record CAT323 main H265 video and calibration")
         if mode == "record":
             command.add_argument("--min-free-gib", type=float, default=1.0)
         if mode == "stop":
@@ -265,7 +284,7 @@ def main():
                                  help="Validate a recording made without a motion attempt")
     args = parser.parse_args()
     if args.mode == "plan":
-        print(json.dumps(plan(args.run_dir.resolve()), indent=2))
+        print(json.dumps(plan(args.run_dir.resolve(), args.camera), indent=2))
         return 0
     if args.mode == "record":
         return record(args)
@@ -279,6 +298,6 @@ def main():
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except (OSError, RuntimeError, subprocess.TimeoutExpired, ValueError) as exc:
+    except (ImportError, OSError, RuntimeError, subprocess.TimeoutExpired, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
