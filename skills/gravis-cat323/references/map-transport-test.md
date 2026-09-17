@@ -10,8 +10,10 @@ The profile caps outgoing DDS messages at **1400 bytes** and uses asynchronous
 FIFO pacing of **8192 bytes per 5 ms**. Small packets avoid IP fragmentation;
 pacing also bounds bursts across the sender/receiver link. Apply it only to
 `grid_map_selected_layers_interface_republisher_node`. Keep normal incoming map
-capacity, native QoS, source stamps, and the controller's 3 s freshness gate.
-Never relax that gate to compensate for delivery loss.
+capacity, native QoS, source stamps, and configured freshness gates. The mapper's
+native-input gate remains 3 s. The operator selected a 10 s controller/depth-shield
+map-age limit for the September 17 CAT323 run; joint-state expiry remains 0.15 s.
+Transport repair does not itself authorize changing those limits.
 
 ## Recover after an image update or host wipe
 

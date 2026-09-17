@@ -38,7 +38,7 @@ SPLITS = {
         *(f"{PREFIX}/{name}" for name in (
             "observations", "observations_raw", "policy_action_stamped",
             "commanded_joint_velocity", "pullup_distance_locked", "controller_status",
-            "depth_shield", "scooped_soil_volume", "filled_soil_volume",
+            "depth_shield", "scooped_soil_volume", "filled_soil_volume", "bucket_clearance",
         )),
         "/mole/run_dig_ugep/_action/feedback", "/mole/run_dig_ugep/_action/status",
         "/mole/dig_ugep_controller/transition_event", "/parameter_events", "/rosout",

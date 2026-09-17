@@ -76,6 +76,20 @@ and terms are `desiredJointVel`, `measuredJointVel`, `desiredCylinderVel`,
 `pidDerivative`. `raw_commands_in/out` are `sensor_msgs/msg/Joy`; both actuator-state
 aliases are `sensor_msgs/msg/JointState`.
 
+The telemetry split also includes `/mole/dig_ugep/bucket_clearance`
+(`mole_highlevel_msgs/msg/BucketClearance`) for automatic boom AIR/SOIL selection.
+Compare its measurement/map stamps, validity and clearance with the native
+boom interaction type in `/joint_commands`. The signal is available during
+active UGEP control, not an independent manual pulse.
+
+For an isolated boom pulse with the UGEP controller inactive, the generic
+scoop verifier reports missing UGEP commanded velocity and may report missing
+desired/measured dipper and pitch velocities because their requests are zero.
+Preserve that report. Validate direct-step completeness separately using native
+and internal commands, state/status, all nine Boom LUT/PID/tracking channels,
+selected camera/map streams, finalized bags and stopped owned recorders. Do
+not label `raw_commands_out` as post-recovery valve/current evidence.
+
 These native topics were present in the integration graph on 2026-09-10. Actual samples
 are verified after recording. Controller telemetry is lifecycle-dependent;
 `observations_raw` additionally needs its existing publish parameter enabled. Do not

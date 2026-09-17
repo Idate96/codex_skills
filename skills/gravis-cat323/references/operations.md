@@ -283,6 +283,28 @@ process host. The September file `boom_lowlevel_controllers.xml` contains AIR/SO
 directional gains and steady-state/maximum LUTs. Arm values are cylinder m/s and
 normalized raw output [-1, 1], not amperes. Preserve joint/cylinder signs.
 
+The CAT323 gateway profile now supports automatic **boom-only** AIR selection
+from `mole_highlevel_msgs/BucketClearance` on `/mole/dig_ugep/bucket_clearance`.
+The maintained contract and thresholds are in
+`low_level/mole_gravis_cat323_adapter/README.md` in `moleworks_ros`; verify the
+installed profile/binary after reprovisioning. Whole padded bucket clearance,
+source-stamp freshness, dynamic TF validity, dwell and hysteresis govern the
+switch; dipper/pitch retain SOIL. Native bank changes reset both PID integrators,
+and AIR/SOIL share the LUT. A fixed `interaction_type:=0` diagnostic bypasses
+automatic selection. This feature selects existing banks; it is not calibrated
+hardware acceptance or a LUT/gain retune. Record both clearance and native
+`joint_commands` to verify actual bank selection.
+
+The September 17 SOIL baseline at roughly 900 RPM delivered a -0.02 rad/s,
+2 s boom-up command but established no meaningful lift. Native recovery was
+rate-limited for the first ~0.98 s. In the inspected deployed velocity controller,
+initial-deadzone logic resets PID state each tick until measured joint speed
+exceeds 0.005 rad/s; the recorded integral matched one tick, not accumulation.
+Do not infer that longer duration or higher Ki alone fixes breakaway. Compare
+at a held operating RPM after native recovery reaches Operational, with the
+same authorized motion bounds and recorded response. Inspect the deployed
+implementation again after a native image update.
+
 For native tracking, use [the CAT323 bag recorder](../../dig-bag-recording/references/cat323-tracking.md).
 Compare desired/measured joint and cylinder velocities, LUT and P/I/D terms, and
 downstream recovery/output. `raw_commands_out` precedes recovery/CAN. Scalar

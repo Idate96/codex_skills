@@ -30,7 +30,9 @@ paced selected-map profile before motion. Read
 [references/map-transport-test.md](references/map-transport-test.md) for the
 versioned patch generator/XML, disposable native-image rebuild, `gtask` startup,
 and actual publisher-environment checks. A short fresh-map probe does not prove
-continuous freshness; retain the 3 s guard and check under recording load.
+continuous freshness; retain the configured source-age guards and check under
+recording load. The mapping input gate remains 3 s; the operator-selected CAT323
+controller/depth-shield map-age limit is 10 s. Joint-state expiry remains 0.15 s.
 Reprovisioned hosts and updated AMG images must not rely on old `/tmp` files,
 local image tags, unchecked Python bytecode, or an assumed installed patch.
 
