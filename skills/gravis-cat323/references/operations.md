@@ -150,6 +150,18 @@ The working runtime and observer profiles are `evidence/dds-runtime-lan-only.xml
 
 On the x86, temporary receiver tuning used `net.core.rmem_max=16777216` and `net.ipv4.ipfrag_high_thresh=134217728`. Verify current values and evidence before reapplying tuning. Do not turn it into persistent host/network configuration without task scope. Avoid switching the laptop's working connection.
 
+For new-machine setup, the ROS checkout now owns the persistent x86 receive-buffer
+procedure in `docs/information/gravis_engineer_setup.md` (x86 receive-buffer setup).
+Its operator helper uses `docker/dds_configs/gravis_cat323/` CLIENT/SUPER_CLIENT
+profiles requesting 16 MiB UDP receive buffers and rejects start/prepare/dig if
+`net.core.rmem_max` is smaller; stop remains available. The portable templates do
+not contain the old host's LAN whitelist: preserve a site's verified restriction
+when migrating. Restart existing receiver sockets after changing the host ceiling.
+Do not infer success from `sysctl -w` exit/output inside Docker: on September 18
+it printed 16777216 despite a read-only error, while read-back remained 212992.
+Host SSH was denied from that container; no live limit restoration was established.
+Always read back the host setting and verify continuous map delivery under load.
+
 Verify native `/machine_status`, `/machine_measurements`, `/joint_states`, TF, and adapter `/mole/measurements` with fresh messages. Small messages and topic discovery are separate evidence from successful large GridMap delivery.
 
 After a native AMG stack restart, existing DDS clients may retain stale discovery state. Recheck fresh data in the actual running adapter, not only a newly started CLI subscriber; restart affected integration clients within the current software scope after stopping any active command owner. Never treat a healthy fresh probe as proof that an older controller connection recovered. This includes the persistent ROS CLI daemon: when direct fresh probes work but CLI discovery says `Node not found`, stop the stale daemon with `ros2 daemon stop`, then recreate it through `mole_dds_ensure_daemon "$MOLE_DDS_OBSERVER_PROFILE"` in the sourced CAT323 environment. Refresh on evidence of stale discovery, not automatically on every attach.
