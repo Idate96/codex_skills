@@ -1,4 +1,4 @@
 interface:
   display_name: "ROS 2 Debugging"
-  short_description: "Diagnose ROS topics, services, TF, and DDS"
-  default_prompt: "Use $ros2-debugging to diagnose this ROS 2 issue with bounded topic, service, TF, DDS, and tmux checks."
+  short_description: "Debug ROS and test fixes with compact evidence"
+  default_prompt: "Use $ros2-debugging to investigate this ROS 2 failure with focused probes and tests, save full logs, and report compact results and remaining uncertainty."

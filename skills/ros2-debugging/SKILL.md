@@ -1,103 +1,134 @@
 ---
 name: ros2-debugging
-description: "Diagnose ROS 2 topics, nodes, services, actions, parameters, TF, DDS domains, and tmux-managed processes with bounded read-only checks. Use for missing graphs, publisher conflicts, transform failures, stale data, and ownership diagnosis before any restart."
+description: "Diagnose ROS 2 failures and validate fixes with focused tests, compact log reports, and bounded topic, TF, DDS, and process checks. Use for missing or stale data, ownership conflicts, failing ROS tests, and inefficient debug loops. Route bringup and recovery to their owning skills."
 ---
 
 # ROS 2 Debugging
 
-Keep this skill portable and read-only by default. Route project-specific
-bringup or recovery to its owning skill/runbook.
+Answer one diagnostic question at a time. Keep complete evidence on disk and
+return only what the next decision needs. Diagnosis is read-only by default;
+this skill does not authorize motion, restarts, or unrelated changes.
 
-## Establish The Owning Environment
+## Orient Once
 
-1. Identify the process/tmux session and sourced workspace that own the graph.
-2. Check `ROS_DOMAIN_ID` and relevant discovery variables in the same shell as
-   the failing process.
-3. Run `ros2 <verb> -h` before relying on distribution-sensitive flags.
-4. Bound every graph/data probe with `timeout`; do not wait indefinitely.
-5. Treat one empty graph listing as weak evidence. Confirm the domain,
-   discovery path, target endpoint, process logs, and direct data before a
-   restart.
+- Read applicable `AGENTS.md`. Identify the exact checkout, dirty state,
+  workspace overlay, container/host and process owner. Refresh when changed,
+  not before every probe. Preserve unrelated work and active runtime installs.
+- Use the failing process's ROS environment and time source. Check relevant
+  domain/discovery keys, never dump entire environments. An empty host graph
+  says little about a container using another domain.
+- For Moleworks, run ROS builds, tests and probes in the owning ROS container:
+  `docker exec` from the host, directly if already inside. Do not assume host
+  ROS or another workspace is equivalent. Use `ros-worktree` for isolation and
+  `supercluster-compute` when that host is requested.
+- Verify affected package prefixes before using a rebuilt overlay. Check actual
+  symlink targets before editing installed config; copy-install flags do not
+  prove old symlinks disappeared.
 
-A supported project container may configure DDS automatically, while a robot
-installation may use a host workspace. Do not declare a working owning shell
-stale merely because it is not inside a particular image, and do not paste a
-large DDS override in front of every command.
+## Investigate One Failure
 
-## Read-Only Graph And Data Checks
+State expected behavior, the first observed failure, and evidence that would
+distinguish the leading explanations. Select one to three relevant probes
+from [references/probes.md](references/probes.md); do not run it as a checklist.
 
-```bash
-echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset}"
-timeout 10 ros2 node list
-timeout 10 ros2 node info /your_node
+Prefer existing diagnostics, an exact endpoint, or a known log over whole-graph
+inventories. Bound each probe. One empty listing or early TF warning is weak
+evidence; check the owning environment and direct data before recommending a
+restart. Distinguish receipt, source, simulation and wall time. Preserve
+freshness and safety thresholds while investigating.
 
-timeout 10 ros2 topic list
-timeout 10 ros2 topic info /your_topic --verbose
-timeout 10 ros2 topic echo /your_topic --once
-timeout 10 ros2 topic hz /your_topic
+Read the first causal error and nearby context. A timeout is a symptom until
+the stalled operation is identified. A stored parameter value does not prove
+that code rereads it after startup.
 
-timeout 10 ros2 service list
-timeout 10 ros2 service type /your_service
-timeout 10 ros2 action list -t
+## Validate With A Small Evidence Funnel
 
-timeout 10 ros2 param list /your_node
-timeout 10 ros2 param get /your_node parameter_name
-```
+Before editing, choose the behavioral claim and smallest check that could
+disprove it. For authorized fixes:
 
-`topic hz` commonly ends with timeout status 124 after producing useful
-samples. Record the observed samples/rate rather than treating that bounded
-exit alone as a failure.
+1. Run focused deterministic tests during iteration. Use ROS integration only
+   for boundaries that lower-level tests cannot exercise.
+2. Once stable, build changed packages and affected consumers in the intended
+   workspace, then test them. Include dependencies when needed. Incremental
+   overlay success is not a clean dependency-closure build.
+3. Run repository-required gates once before handoff. Repeat only for a relevant
+   change, failure or unresolved concern. Report unrelated baseline failures
+   separately; do not waive required checks.
+4. If runtime evidence is necessary, run one bounded case through the existing
+   public owner. Separate correctness from matched timing comparisons. Newton
+   success does not establish machine speed, physical safety or soil retention.
 
-Before calling a service, publishing, sending an action, setting a parameter,
-or changing lifecycle state, establish the endpoint type and obtain the
-operation-specific authorization. Those are not read-only debugging probes.
+Do not expand into repeated full suites, scenario banks or parameter sweeps
+without a question requiring them. Successful process exit alone does not
+prove tests were discovered or the requested behavior was checked.
 
-## TF Checks
+## Compact Command Reports
 
-Give `tf2_echo` at least 15-20 seconds to populate its buffer. Early “frame
-does not exist” output can be transient:
-
-```bash
-timeout 20 bash -lc 'ros2 run tf2_ros tf2_echo map BASE 2>&1' | head -40
-```
-
-On normal ROS 2 stacks, TF transport remains global `/tf` and `/tf_static`;
-putting a node in `/mole` does not move TF to `/mole/tf`. Join/remap a private
-TF transport only when endpoint inspection proves that the stack explicitly
-uses one.
-
-Robot-local frame names may still carry a `tf_prefix`. Construct the effective
-frame from the configured prefix and query that frame; keep global frames such
-as `map` unprefixed. For an ad-hoc `TransformListener`, use the graph's actual
-TF transport and time source, then allow the listener buffer to warm up.
-
-## Publisher And Domain Conflicts
-
-- Use `ros2 topic info <topic> --verbose` to enumerate endpoint node names,
-  namespaces, GIDs, and QoS before assigning ownership.
-- Compare the observed publisher count with the owning launch contract.
-- Check `ROS_DOMAIN_ID` in every relevant process environment; use one named
-  tmux session per domain when possible.
-- Do not conclude that a topic vanished until a direct bounded read, process
-  state, domain, and discovery path agree.
-- Do not start a replacement component beside an unhealthy complete owner.
-
-## Inspect tmux Without Mutating It
+Use [scripts/run_logged.py](scripts/run_logged.py) for finite, already-authorized
+commands on Linux. It requires only Python's standard library. Run it inside
+the owning environment, after sourcing ROS, with a new directory per invocation:
 
 ```bash
-tmux list-sessions
-tmux list-windows -a -F '#{session_name}:#{window_index} #{window_name} #{window_active}'
-tmux list-panes -a -F '#{session_name}:#{window_name}.#{pane_index} #{pane_pid} #{pane_current_command} #{pane_dead}'
-tmux capture-pane -p -S -200 -t session:window
+python3 /path/to/ros2-debugging/scripts/run_logged.py \
+  --out /tmp/task-checks/build-01 --timeout-sec 900 -- \
+  colcon build --packages-select affected_package affected_consumer
+
+python3 /path/to/ros2-debugging/scripts/run_logged.py \
+  --out /tmp/task-checks/test-01 --timeout-sec 300 -- \
+  colcon test --packages-select affected_package affected_consumer \
+  --return-code-on-test-failure
 ```
 
-Correlate pane commands/logs with ROS endpoint ownership. Creating, killing,
-respawning, or sending keys to panes is a separate operational action.
+Adapt packages, paths and time budgets. If unavailable remotely, copy only the
+helper to a task-owned location; do not create another container for it.
 
-## Moleworks Handoff
+The helper saves combined stdout/stderr to `output.log`, writes terminal
+`result.json`, propagates failure and prints a compact JSON receipt. Failures
+include only a bounded log tail. Existing output directories are refused.
+`exit_zero` means process exit zero, not a test or safety certificate.
 
-For a Moleworks robot, first use the maintained monitors under
-`mole_utils/scripts/`, then the current
-`docs/robot_agent/TROUBLESHOOTING_GUIDE.md`. Use `robot-ros` to select the
-narrow recovery skill. Use `newton-ros-parity` when the failure is specifically
-Newton-to-`moleworks_ros` clock/TF/topic parity.
+Use fresh CTest/JUnit/colcon reports for test counts. Scope
+`colcon test-result --test-result-base build/affected_package --verbose` to
+packages just tested; capture verbose output the same way. Check expected
+test discovery and freshness. Do not count stale reports or describe suite
+wrapper counts as distinct underlying cases.
+Colcon may keep detailed output in its package logs even when the wrapper log
+is short; use those existing files when a failure needs further inspection.
+
+Read more only when the receipt is insufficient: locate an error with `rg -n`,
+then inspect a bounded line range. Preserve full logs; do not feed large logs,
+JSON, parameter dumps or entire source files into context.
+
+The helper controls only its own finite command group. Do not wrap long-lived
+stacks, daemonizing commands or commands containing credentials. Use the existing
+tmux owner for runtime. No receipt means incomplete/unknown, not success. If the
+wrapper was hard-killed, inspect its owned process before retrying.
+
+## Monitor And Coordinate Economically
+
+- Keep one session/job per long command. Wait in bounded intervals, normally
+  30–60 seconds; avoid repeated second-by-second polling and unchanged tails.
+  Keep user updates concise and evidence-based.
+- Read existing runtime phase/status output and new log lines. Report transitions,
+  failures, stalled progress and completion. Refresh static parameters, graph
+  ownership or resources when symptoms or new allocations warrant it.
+- Do not build a supervisor, event framework or parallel orchestration path.
+  For Moleworks, read bags only after recorder finalization.
+- When delegation is authorized and useful, assign distinct bounded questions
+  with exact files and evidence paths. Prefer a focused independent review of
+  a stable patch over several agents repeating the investigation. A short task
+  note usually suffices instead of a full conversation.
+
+## Handoff And Recovery
+
+For work spanning sessions, maintain one short current-state note: checkout and
+revision, effective config, tested claim/result, active job/phase, remaining
+blocker, next step and evidence paths. Link historical investigations instead
+of copying them. Do not put task history in global guidance.
+
+Distinguish build success, tests passed, runtime progressing, scenario complete
+and hardware verified. State missing evidence and failures. Route recovery to
+`robot-ros`, `terra-pipeline` or the relevant startup skill; use
+`newton-ros-parity` for simulator/ROS data, clock and TF consistency.
+Existing authorization persists, but diagnosis alone does not authorize service
+calls, parameter changes, lifecycle transitions or motion.
