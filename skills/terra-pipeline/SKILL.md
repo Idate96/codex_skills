@@ -22,6 +22,48 @@ high-level graph. On the machine, start only low-level control and
 - The canonical owner scopes its Foxglove child to observer DDS. Record with `dig-bag-recording` or `mole_bag_tools rosbag_record.launch.py`; the canonical recorder scopes only its bag children to observer DDS.
 - Do not paste Fast DDS exports around commands. If the runtime/observer variables are missing or legacy discovery variables remain, pull the published image, recreate the container, and open fresh tmux panes.
 
+## Fast Machine Iteration
+
+Machine time is scarce. Finish edits, focused tests and installation before the
+next operator test; reuse verified session facts instead of repeating discovery.
+Existing operator authorization covers the requested cycle and its ordinary
+recovery. Do not ask again unless the intended motion or conditions change.
+
+- Start by inspecting the current owner, latest failed BT leaf and selected
+  profile. Reuse running low-level control, estimator and Foxglove. Restart only
+  the sole application owner when the changed installed code requires it.
+- **Register once, then keep the registration for controller retries.** A request
+  to restart the cycle does not mean move the trench to a fresh BASE estimate.
+  Preserve the validated placed plan, merged design/terrain bag and registration
+  receipt outside `/tmp`. Run that frozen package with `plan.placement: fixed`;
+  remove `plan.terrain_snapshot` because the frozen design already contains the
+  terrain captured at placement. Keep the same site datum. A new location or
+  operator-requested re-registration is a separate operation.
+- On rslpc keep `auto_set_arm_controller_rt_prio=false` and retain the reviewed
+  CPU affinity (MPC 1,2; arm 3). Verify installed launch defaults once after a
+  relevant build. Blanket FIFO90 on all arm threads caused a ROS executor
+  readiness loop to starve its peers on the shared core. Normal time-sharing
+  scheduling is the supported arm default; do not restore the old boost while
+  tuning MPC speed. See the OCS2 arm validation runbook's CPU placement section.
+- Before releasing execution, check the actual machine interlocks/RPM, fresh
+  state, `map` to the selected tool TF, current pose tolerance and recorder
+  readiness. A stale-source SAFE_STOP needs normal lifecycle/owner recovery;
+  newly fresh data alone does not prove the latch was cleared. Keep the guard.
+- Start the canonical recorder for the test, not for a long build/debug wait.
+  Check free space and observed growth. Full elevation-map capture consumed
+  about 53 GiB during a no-motion debugging interval; a configured split is not
+  a storage budget. Finalize while blocked, retain controller failure evidence,
+  then start a new run before motion. Use `$dig-bag-recording` to verify splits.
+- Follow actual BT transitions through move, DIG, pullup, dump and next DIG.
+  A successful service response only accepts a request. Report the last
+  completed stage and first failed leaf; never describe the full cycle as
+  successful until those transitions occurred.
+
+For an existing registered rslpc session, inspect the saved profile and receipt
+under `~/Downloads/terra_machine_plans_20260925/site_registration_v2/current_base`
+before preparing another placement. This is session evidence, not a default
+site for future experiments.
+
 ## Machine Contract
 
 - Treat stack startup as non-motion authorization. Keep `autostart:=false` until the operator approves execution and all interlocks, TF, tool, target, controller ownership, and map checks pass.
@@ -48,6 +90,7 @@ rg -n 'profile_id:|tool:|policy_id:|recompute_terrain_sdf_on_target:' "${TERRA_P
   --visualization foxglove \
   --attach
 ```
+
 
 The packaged profile is only a resolvable example. Copy and review it for a
 materially different run. Profiles do not inherit and the public launch does
@@ -88,6 +131,60 @@ Terra workflow; do not start another bridge beside it.
 
 It starts only idle windows and never kills an existing process. Make the owner
 safe and stop it manually before relaunching a changed configuration.
+For a normal site-backed profile, the wrapper passes `plan.design_map` to the
+estimator, which loads the fixed reference named by the map metadata. Restart
+the estimator when changing sites.
+
+## Incremental Builds
+
+After updating source, rebuild only the affected boundary before starting the
+robot graph:
+
+- Use the verified main robot workspace; do not create a second workspace or
+  overlay only for an ordinary rebuild.
+- For an isolated change, use
+  `colcon build --packages-select <changed-package>`.
+- When several Terra application packages changed, or the exact boundary is
+  unclear within the Mole bringup dependency closure, use
+  `colcon build --packages-up-to mole_bringup`.
+- If a ROS message/service/action package or a C++ library ABI changed, use
+  `colcon build --packages-above <changed-package>` so the package and its
+  reverse dependents are rebuilt together.
+- Add `--cmake-clean-cache` only to a package whose cache reports a different
+  source directory or install mode. Do not use it for every build.
+- Upstream Nav2 comes from `/opt/nav2_underlay`. Do not rebuild workspace Nav2
+  sources unless `MOLE_ALLOW_NAV2_WORKSPACE_OVERLAY=true` is an intentional
+  Nav2 development experiment.
+
+Machine-workspace builds use copied installs; omit `--symlink-install`.
+`mole_highlevel_controller_cpp` must install its trusted policy inventory and
+models as regular files:
+
+```bash
+colcon build --packages-select mole_highlevel_controller_cpp \
+  --cmake-clean-cache \
+  --cmake-args -DAMENT_CMAKE_SYMLINK_INSTALL=OFF
+```
+
+When converting that package from an older symlink install, CMake can leave
+the old generated links as "up to date." Remove only its generated
+`build/mole_highlevel_controller_cpp` and
+`install/mole_highlevel_controller_cpp` directories, rebuild, and require
+`test ! -L` for the installed policy inventory and selected model. Do not
+clear the workspace or source tree.
+
+Keep compile-time and runtime dependency prefixes consistent; in particular,
+Terra's Nav2 dependencies must resolve from `/opt/nav2_underlay`. Let package
+guards fail loudly, then clean only the affected package. Run one focused test
+at the changed controller or ABI boundary and verify the installed resource,
+not a broad workspace preflight.
+
+For example, after changing `workspace_planner_msgs`, rebuild its actual ABI
+consumers with:
+
+```bash
+colcon build --packages-above workspace_planner_msgs
+```
 
 ## Single Local Workspace
 
@@ -109,6 +206,14 @@ Stop the run, recover the estimator, and restart the owner so the one-shot
 runtime profile and plan are registered together again.
 
 ## Terrain SDF Refresh
+
+Decision (2026-09-27): **one SDF refresh per arm motion**, then reuse that
+snapshot throughout the motion. Terra must explicitly pass `sdf_auto_update=false`
+and `sdf_max_age_sec=0`; the arm launch defaults alone are not the Terra contract.
+Verify the live `tuning.terrainCollision.sdfAutoUpdate` parameter is false.
+`auto_update_new_grid_map` rebuilds during motion are a configuration regression.
+Keep mapping live and retain the successful post-request-map admission gate;
+zero age expiration does not permit skipping that gate.
 
 Keep `recompute_terrain_sdf_on_target: false` in the reviewed profile or stage.
 That disables automatic rebuilds on target updates and policy execution. Terra's
@@ -167,6 +272,36 @@ require the owner log to report `Manual navigation completion accepted` before
 assuming execution advanced.
 
 ## Failure Triage
+
+Capture the first failure and fix that boundary before retrying. Do not loop
+through whole-stack restarts or relax an unrelated safety condition to get past
+it. For a known intermittent failure, one clean retry is useful; recurrence
+calls for evidence, not another identical restart.
+
+**A hung arm:** if `ros:arm_stall_watch` is capturing, do not restart until it
+prints `capture complete`. Inspect the capture, not just the last ROS log line.
+On rslpc the helper is `current_base/arm_stall_watchdog.py`; its manual mode is
+`python3 arm_stall_watchdog.py --capture-now PID`. It records threads, kernel
+stacks, shared-memory mappings, log tail and GDB without commanding the robot.
+The GDB step has a 180 s timeout. Check `kernel.yama.ptrace_scope` when attach is
+rejected; it was set to 0 for this session and resets at reboot. Do not assume
+an old permission failure still applies.
+
+If GDB attachment to the main thread times out while one FIFO thread consumes a
+core, wait for the original debugger to exit, identify the busy TID from
+`/proc/PID/task/*/schedstat`, then capture that TID directly with bounded GDB.
+This succeeded where main-thread attach could not. Do not run two debuggers or
+change live priorities to unblock an armed controller: save the evidence, stop
+the owner normally, and apply scheduling changes on its next start.
+
+**Registration errors:** compare the loader's BASE sample and the planner's
+later sample. Small yaw variation previously exceeded a 0.001 rad heading-search
+margin; the current tested margin is 0.01 rad. Physical lane permission,
+full-blade checks, station tolerance and the 0.15 rad maximum window still apply.
+Do not re-register the trench to work around every controller restart. A raster
+rotation failure during redundant re-registration is a reason to reuse the
+already validated frozen placement, not to drop conflicting cells silently.
+
 
 When Terra stops after a scoop starts, read the first executor failure and the
 latest Dig3D termination blocker before changing geometry or restarting. A
