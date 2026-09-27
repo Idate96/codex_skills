@@ -306,6 +306,19 @@ rotation failure during redundant re-registration is a reason to reuse the
 already validated frozen placement, not to drop conflicting cells silently.
 
 
+**Pullup stops near completion:** compare the last requested joint velocities
+with measured motion and every actual completion gate before changing a timeout.
+A taper can command velocities below the hydraulic deadband while positive
+clearance error remains. The current shared pullup ramps to its configured lift
+speed and retains it until measured completion or the finite height backstop.
+Do not treat absence of measured motion as proof of collision or an empty bucket.
+For `loaded_carry`, the loaded extraction curl window is distinct from the
+ordinary `term_curled_enough` flag; false on that ordinary flag need not block
+loaded completion. Whole-bucket clearance also differs from rear/tip clearance.
+Inspect `term_bucket_clearance`, `term_close_threshold`, loaded cut/fill/curl
+qualification and the command/measurement trace together. An armed dump action
+waiting on a moving handoff is not evidence that dumping has started.
+
 When Terra stops after a scoop starts, read the first executor failure and the
 latest Dig3D termination blocker before changing geometry or restarting. A
 `Dig action timed out after <N>s` failure means the executor deadline expired;
