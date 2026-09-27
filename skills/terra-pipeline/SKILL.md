@@ -61,8 +61,11 @@ recovery. Do not ask again unless the intended motion or conditions change.
 
 For an existing registered rslpc session, inspect the saved profile and receipt
 under `~/Downloads/terra_machine_plans_20260925/site_registration_v2/current_base`
-before preparing another placement. This is session evidence, not a default
-site for future experiments.
+before preparing another placement. The frozen session profile is
+`straight_frozen_local.yaml`, used by `start_terra.sh`; the older
+`straight_current_base.yaml` would re-register on every start. Preserve newer
+post-dig terrain when restarting the frozen package. These are session artifacts,
+not a default site for future experiments.
 
 ## Machine Contract
 
