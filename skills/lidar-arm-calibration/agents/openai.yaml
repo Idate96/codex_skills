@@ -1,0 +1,4 @@
+interface:
+  display_name: "LiDAR Arm Calibration"
+  short_description: "Calibrate the M445 front-left LiDAR against arm kinematics"
+  default_prompt: "Use $lidar-arm-calibration to capture static arm poses, register raw front-left LiDAR points against the TF-posed URDF arm meshes, and compare LiDAR-mount versus joint-offset models before debugging Dig3D depth."
