@@ -139,7 +139,7 @@ ros2 param get /mole/mole_estimator_node gnss_params.useGnssReference   # must b
 ```
 
 Configs exist for `hongg_lower_field`, `hongg_upper_field`, `dfab_pavilion`,
-and `arche`; `config_overlay` merges over the base config, and `design_map:=`
+`arche`, and `site_20260925`; `config_overlay` merges over the base config, and `design_map:=`
 resolves the same overlay by site name. Verified 2026-08-19 on the lower field:
 without it the `hong0521_v3` survey sat 3.2 m low and no translation fit could
 recover it; with it the same survey aligned at +0.022 m median with no shift,
@@ -147,6 +147,36 @@ and the anchoring reproduced to 1 cm in x/y across a full stack restart.
 
 Check `gnss_params.useGnssReference` before diagnosing any map-alignment
 problem — it is one command and it is the usual cause.
+
+### Site survey
+
+For a datum-anchored survey (survey launches live in `open3d-mapping`), keep
+the wrapper away from the estimator and elevation mapping, then start the
+estimator yourself with the site overlay (verified 2026-10-03):
+
+```bash
+"$STARTUP" --ws "$ROBOT_WS" --no-estimator --no-elevation-mapping --no-foxglove
+tmux new-window -d -t ros -n estimator "cd '$ROBOT_WS' && source install/setup.bash && \
+  export LD_LIBRARY_PATH=/usr/local/lib:\${LD_LIBRARY_PATH:-} && \
+  ros2 launch mole_estimator mole_estimator.launch.py use_sim_time:=false \
+    urdf_xacro_endeffector_type:=shovel robot_namespace:=mole \
+    config_overlay:=$ROBOT_WS/install/mole_estimator/share/mole_estimator/config/mole_estimator_reference_site_20260925.yaml; exec bash"
+```
+
+Do not use the wrapper's `--estimator-config` (it passes `config:=`, a full
+config replacement, not an overlay) or `--design-map-name` (it also loads a
+design map into perception). Verify `gnss_params.useGnssReference: True` and
+top-level `/mole/state` `status: 1` (`STATUS_OK`) before surveying; the
+`status: 3` lines under `actuators` are per-actuator `STATUS_OPERATIONAL`, not
+estimator readiness.
+
+The tmux-continuum restore still fires on the first tmux session after a
+reboot, even through the wrapper: on 2026-10-03 it restored 21 idle windows and
+the estimator landed in a window named `terra_owner`. Do not trust window
+names: map processes to panes with
+`tmux list-panes -a -F '#{session_name}:#{window_name} #{pane_pid}'` and
+`pgrep -aP <pane_pid>`, move idle restored windows to a `ros_restored` session
+instead of killing them, then rename the live windows.
 
 ### Lower-field local-workspace testing
 

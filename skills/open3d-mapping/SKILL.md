@@ -1,66 +1,138 @@
 ---
 name: open3d-mapping
-description: "Capture, generate, debug, or sync dense 1 cm camera-colored Moleworks LiDAR maps. Use for static accumulations, Open3D SLAM diagnostics, PLY/PCD export, and Foxglove-ready artifacts."
+description: "Run Moleworks site surveys with the `mole_mapping` launches: a datum-anchored elevation/excavation map saved to `mole_maps`, or a dense 1 cm camera-colored 3D scene exported as PLY/PCD. Use for site surveys, elevation maps, colored point clouds, offline scene-to-GridMap conversion, and Open3D SLAM diagnostics."
 ---
 
-# Open3D Mapping
+# Site Survey And Open3D Mapping
 
-Default to the static camera-colored accumulator at `0.01 m` voxel size. Adjust capture duration and min/max radius before changing density; change voxel size only when the user explicitly asks.
+The survey owner is `moleworks_ros/perception/mole_mapping` (`README.md`,
+`launch/survey_excavation.launch.py`, `launch/survey_scene.launch.py`,
+`scripts/capture_scene.py`; added in `e221b15b1`). Read the README before
+changing arguments; this skill is the agent runbook around it.
 
 ## Route
 
-1. **Dense static site map:** use `record_colored_map_fast.sh` (default).
-2. **Manual static capture:** run the colorizer and `accumulate_pointcloud_topic.py` when debugging or customizing topics/frames.
-3. **Open3D SLAM:** use only for submaps, odometry, registration, or loop-closure diagnostics. It is not the default dense artifact because lagging buffers and space carving can drop points or create holes.
-4. **Existing map:** export or sync it without restarting mapping nodes.
+1. **Elevation / excavation map** (terrain GridMap for Terra or a saved site
+   surface): `survey_excavation.launch.py`, then `save_map.launch.py`.
+2. **Colored 3D scene** (XYZ/RGB at 1 cm in `map`, including walls and
+   overhangs): `survey_scene.launch.py`, then `/mole/save_scene`.
+3. Both can run side by side; scene capture is independent of the GridMap.
+4. **Terra already owns elevation/excavation mapping:** do not start
+   `survey_excavation`; save Terra's running map with `save_map.launch.py`.
+5. **Open3D SLAM** only for registration, odometry, submap, or loop-closure
+   diagnostics: read [references/open3d-slam.md](references/open3d-slam.md).
+6. Sparse uncolored LiDAR export: `mole-lidar-accumulator`.
 
-Read [references/manual-and-slam.md](references/manual-and-slam.md) only for manual capture, Open3D SLAM, or hole/throughput diagnosis.
+## Prerequisites
 
-## Fast Capture
+Every survey needs the fixed site datum. Run the estimator with the site
+reference overlay and pass the same YAML to the survey; otherwise `map` is
+wherever the estimator initialized and saved maps will not align later. The
+`robot-startup` "Site survey" section has the bringup.
 
 ```bash
-SKILL="${CODEX_HOME:-$HOME/.codex}/skills/open3d-mapping"
-
-# Default 45-second static capture
-"$SKILL/scripts/record_colored_map_fast.sh"
-
-# Let the user stop capture manually
-"$SKILL/scripts/record_colored_map_fast.sh" --duration-sec 0
-
-# Capture and sync after successful artifact generation
-"$SKILL/scripts/record_colored_map_fast.sh" --sync-perseverance
+: "${ROBOT_WS:?Set ROBOT_WS to the verified main workspace}"
+SITE_REFERENCE_YAML="$ROBOT_WS/install/mole_estimator/share/mole_estimator/config/mole_estimator_reference_<site>.yaml"
+ros2 param get /mole/mole_estimator_node gnss_params.useGnssReference   # must be True
 ```
 
-The wrapper auto-detects `~/ros2_ws` or `~/moleworks/ros2_ws`; set `MOLEWORKS_ROS_WS` to override. It checks required topics, reuses an existing `/mole/colored_point_cloud` publisher instead of starting a duplicate, copies the installed Mole MID360 Open3D profile, warms TF, accumulates in `map`, writes PLY/PCD plus run notes, and stops only the temporary colorizer it created.
+- `low_level` running; estimator with that overlay and `/mole/state`
+  top-level `status: 1` (`STATUS_OK`).
+- `perception` with LiDAR and self filter but no elevation mapping (wrapper
+  `--no-elevation-mapping`, i.e. `enable_elevation_mapping:=false`). The
+  wrapper still starts perception's own `/mole/excavation_mapping`; the
+  survey map is the global `/excavation_mapping`, which `save_map` targets.
+- Colored scene only: camera. The default robot-startup stack does **not**
+  publish `/camMainView/*`. Start it in its own window:
 
-## Required Preflight
+```bash
+tmux new-window -d -t ros -n camera "cd '$ROBOT_WS' && source install/setup.bash && \
+  ros2 launch mole_perception_bringup camera.launch.py use_sim_time:=false robot_namespace:=mole; exec bash"
+timeout 5 ros2 topic echo /camMainView/camera_info --once --field header
+timeout 5 ros2 topic echo /mole/livox_lidar_publisher/lidar_front_left_filtered \
+  --once --field header --qos-reliability best_effort
+```
 
-Require these before capture:
+## Excavation-Map Survey
 
-- `/mole/livox_lidar_publisher/lidar_front_left`
-- `/camMainView/image_raw`
-- `/camMainView/camera_info`
-- `/tf` and `/tf_static`
-- `Main -> livox_front_left` and `map -> livox_front_left` with 10–15 second TF timeouts
-- sufficient disk space under the selected output root
+```bash
+tmux new-window -d -t ros -n survey_map "cd '$ROBOT_WS' && source install/setup.bash && \
+  ros2 launch mole_mapping survey_excavation.launch.py robot_namespace:=mole \
+    map_reference_config_file:='$SITE_REFERENCE_YAML'; exec bash"
+```
 
-Keep `publish_tf:=false` when running Open3D beside the estimator. Open3D must not own a second localization TF tree.
+It waits up to 60 s for three `STATUS_OK` states (and shuts down otherwise),
+then starts elevation and excavation mapping in empty-map survey mode on the
+filtered front LiDAR. It starts no filter or accumulator; pass
+`pointcloud_topic:=` to use an existing accumulated cloud. Move the cabin/boom
+or drive for coverage: only measured `elevation` cells patch the terrain, and
+unknown cells stay gaps even when a visualization layer inpaints them.
 
-## Artifacts And Verification
+Save from the workspace root:
 
-The fast path writes a timestamped directory under `/home/lorenzo/mcap` by default. Require:
+```bash
+cd "$ROBOT_WS"
+ros2 launch mole_mapping save_map.launch.py map_name:=<name> \
+  artifact_stage:=surface robot_namespace:=mole use_nvblox:=false
+```
 
-- `colored_accum_1cm.ply`
-- `colored_accum_1cm.pcd`
-- `RUN_NOTES.md`
-- topic/header/backprojection logs
+This writes `src/mole_maps/maps/<name>/` (git-lfs tracked). `surface` keeps
+terrain only; `design` keeps design and progress layers. Check the launch
+result and the new files before stopping the survey window.
 
-Verify the files are non-empty and record point counts. A static capture maps only the visible frustum; move or pan the sensor rig for site coverage.
+## Colored Scene Survey
 
-For manual Open3D export, use the bundled `export_pointcloud_topic.py`; for input throttling during SLAM diagnosis, use `throttle_pointcloud_topic.py`.
+```bash
+SURVEY_DIR="$HOME/mcap/site_rgb_$(date -u +%Y%m%d_%H%M%S)"
+tmux new-window -d -t ros -n survey_scene "cd '$ROBOT_WS' && source install/setup.bash && \
+  ros2 launch mole_mapping survey_scene.launch.py output_dir:='$SURVEY_DIR' \
+    launch_colorizer:=true map_reference_config_file:='$SITE_REFERENCE_YAML'; exec bash"
+```
+
+Drop `launch_colorizer:=true` if `/mole/colored_point_cloud` already has a
+publisher; never run two colorizers on one output. The colorizer keeps
+out-of-camera points gray. Defaults: `voxel_size:=0.01`, no range crop
+(`min_range_m`/`max_range_m`, sensor frame), and per-cloud stamped TF into
+`map` (missing TF skips the cloud; no latest-pose fallback).
+
+Snapshot while capture continues:
+
+```bash
+ros2 service call /mole/save_scene std_srvs/srv/Trigger '{}'
+```
+
+Each call writes a new timestamped directory under `SURVEY_DIR` with
+`scene.ply`, `scene.pcd` (binary, uncompressed), `scene.yaml` (frame, voxel,
+accepted/skipped clouds, point count, bounds), and `site_reference.yaml` (copy
+of the datum). An empty capture fails the service. Require `success: true`,
+non-empty files, and plausible skipped-cloud counts. Save explicitly before
+Ctrl-C on a large capture.
+
+One stationary scan sees only its visible surfaces: capture overlapping
+viewpoints over the approach, base stations, dig/dump areas, and ground hidden
+by the chassis or tool. To keep raw evidence, start the README's
+`rosbag_record.launch.py` command into `$SURVEY_DIR/evidence` before capturing.
+
+Optional offline GridMap from a scene (no robot needed):
+
+```bash
+ros2 run mole_excavation_mapping pcd_to_grid_map.py "$SCENE_DIR/scene.pcd" \
+  --output "$SCENE_DIR/scene_grid_map" --frame-id map --resolution 0.1 \
+  --no-interpolate --nearest-fill-distance 0.0 --no-force
+```
+
+It bins heights; it is not a ground classifier. Crop vegetation, walls, and
+machinery first, and keep the 3D cloud for meshing.
+
+The old skill-local static accumulator (`record_colored_map_fast.sh`) is
+superseded by `survey_scene.launch.py`. Only for a workspace that predates
+`e221b15b1`, restore `scripts/` from codex_skills commit `e6b84b5`.
 
 ## Sync And Cleanup
 
-Normalize `perserverance` or `perservance` to the configured SSH host `perseverance`. Verify local and remote checksums after manual `rsync`.
+Normalize `perserverance` or `perservance` to the SSH host `perseverance`.
+Verify local and remote checksums after `rsync`.
 
-Stop only nodes started by this workflow: the temporary Open3D launch, colorizer, throttle, or accumulator. Do not stop the estimator, sensor drivers, elevation/excavation mapping, or Foxglove unless the user explicitly asks.
+Save before stopping. Stop only windows this workflow created (`survey_map`,
+`survey_scene`, `camera` if started here, Open3D). Do not stop the estimator,
+sensor drivers, perception, Terra, or Foxglove unless the user asks.

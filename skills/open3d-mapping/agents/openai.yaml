@@ -1,4 +1,4 @@
 interface:
-  display_name: "Open3D Mapping"
-  short_description: "Capture dense camera-colored LiDAR maps"
-  default_prompt: "Use $open3d-mapping to capture, inspect, export, or sync a dense 1 cm camera-colored LiDAR map."
+  display_name: "Site Survey Mapping"
+  short_description: "Survey elevation maps and camera-colored 3D scenes"
+  default_prompt: "Use $open3d-mapping to run a datum-anchored site survey: an excavation/elevation map saved to mole_maps, or a 1 cm camera-colored 3D scene exported as PLY/PCD."

@@ -7,7 +7,7 @@ description: Run Moleworks ROS 2 pointcloud accumulation and pointcloud export w
 
 ## Overview
 
-Use the ROS package `mole_lidar_accumulator` for Mole Livox pointcloud accumulation and point-based cloud export. Prefer this package for sparse filtered LiDAR accumulation; use Open3D only when the user explicitly asks for dense/colorized Open3D maps, submaps, or camera-colored output.
+Use the ROS package `mole_lidar_accumulator` for Mole Livox pointcloud accumulation and point-based cloud export. Prefer this package for sparse filtered LiDAR accumulation. For a site survey (elevation/excavation map or 1 cm camera-colored scene), use `open3d-mapping`, which routes to the `mole_mapping` survey launches.
 
 ## Environment
 
@@ -78,11 +78,13 @@ ros2 topic echo /mole/livox_lidar_publisher/lidar_front_left_accum --once --fiel
 timeout 6 ros2 topic hz /mole/livox_lidar_publisher/lidar_front_left_accum
 ```
 
-For perception bringup/survey launch, enable the existing integration instead of starting a duplicate accumulator. The survey launch requires robot self filtering when accumulation is enabled:
+For perception bringup or the advanced `mole_mapping survey.launch.py`, enable the existing integration instead of starting a duplicate accumulator. `survey.launch.py` requires robot self filtering when accumulation is enabled:
 
 ```bash
 enable_pointcloud_accumulation:=true enable_robot_self_filter:=true
 ```
+
+`survey_excavation.launch.py` never starts an accumulator. To survey from a running one, pass `pointcloud_topic:=livox_lidar_publisher/lidar_front_left_accum`.
 
 ## Pointcloud Export
 

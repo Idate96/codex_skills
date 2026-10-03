@@ -44,7 +44,8 @@ off. Do not grow it into a second robot runbook.
 | DIG recording or replay | `dig-bag-recording` / `dig-bag-replay` |
 | Estimator bag reprocessing/evaluation | `state-estimator-evaluate-bags` |
 | Estimator-container bringup | `mole-graph-msf-container` |
-| Sparse or camera-colored LiDAR export | `mole-lidar-accumulator` / `open3d-mapping` |
+| Site survey: elevation/excavation map or camera-colored 3D scene | `open3d-mapping` |
+| Sparse uncolored LiDAR accumulation or export | `mole-lidar-accumulator` |
 
 If no narrow skill owns the operation, use the current package README and
 launch/interface source instead of adding procedure here.
