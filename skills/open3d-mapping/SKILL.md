@@ -78,7 +78,27 @@ ros2 launch mole_mapping save_map.launch.py map_name:=<name> \
 
 This writes `src/mole_maps/maps/<name>/` (git-lfs tracked). `surface` keeps
 terrain only; `design` keeps design and progress layers. Check the launch
-result and the new files before stopping the survey window.
+result and the new files before stopping the survey window. Pass
+`maps_root:=<survey dir>/maps` to keep scratch surveys out of `mole_maps`; a save
+takes about 1 s, so a 2-minute save loop is cheap insurance during a long drive.
+Do not record `/excavation_mapping/grid_map`: about 29 MB per message at 5 Hz.
+
+Post-process offline (vegetation spikes, then enclosed holes), check the preview
+PNG, and compare in Foxglove:
+
+```bash
+ros2 run mole_excavation_mapping postprocess_survey_map.py \
+  <maps>/<name>/<name>_surface <maps>/<name>_post/<name>_post_surface \
+  --keep-box X_MIN Y_MIN X_MAX Y_MAX   # walls/containers to keep, map frame
+ros2 run mole_excavation_mapping publish_grid_map_artifacts.py \
+  /survey/elevation_measured=<maps>/<name>/<name>_surface \
+  /survey/elevation_post=<maps>/<name>_post/<name>_post_surface
+```
+
+If the survey's elevation map lags (TF "extrapolation into the past", map stamps
+several seconds old), profile `elevation_mapping_node` with `sudo py-spy`; on
+2026-10-03 full-map inpainting saturated it (fixed in elevation_mapping_cupy
+`cf74ed6`).
 
 ## Colored Scene Survey
 
