@@ -1,0 +1,4 @@
+interface:
+  display_name: "ZED Camera Startup"
+  short_description: "Start and verify the Mole ZED 2i sidecar"
+  default_prompt: "Use $zed-camera-startup to start the manipulation ZED 2i and verify its native colored point cloud in Moleworks ROS."

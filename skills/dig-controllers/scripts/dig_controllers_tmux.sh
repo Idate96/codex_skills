@@ -331,13 +331,16 @@ start_helpers_if_idle() {
 
   tmux send-keys -t "$right_pane" "cd \"$WS\" && source install/setup.bash" C-m
   tmux send-keys -t "$right_pane" "echo \"Controller: $CONTROLLER ($NODE_NAME)\"" C-m
-  tmux send-keys -t "$right_pane" "echo \"Waiting for $NODE_NAME lifecycle service...\"" C-m
-  tmux send-keys -t "$right_pane" "deadline=\$((SECONDS + 60)); until ros2 service list --no-daemon --spin-time 4 2>/dev/null | grep -Fxq $NODE_NAME/get_state; do if (( SECONDS >= deadline )); then echo 'Timed out waiting for $NODE_NAME/get_state' >&2; exit 1; fi; sleep 1; done" C-m
+  tmux send-keys -t "$right_pane" "echo \"Waiting for $NODE_NAME lifecycle service via a direct get_state call...\"" C-m
+  # Do not gate on `ros2 service list`: the robot's Fast DDS discovery-server
+  # client can omit a healthy lifecycle endpoint from short-lived graph lists.
+  # A bounded direct request is the authoritative reachability probe.
+  tmux send-keys -t "$right_pane" "deadline=\$((SECONDS + 60)); until timeout 6 ros2 service call $NODE_NAME/get_state lifecycle_msgs/srv/GetState '{}' >/dev/null 2>&1; do if (( SECONDS >= deadline )); then echo 'Timed out calling $NODE_NAME/get_state directly' >&2; exit 1; fi; sleep 1; done; echo 'Lifecycle endpoint reachable.'" C-m
 
   if [[ "$AUTO_ACTIVATE" == "true" ]]; then
-    tmux send-keys -t "$right_pane" "ros2 service call $NODE_NAME/change_state lifecycle_msgs/srv/ChangeState '{transition: {id: 1}}'" C-m
-    tmux send-keys -t "$right_pane" "ros2 service call $NODE_NAME/change_state lifecycle_msgs/srv/ChangeState '{transition: {id: 3}}'" C-m
-    tmux send-keys -t "$right_pane" "ros2 service call $NODE_NAME/get_state lifecycle_msgs/srv/GetState '{}'" C-m
+    tmux send-keys -t "$right_pane" "timeout 30 ros2 service call $NODE_NAME/change_state lifecycle_msgs/srv/ChangeState '{transition: {id: 1}}'" C-m
+    tmux send-keys -t "$right_pane" "timeout 30 ros2 service call $NODE_NAME/change_state lifecycle_msgs/srv/ChangeState '{transition: {id: 3}}'" C-m
+    tmux send-keys -t "$right_pane" "timeout 15 ros2 service call $NODE_NAME/get_state lifecycle_msgs/srv/GetState '{}'" C-m
   else
     tmux send-keys -t "$right_pane" "echo \"Manual lifecycle (optional):\"" C-m
     tmux send-keys -t "$right_pane" "echo \"  ros2 service call $NODE_NAME/change_state lifecycle_msgs/srv/ChangeState '{transition: {id: 1}}'\"" C-m

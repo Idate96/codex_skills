@@ -1,0 +1,11 @@
+# Foxglove must never slow the machine graph (2026-09-29: a viewer on the 20-40 MB grid maps
+# starved excavation mapping and tripped carve/terrain-age timeouts). Best-effort subscriptions
+# drop messages instead of back-pressuring reliable publishers; queues keep only the latest.
+# The wrapper adds port/use_sim_time and runs the bridge at nice 19 on dedicated CPUs.
+foxglove_bridge:
+  ros__parameters:
+    address: 0.0.0.0
+    best_effort_qos_topic_whitelist: [".*"]
+    min_qos_depth: 1
+    max_qos_depth: 1
+    send_buffer_limit: 10000000

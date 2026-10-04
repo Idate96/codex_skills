@@ -43,6 +43,13 @@ ros2 launch mole_bag_tools rosbag_record.launch.py \
 
 ## Start OCS2
 
+Decision (2026-09-27): compute the terrain SDF once per arm motion and reuse
+it during the motion. Keep `sdf_auto_update=false` and `sdf_max_age_sec=0`.
+Standalone move/dump actions own one explicit start refresh; in Terra, the BT
+owns that refresh and action-level recomputes must be disabled. Verify the live
+`tuning.terrainCollision.sdfAutoUpdate` value is false. A failed post-request-map
+refresh blocks motion; do not substitute an old map or fabricate freshness.
+
 Run this in the robot stack's `ocs2` tmux pane:
 
 ```bash

@@ -40,6 +40,12 @@ ssh starship
 - Fail fast on missing prerequisites, missing Tailscale profiles, or SSH mismatches.
 - Do not silently retry with alternate users, hosts, or credentials.
 - Print the exact SSH output and extract the approval URL when Tailscale requires browser authorization.
+- From inside the rslpc robot container (2026-10-04) there is no `tailscale` CLI.
+  - `starship` resolved to `100.102.113.112` on tailnet `tail01d39b` and timed out.
+  - `starship-1` (`100.110.71.40`) is on the other tailnet and timed out too.
+  - The two machines were on different tailnets. Switch the profile on the rslpc host (outside the container),
+    which drops sessions running over the current tailnet, or move data via GitHub instead of retrying other
+    routes.
 
 ## Script
 

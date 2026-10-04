@@ -66,7 +66,10 @@ STARTUP="${CODEX_HOME:-$HOME/.codex}/skills/robot-startup/scripts/robot_startup_
 
 The default managed layout is `low_level`, `perception`, `estimator`, then
 `foxglove`. It uses `mole`, an empty TF prefix, the geometry-only `shovel`
-tool, and `mapping_profile:=local`. Useful explicit options are:
+tool, and `mapping_profile:=local`. On hardware, `mole_estimator.launch.py`
+also owns the temporary fail-closed GNSS status shim at
+`<repo>/mole_estimator/scripts/gnss_status_shim.py`; do not create a separate
+shim pane. Useful explicit options are:
 
 - `--attach`, `--restart`, `--session <name>`, `--ws <path>`
 - `--robot-namespace mole --tf-prefix <prefix>`
@@ -341,9 +344,30 @@ timeout 5 ros2 topic echo /hal/septentrio_gnss_driver/navsatfix --once | sed -n 
 `pvtgeodetic.mode: 4` is RTK fixed and must map to `NavSatFix.status.status: 2`
 (`STATUS_GBAS_FIX`). When the receiver reports 4 but NavSatFix carries 0, the
 HAL driver's mapping is at fault, not the estimator and not the GNSS antenna;
-`gnss_measurement_gate.hpp` accepts only `STATUS_GBAS_FIX`, so every position is
-dropped before the covariance and heading checks run. That driver lives outside
-the container, so fix it at its owner. Do not relax the gate to work around it.
+`gnss_measurement_gate.hpp` accepts only `STATUS_GBAS_FIX`, so every raw
+position is dropped before the covariance and heading checks run.
+
+Until the deployed HAL fork is fixed, the hardware estimator launch owns
+`mole_estimator/scripts/gnss_status_shim.py`. It requires a time-matched
+correction-backed `PVTGeodetic.mode`, changes only the NavSatFix status byte,
+and republishes on
+`/<robot_namespace>/gnss/navsatfix_rtk_corrected`; all other samples pass
+through unchanged and remain rejected by the estimator gate. Verify the owned
+process and output rather than hand-launching another copy:
+
+```bash
+ros2 node info "/${ROBOT_NAMESPACE:-mole}/gnss_status_shim"
+timeout 5 ros2 topic echo \
+  "/${ROBOT_NAMESPACE:-mole}/gnss/navsatfix_rtk_corrected" \
+  sensor_msgs/msg/NavSatFix --once | sed -n '/^status:/,+2p'
+```
+
+If the shim executable is missing, build `mole_estimator` in the verified main
+workspace and restart only the estimator owner. Once the raw HAL NavSatFix
+reports `STATUS_GBAS_FIX` correctly, remove the shim script, its
+`mole_estimator.launch.py` Node and topic override, and its CMake install entry
+together; then remove this temporary skill guidance. The HAL driver itself runs
+outside the container and remains outside robot-startup's restart authority.
 
 ## Focused Rebuild Handoff
 

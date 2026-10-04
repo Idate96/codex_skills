@@ -1,4 +1,4 @@
 interface:
   display_name: "DIG Controllers"
-  short_description: "Controller-only DIG launch and lifecycle handling"
-  default_prompt: "Use $dig-controllers to start or restart the requested DIG controller in tmux."
+  short_description: "DIG controllers, repeat scoops, and target depth edits"
+  default_prompt: "Use $dig-controllers to handle the requested DIG controller, scoop, or existing target depth change."

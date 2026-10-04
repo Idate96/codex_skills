@@ -24,11 +24,20 @@ high-level graph. On the machine, start only low-level control and
 
 ## Fast Machine Iteration
 
-Machine time is scarce. Finish edits, focused tests and installation before the
-next operator test; reuse verified session facts instead of repeating discovery.
+Machine time is scarce. When the operator requests immediate hardware testing,
+finish the affected build and installation, then perform essential live checks
+and proceed under existing motion authorization. Offline test suites must not
+block the requested robot slot: run them later or in parallel when they do not
+compete with control, and report pending validation honestly. Preserve actual
+interlocks, fresh state, command ownership, terrain admission and physical
+limits. Reuse verified session facts instead of repeating discovery.
 Existing operator authorization covers the requested cycle and its ordinary
 recovery. Do not ask again unless the intended motion or conditions change.
 
+- After a symlink-install of the controller package, check the installed Dig3D
+  policy inventory: Terra requires a regular file. Materialize its exact reviewed
+  bytes at the installed path if the build regenerated a symlink; do not weaken
+  policy admission or change the selected model to get past this error.
 - Start by inspecting the current owner, latest failed BT leaf and selected
   profile. Reuse running low-level control, estimator and Foxglove. Restart only
   the sole application owner when the changed installed code requires it.
@@ -45,6 +54,10 @@ recovery. Do not ask again unless the intended motion or conditions change.
   readiness loop to starve its peers on the shared core. Normal time-sharing
   scheduling is the supported arm default; do not restore the old boost while
   tuning MPC speed. See the OCS2 arm validation runbook's CPU placement section.
+- During idle debugging pauses after execution has stopped, set and verify 900 RPM
+  when the operator requests reduced idle speed. Restore and verify 1600 RPM
+  before releasing motion. Do not throttle down during an active move, DIG,
+  pullup, dump, or momentary controller handoff.
 - Before releasing execution, check the actual machine interlocks/RPM, fresh
   state, `map` to the selected tool TF, current pose tolerance and recorder
   readiness. A stale-source SAFE_STOP needs normal lifecycle/owner recovery;
@@ -208,6 +221,32 @@ estimator drift makes the check fail, do not navigate or widen the tolerance.
 Stop the run, recover the estimator, and restart the owner so the one-shot
 runtime profile and plan are registered together again.
 
+## Direct Pullup-to-Dump Handoff
+
+Current decision (2026-09-27): UGEP owns pullup to measured completion. Terra
+then acknowledges STOP_DIG, disables DIG, finalizes carving, resumes map updates,
+refreshes the SDF once, selects destination endpoints and resumes MPC through
+its stopped-token handshake. DumpLeg gives MPC a fixed transport pose target;
+MPC generates the connecting motion. Do not restore early concurrent DumpLeg,
+PREPARE_EXTRACTION, moving-prefix trajectories or carry-splice deadlines.
+MPC terrain/joint/source guards and measured opening gates remain in force.
+Preopening starts within the 0.65 m measured dump zone, even with carry-angle
+tracking error; do not require attaining the closed-angle preference before
+commanding opening. This restores approach-overlapped opening. Destination
+dumps admit only preopen and release endpoints (moleworks_ros `53d3c908a`):
+there is no closed-entry waypoint. DumpLeg carries at the closed angle toward
+the admitted preopen point, with the orientation target at that point's cabin
+heading (`482a116fb`), and the perceptive MPC owns the route. A closed-entry
+witness had rejected all 164 ranked sites by 2 mm once the spoil pile grew
+near the reach limit. Do not restore it or loosen physical reserves instead.
+Full release starts on fresh measured arrival within 0.10 m of the preopen
+target, without an intermediate joint-rest or angle gate. Do not restore the
+September 23 five-second no-progress watchdog: a valid .045 m/.17-degree
+preopen arrival was aborted while waiting for rest. Keep the overall action
+timeout, fresh state/contact ownership, physical limits and final release rest.
+The 0.65 m approach-opening lead is separate from Terra's permitted deposition
+mask; it never enlarges where soil may be deposited.
+
 ## Terrain SDF Refresh
 
 Decision (2026-09-27): **one SDF refresh per arm motion**, then reuse that
@@ -297,6 +336,16 @@ This succeeded where main-thread attach could not. Do not run two debuggers or
 change live priorities to unblock an armed controller: save the evidence, stop
 the owner normally, and apply scheduling changes on its next start.
 
+**Dump fails immediately after successful pullup:** distinguish reachable destination
+admission from solver convergence. The September 23 loaded-carry relaxed-log
+penalty caused every policy to be rejected when the measured bucket was about
+22 degrees below the carry preference. The September 27 main-workspace fix uses
+a moderate squared-hinge preference, retaining the requested closed angle and
+all physical bounds. Inspect the first IPM failure's group/knot/row/margin;
+policy staleness and the later no-progress timeout can be consequences, not the
+cause. Preserve the recorded observation/target and compare the component
+benchmark before moving the dump point or weakening limits.
+
 **Registration errors:** compare the loader's BASE sample and the planner's
 later sample. Small yaw variation previously exceeded a 0.001 rad heading-search
 margin; the current tested margin is 0.01 rad. Physical lane permission,
@@ -305,6 +354,17 @@ Do not re-register the trench to work around every controller restart. A raster
 rotation failure during redundant re-registration is a reason to reuse the
 already validated frozen placement, not to drop conflicting cells silently.
 
+
+**One pullup completion path (2026-09-27):** with shared vertical extraction
+enabled, every scoop finishes through active pullup at measured whole-bucket,
+rear/tip clearance, carry curl, lift and pullup reach. Fill does not select or
+block a completion route. Do not add timeout-to-success, empty/full alternatives
+or restore strict policy curl as an alternative pullup finish. The small-scoop
+regression had 10.5% fill against a 20% loaded threshold while scripted curl
+settled inside the carry window but outside ordinary strict curl. The correct
+handoff is immediate when carry geometry qualifies, before the timeout; timeout
+still fails when the physical pose does not qualify. Recording stays off when
+the operator has asked to stop it, including subsequent retries.
 
 **Pullup stops near completion:** compare the last requested joint velocities
 with measured motion and every actual completion gate before changing a timeout.
@@ -315,8 +375,8 @@ Do not treat absence of measured motion as proof of collision or an empty bucket
 For `loaded_carry`, the loaded extraction curl window is distinct from the
 ordinary `term_curled_enough` flag; false on that ordinary flag need not block
 loaded completion. Whole-bucket clearance also differs from rear/tip clearance.
-Inspect `term_bucket_clearance`, `term_close_threshold`, loaded cut/fill/curl
-qualification and the command/measurement trace together. An armed dump action
+Inspect `term_bucket_clearance`, `term_close_threshold`, carry curl, rear/tip
+clearance, lift and the command/measurement trace together. An armed dump action
 waiting on a moving handoff is not evidence that dumping has started.
 
 When Terra stops after a scoop starts, read the first executor failure and the
@@ -338,3 +398,179 @@ DDS environment.
 ## Resource
 
 - Script: `scripts/terra_pipeline_tmux.sh`
+
+## September 27 completion and TF notes
+
+Trench completion excludes the authored free-end 0.5 m and sidewall 0.1 m
+bands, measured from the global trench geometry rather than workspace seams.
+Use elevation sample centres to rasterize the required core; footprint overlap
+otherwise puts samples from the aliasing allowance back into completion. After
+rigid local registration, rebuild this completion partition from the transformed
+authored geometry rather than forward-splatting required samples into the bands.
+When changing the saved global core, also update every frozen waypoint
+`dig_completion_mask` and `metadata.required_cells`; explicit workspace masks
+are validated against the global core, not automatically clipped. Assert that
+the union of station assignments still covers the entire new core. Plan arrays
+are `[x, y]`; the GridMap codec arrays are `[y, x]`.
+Keep the full digging permission and target elevations unchanged. A flat observed
+bottom alone does not prove agreement with the authored depth.
+
+A 0.375 s TF delivery gap aborted a nearly finished dump. MoveLeg/DumpLeg now
+suspend phase decisions for TF older than the 0.25 s settle limit but no older
+than 0.5 s, retaining the admitted target and resetting rest dwell. They never
+use that stale pose to publish a new target, open, or finish. Longer gaps still
+fail; source-state SAFE_STOP is unchanged.
+
+### DIG moves slowly or leaves a high, flat trench bottom
+
+Compare planner and DIG `desired_elevation` topic/layer and DIG offset first.
+Check the selected policy's terrain sampling contract before tuning depth or
+completion tolerances. V42's packaged training config has
+`ros_controller_soil_sampling: false`: its 142D actor expects tip-anchored rows
+inward along cabin X, not the older boom-offset ROS grid in the opposite row
+order. The controller README owns the exact coordinates and normalization.
+Verify the loaded library was restarted after an observation-contract fix.
+Then inspect the depth shield's actual `projection_active`, `correction_norm`,
+and `qp_fallback_count`; `boom_scale` reports the boom-only fallback even when
+the QP owns the command, so it is not evidence of the commanded boom velocity.
+The QP must use the local target-profile height at each cutting-edge point,
+not the highest sample elsewhere in the profile. A higher bank or tilted
+observation frame otherwise raises its effective floor above the local design.
+V42's recorded training configuration has depth projection disabled, whereas
+the robot may apply the ROS shield after the policy; do not assume runtime parity.
+Keep recording off when requested; a bounded live diagnostic subscription is
+sufficient to inspect intervention without starting a bag recorder.
+Capture observations, raw policy actions, post-shield commands, measured joint
+motion and target/tool TF together before attributing the residual to hydraulic
+delay. Policy-publication latency alone does not measure hydraulic response.
+
+## September 27 evening notes
+
+- **Owner shell.** Start the owner from a fresh shell (`exec bash -l` in the
+  pane, or a new window). A pane that once sourced an overlay keeps it in
+  `AMENT_PREFIX_PATH`, and `start_terra.sh` inherits it; check the preflight
+  `workspace_planner=` path after every start.
+- **Frozen design bag topic.** The loader reads GridMap only on `grid_map` or
+  `/grid_map`. A snapshot recorded from `/excavation_mapping/grid_map` aborts the
+  mapper ("Design bag missing/unreadable"); rewrite the same bytes under
+  `grid_map`. Terra checkpoints already use `grid_map`.
+- **Resume.** Terra writes a checkpoint before every scoop under
+  `~/.local/state/moleworks/terra/checkpoints/<map>/<session>/<pair>_<loop>/`
+  (`checkpoint.yaml` + `excavation_map/`). Nothing reads it back
+  (`resume_from_checkpoint.py` was removed on 2026-07-14). To resume, install the
+  latest checkpoint's `excavation_map` as the frozen design; the executor restarts
+  at waypoint 0 and planner progress memory resets.
+- **Stale-policy SAFE_STOP.** It latches until the arm controller's lifecycle is
+  reset; `/mole/terra_executor/restart` does that. Find the rejecting check
+  first. On-time solves were being discarded for millimetre violations: fixed
+  by the verifier's 2 cm terrain allowance and 5e-3 published-bound tolerance
+  (moleworks_ros `0f70a6eeb`) plus IPM restoration within 5e-3 (ocs2 `ros2`
+  `516c59c41`). Restoration failures on `group=state row=19` are the J_EE_PITCH
+  upper stop during loaded carry.
+- **Fake terrain in the loaded bucket.** Soil heaped above the bucket opening
+  passed the 0.25 m self-filter pad and entered the height-only map, so the MPC
+  saw the parked bucket 0.1-0.35 m inside terrain. SHOVEL_1300 z padding is now
+  0.45 m (`9e73c1ef9`).
+- **Dig reach.** V42 with the 1300 mm shovel tracks design depth only at
+  r = 4.1-5.5 m from BASE in hard soil: pullup starts at 3.60-3.80 m, and entry
+  at 6.25-6.56 m needs 0.75-1.0 m of travel. A station whose required core lies
+  outside that band cannot reach COVERAGE_DONE; see
+  `high_level_planning/terra_planner/docs/dig_reach_requirements.md`.
+- **Tests and the live graph.** Never run ROS tests on domain 0 on the robot PC:
+  a planner test published fake GridMaps on the live `/excavation_mapping/grid_map`.
+- **CPU placement.** The MPC is pinned to CPUs 1-2 but not isolated; their SMT
+  siblings 13-14 carry DDS, LiDAR backprojection and Foxglove. Suspect this for
+  a silent >0.5 s solve gap.
+- **Tracing.** `current_base/trace_dig_height.py` now records J_TURN. Use the
+  encoder, not cabin TF, for turn smoothness; `map->CABIN` includes estimator yaw.
+
+## September 29 notes
+
+- **Navigation between stations: use the proper Nav2 stack.** Set
+  `plan.navigation: {kind: nav2, ready_timeout_sec: 300.0}` in the machine profile;
+  `terra.launch.py` then starts Nav2 itself with the hardware parameters
+  (`mole_nav2_bringup/config/nav2_params_hw.yaml`) and converted plans already carry
+  Nav2's goal tolerance as their station tolerance. Do not use `kind: dummy` on a
+  straight trench: it only reverses in a straight line, never corrects forward or
+  lateral error, and on 2026-09-29 each executor restart reversed further until the
+  base sat 0.49 m behind its station. `manual` remains the operator-gate option.
+- **Foxglove must never interfere with the machine.** The wrapper now starts the
+  bridge with `scripts/foxglove_bridge_low_impact.yaml` (best-effort subscriptions on
+  every topic, queue depth 1) at `nice 19`, pinned to `FOXGLOVE_CPUS` (default 20-23)
+  on the machine. A default-QoS bridge viewing the 20-40 MB planner/excavation grid
+  maps ran at 90% CPU, starved excavation mapping (80%), and caused a 9 s carve
+  commit and a stale-terrain Dig3D abort. Restarting only the `foxglove` window is safe.
+- **`is_using_gravis_commands` is unreliable** (Gravis confirmed); do not act on it.
+  The Dig3D machine-command guard is now off by default
+  (`machine_status_gate_abort_timeout_s: 0.0`): its hold-on-false turned a 1 Hz flag
+  flicker into a 54 s frozen scoop. The reliable lock-out signal is
+  `machine_specific_fields` `radio_control/upper_wagon_movement_release` (false while
+  the machine withholds arm motion; returns ~2 s after commands go to zero). Keep the
+  small `record_state`/`record_commands` bag running to give Gravis exact timestamps.
+- **Resuming mid-trench.** The executor always starts at waypoint 0 and has no start
+  index. To resume at station N without driving back, copy the frozen
+  `plans/default.json` and drop the first 2*(N-1) waypoints (renumber `step`); before
+  every owner restart install the newest checkpoint `excavation_map` as the frozen
+  `<map>_design` (move the old one aside, do not delete). Paired dig/dump waypoints must
+  carry identical `dig_permission_wkt`.
+- **Other robustness changes (uncommitted as of 12:30 UTC):** a station completes when
+  every required cell is observed, >=90% are within 5 cm and none is >0.15 m high;
+  extraction finishes at its lift target instead of aborting and lifts to 0.5 m
+  whole-bucket clearance for the MPC; MoveLeg/DumpLeg fail after 6 s without tool
+  motion and the BT retries each once; the machine carve acknowledgement is 15 s; Dig3D
+  keeps digging on map-registration TF up to 1 s old.
+
+## October 4 notes (what worked on the machine)
+
+- **Read the field contracts first:** `docs/src/subsystems/information/terra_field_contracts.md` in moleworks_ros.
+  It pins the operator-approved planner, termination, pull-up, workspace-shape and metrics rules.
+
+**Running the machine while agents edit or build the checkout**
+- Hold the colcon lock for the whole run:
+  `tmux new-window -d -t ros -n build_lock "flock /tmp/colcon_ros2_ws.lock sleep 14400; exec bash"`.
+- Agents build with `flock /tmp/colcon_ros2_ws.lock colcon build ...`.
+- `workspace_planner` is a symlink install, so the owner imports its Python at start. Agents must keep files
+  importable at every save.
+- Release the lock (Ctrl-C in `build_lock`) after the owner exits. Restart the whole owner to pick up builds.
+
+**Release sequence** (worked at 13:35 and 15:29 UTC):
+1. Poll `/machine_status`. `is_autonomy_switch_on` can read false for up to about 30 s after the operator flips it.
+2. Run `set-engine-rpm 1600` once autonomy is on.
+3. Check that `/mole/state` status is 1.
+4. Compare `tf2_echo map BASE` with the plan station. Inside 0.35 m / 0.10 rad Terra logs `BASE already
+   satisfies the station … skipping Nav2`.
+5. Start the recorder and confirm it grows.
+6. Start the `planner_watch` and `progress` windows on `<bag>/derived/planner_watch.log`.
+7. Call `/mole/terra_executor/restart`.
+
+**Run-event log**
+- After the owner starts, `~/.local/state/moleworks/terra_runs/<time>_<profile>.jsonl` must exist.
+- After the run, copy it into the bag's `derived/` and run
+  `ros2 run workspace_planner workspace-planner-run-summary <jsonl> --csv <dir> --png <dir>`. It reports `seq`
+  gaps per source. The collect run produced 54 events with no gaps.
+
+**Ending a workspace on purpose:** `ros2 service call /mole/force_workspace_done std_srvs/srv/Trigger "{}"`.
+- Planner services are `/<ns>/<name>`, not `/<ns>/workspace_planner/<name>`.
+- Arm it only after `Loaded workspace`; before that it is refused.
+- It acts on the next compute, so the current scoop finishes. The next workspace load clears it.
+- Nav2 then drives to the next station: 2.1 m backwards took 13 s and arrived 0.345 m / +3.1° off.
+
+**Stopping after N scoops:** wait for `scoop_progress: attempt=N ` in the planner_watch log, then call
+`/mole/terra_executor/stop`. The owner exits; stop the recorder afterwards.
+
+**Starting mid-plan:** `resume_from` refuses multi-station plans. Use a subset plan that starts at the next
+workspace (see the September 29 notes); `radial_rect3_r1_ws23_site_20261004` is an example.
+
+**Collect workspaces (`collect_dumped_soil`)**
+- Use `free_lane_max_volume` only.
+- Keep grading enabled; with it off, free-lane waits for a stationary-noise report.
+- Check that the executor logs `Configured dig controller target_elevation_layer='original_elevation'` and that
+  Dig3D's lock line shows `zone_layer='current_dig_workspace'`.
+
+**V42 pull-up:** check `Locked pull-up distance X m (dig_zone=…, collision=…)` for every scoop. Terra profiles carry
+`collision_guard_distance_margin_m: -0.2`, which keeps the guard at machine + 0.3 m.
+
+**Foxglove**
+- Excavation map: `/excavation_mapping/grid_map_rviz`.
+- Nav2 obstacle maps: `/mole/global_costmap/costmap` and `/mole/local_costmap/costmap`, with Color mode set to
+  Costmap and display frame `map`.

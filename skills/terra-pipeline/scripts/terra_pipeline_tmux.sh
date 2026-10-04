@@ -131,6 +131,18 @@ if [[ "$APPLICATION" == "normal" ]]; then
     echo "Use a reviewed schema-v3 profile with recompute_terrain_sdf_on_target: false." >&2
     exit 2
   fi
+
+  SITE_DESIGN_MAP="$(python3 -c '
+import sys
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    profile = yaml.safe_load(stream)
+print(profile["plan"]["design_map"] if profile["mapping"]["profile"] == "site" else "")
+' "$PROFILE")" || {
+    echo "Could not read the site design map from $PROFILE" >&2
+    exit 2
+  }
 elif [[ -z "$STAGE_MANIFEST" ]]; then
   echo "--stage-manifest is required for --application trench" >&2
   exit 2
@@ -294,6 +306,9 @@ robot_namespace:=$(shell_quote "$ROBOT_NAMESPACE")${TF_ARG}"
   ESTIMATOR_CMD="$(base_prefix) && ros2 launch mole_estimator mole_estimator.launch.py \
 use_sim_time:=false urdf_xacro_endeffector_type:=$(shell_quote "$EFFECTIVE_TOOL") \
 robot_namespace:=$(shell_quote "$ROBOT_NAMESPACE")${TF_ARG}"
+  if [[ -n "${SITE_DESIGN_MAP:-}" ]]; then
+    ESTIMATOR_CMD+=" design_map:=$(shell_quote "$SITE_DESIGN_MAP")"
+  fi
 
   start_if_idle low_level "$LOW_LEVEL_CMD"
   start_if_idle estimator "$ESTIMATOR_CMD"
@@ -327,7 +342,13 @@ if [[ "$START_FOXGLOVE" == "true" ]]; then
   if [[ "$RUNTIME_MODE" == "simulation" ]]; then
     USE_SIM_TIME="true"
   fi
-  FOXGLOVE_CMD="$(base_prefix) && ${FOXGLOVE_ENV}ros2 launch foxglove_bridge foxglove_bridge_launch.xml port:=$FOXGLOVE_PORT use_sim_time:=$USE_SIM_TIME"
+  # Low impact: best-effort, latest-only, nice 19; on the machine also pinned away from MPC/arm CPUs.
+  FOXGLOVE_PIN=""
+  if [[ "$RUNTIME_MODE" == "machine" ]]; then
+    FOXGLOVE_PIN="taskset -c ${FOXGLOVE_CPUS:-20-23} "
+  fi
+  FOXGLOVE_PARAMS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/foxglove_bridge_low_impact.yaml"
+  FOXGLOVE_CMD="$(base_prefix) && ${FOXGLOVE_ENV}exec nice -n 19 ${FOXGLOVE_PIN}ros2 run foxglove_bridge foxglove_bridge --ros-args --params-file $(shell_quote "$FOXGLOVE_PARAMS") -p port:=$FOXGLOVE_PORT -p use_sim_time:=$USE_SIM_TIME"
   start_if_idle foxglove "$FOXGLOVE_CMD"
 fi
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Moleworks Docs Cleanup"
+  short_description: "Audit and simplify Moleworks docs"
+  default_prompt: "Use $moleworks-docs-cleanup to audit and simplify Moleworks documentation against the current repo state."
