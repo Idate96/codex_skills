@@ -1,0 +1,4 @@
+interface:
+  display_name: "Field Time-Lapse"
+  short_description: "Edit and anonymise robot field time-lapse videos"
+  default_prompt: "Use $field-timelapse to turn camcorder footage of a field test into an edited, privacy-safe time-lapse."
