@@ -78,6 +78,14 @@ immutable.
   state-changing decisions, and the user-facing conclusion. Fall back to
   direct execution only when delegation is unavailable or the worker cannot
   access the required system.
+- The startup watch is the exception to delegation. A worker that ends its
+  turn with its own background poller wakes nobody: on 22 Oct 2026 a delegated
+  gate lapsed, the job died at startup after a 9 h queue wait, and nobody
+  noticed for 4 days. Keep the watch in the primary session as a background
+  command that exits with one line on any terminal `sacct` state, on error
+  lines in the `.err` log, or after the first completed updates. Print labelled
+  fields (`STATE=...`) and treat an empty `sacct` reply as unknown, not
+  terminal: the accounting database drops out during controller outages.
 - Local smoke first, with W&B disabled.
 - Smoke gates must check numerical validity, not only process survival: after the first update,
   assert finite loss scalars, model parameters, optimizer state, and any teacher/distillation
@@ -104,6 +112,40 @@ immutable.
   `LOCAL_NEWTON_ACTUATORS_DIR`, and `LOCAL_RSL_RL_DIR` to the intended
   worktree siblings. A shared `CLUSTER_ENV_FILE` is fine; do not set
   `LOCAL_MOLEWORKS_DIR` unless intentionally submitting a different tree.
+- Euler/CSCS sibling checkouts: `cluster/lib/load_cluster_env.sh` resolves
+  `LOCAL_NEWTON_DIR`/`LOCAL_RSL_RL_DIR` as `<workspace>/newton` and
+  `<workspace>/rsl_rl`, and for a worktree under `.worktrees/` the workspace
+  is `/home/lorenzo/moleworks`, whose shared `newton` and `rsl_rl` may sit on
+  other revisions (Oct 2026: Newton 1.1 and a teacher-KL branch, while main
+  needs Newton `c2ca70be` / rsl_rl `e374d7e`). To submit with pinned
+  siblings, make a directory holding `newton` and `rsl_rl` worktrees at the
+  pinned commits and pass `LOCAL_WORKSPACE_DIR=<that dir>` in the submit
+  environment. `CLUSTER_CALLER_LOCAL_WORKSPACE_DIR` does not work: the loader
+  overwrites it from `LOCAL_WORKSPACE_DIR`. Confirm the resolved paths with
+  `--test-only` before the real submit. A wrong sync also rewrites the
+  shared remote staging trees under `/cluster/scratch/$USER/code/`.
+- The Newton 1.6 Euler container is used through the persistent SIF:
+  `MOLEWORKS_EULER_USE_WORK_SIF=1`, and `CONTAINER_WORK_SIF` and
+  `CONTAINER_TAR` both set to the `.sif` path (e.g.
+  `/cluster/work/rsl/lterenzi/containers/moleworks_newton-torch291-mujoco3120-mjw3120-warp1170-src6da046c4.sif`).
+  The `.env.cluster` default `CONTAINER_TAR` is an older stack.
+- Slurm controller outages (`sbatch: error: ... Unable to contact slurm
+  controller`): `submit_job.sh` has already synced and snapshotted, and the
+  generated job script stays at
+  `/cluster/scratch/$USER/moleworks_logs/submit_XXXXXX.sh`. Resubmit that file
+  with `sbatch` in a retry loop instead of re-running the submit, which makes a
+  new snapshot each time. A timed-out `sbatch` can still have queued the job:
+  before each retry, look for a new job, and identify jobs by their command
+  path (`scontrol show job <id>`), since many share the name
+  `mnewton-fee_excavation-1g`. Delete the leftover script once the job is
+  queued.
+- FEE V42 in-soil resets (full-state replay, main since 28 Oct 2026):
+  `train.sh --full-state-bank <bank>` (1300 mm). The bank must sit under the log
+  root (see the storage contract below); bank v1 is
+  `/cluster/scratch/lterenzi/moleworks_logs/fee_diverse_resets/fee_v42_full_state_bank_v1.pt`
+  (persistent copy in `/cluster/work/rsl/lterenzi/fee_diverse_resets/banks/`).
+  The bank loads at the first replay reset; the log line
+  `[full-state-bank] loaded entries=...` proves it reached the GPU.
 - For Brev/Euler/Vast worktree smoke tests, verify the remote snapshot when
   code identity matters: compare `sha256sum` for one or two changed source
   files against the local worktree, then inspect the run log for the expected
@@ -111,6 +153,7 @@ immutable.
 - Real Euler training runs should usually request `JOB_TIME=24h`. When composing, reviewing, or launching a real training command, set `JOB_TIME=24h` explicitly by default unless the user asks for a shorter run.
 - Use `4h` or shorter only for smoke gates, startup validation, queue/launcher probes, or intentionally bounded debugging runs. Do not use short walltimes for runs meant to judge learning quality.
 - If a 24h run has not saturated at its last evaluated checkpoint, continue from the best/latest checkpoint with another long run instead of treating the partial curve as converged.
+- Exception: FEE recipes on the `delayed_success` curriculum (the V42 family) refuse checkpoint resume, because PPO checkpoints do not store the curriculum level, streak and evidence (`set_training_iteration` raises). Such a run must finish in one job: 6,001 V42 updates at 20k worlds take 15-16 h on one RTX 4090, so a 24h job is enough there; slower GPUs may not be.
 - For performance claims, prefer 24h-scale runs with pinned checkpoint benchmarks over early W&B curves from short jobs.
 - Shared-turn analytic tasks keep `--disable-empirical-normalization`.
 - Prefer Euler `1x4090`. Fall back to `3090` only if the run stays pending too long.
@@ -156,6 +199,13 @@ Treat file placement as a launch invariant, not a cleanup afterthought:
 - `/cluster/work/rsl/$USER`: large `.sif` images, checkpoints, and compressed
   archives only. Never rsync an expanded source, environment, cache, or asset
   tree into work; its inode allowance is much smaller.
+- The training container binds only the code snapshot, the log root
+  (`/cluster/scratch/$USER/moleworks_logs`), `TMPDIR` and the reset cache
+  (`cluster/run_container.sh`). Any file a run reads (state banks, teacher
+  checkpoints, terrain banks) must sit under the log root; a path under
+  `/cluster/work` or `/cluster/project` is invisible inside the job. Keep the
+  persistent copy in work and a working copy in scratch. A FEE run failed this
+  way after a 9 h queue wait (22 Oct 2026, `FileNotFoundError` on a bank path).
 
 Before a broad sync or large launch, check:
 

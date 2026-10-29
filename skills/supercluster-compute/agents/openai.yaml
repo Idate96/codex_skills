@@ -1,0 +1,4 @@
+interface:
+  display_name: "Supercluster Compute"
+  short_description: "Safely use the shared workstation (GPU 0 only)"
+  default_prompt: "Use $supercluster-compute to inspect Supercluster and run a batched GPU diagnostic safely."
